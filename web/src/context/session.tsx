@@ -1,0 +1,676 @@
+import { createContext, useContext, type ParentComponent } from 'solid-js';
+import { createSignal, createEffect, on } from 'solid-js';
+import {
+  type Session,
+  type MessageWithParts,
+  type ModelInfo,
+  listSessions,
+  createSession,
+  getMessages,
+  sendPrompt,
+  getModels,
+  updateSession,
+  abortSession,
+  setModelPreference,
+  deleteModelPreference,
+} from '../api/client';
+import { useServer } from './server';
+
+function shallowEqualPart(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.type !== b.type) return false;
+  if (a.updatedAt !== b.updatedAt) return false;
+  // When timestamps match, the server hasn't modified the part — skip deep
+  // data comparison to avoid JSON.stringify stack overflow on large tool output.
+  return true;
+}
+
+function shallowEqualMessage(a: MessageWithParts, b: MessageWithParts): boolean {
+  if (a === b) return true;
+  if (a.info.id !== b.info.id) return false;
+  if (a.info.finish !== b.info.finish) return false;
+  if (a.info.error !== b.info.error) return false;
+  const ap = a.parts || [];
+  const bp = b.parts || [];
+  if (ap.length !== bp.length) return false;
+  for (let i = 0; i < ap.length; i++) {
+    if (!shallowEqualPart(ap[i], bp[i])) return false;
+  }
+  return true;
+}
+
+interface SessionContextValue {
+  sessions: () => Session[];
+  activeSession: () => Session | null;
+  messages: () => MessageWithParts[];
+  loading: () => boolean;
+  hasRunningTools: () => boolean;
+  compacted: () => boolean;
+  models: () => ModelInfo[];
+  selectedModel: () => string;
+  selectModel: (modelId: string) => void;
+  selectSession: (id: string) => Promise<void>;
+  newSession: (model?: string) => Promise<Session>;
+  prompt: (content: string) => Promise<void>;
+  abort: () => Promise<void>;
+  refreshModels: () => Promise<void>;
+  toggleModel: (model: ModelInfo, enabled: boolean) => Promise<void>;
+  addCustomModel: (id: string, providerId: string, displayName: string) => Promise<void>;
+  removeCustomModel: (id: string) => Promise<void>;
+  refresh: () => void;
+}
+
+const SessionContext = createContext<SessionContextValue>();
+
+export const SessionProvider: ParentComponent = (props) => {
+  const server = useServer();
+  const [sessions, setSessions] = createSignal<Session[]>([]);
+  const [activeSession, setActiveSession] = createSignal<Session | null>(null);
+  const [messagesRaw, setMessagesRaw] = createSignal<MessageWithParts[]>([]);
+  const messages = messagesRaw;
+
+  // Merge incoming messages with the existing array, keeping object references
+  // for unchanged entries so SolidJS's <For> doesn't re-render the whole list
+  // on every poll tick. Never merge across sessions — always verify we're updating
+  // the same session before merging.
+  // Uses functional updater to avoid stale reads when polling and SSE update concurrently.
+  const mergeMessages = (prev: MessageWithParts[], incoming: MessageWithParts[]): MessageWithParts[] => {
+    const currentSessionId = activeSession()?.id;
+
+    // Safety check: if session changed or no messages yet, don't merge — just use incoming
+    if (!prev || prev.length === 0 || !currentSessionId) {
+      return incoming.map((m) => ({ info: m.info, parts: m.parts || [] }));
+    }
+
+    // Verify all messages are for the current session before merging
+    for (const msg of incoming) {
+      if (msg.info.sessionId !== currentSessionId) {
+        // Message is for a different session — don't merge, return as-is
+        return incoming.map((m) => ({ info: m.info, parts: m.parts || [] }));
+      }
+    }
+
+    // Safe to merge now — all messages are for current session
+    const prevById = new Map(prev.map((m) => [m.info.id, m]));
+    return incoming.map((m) => {
+      const normalized = { info: m.info, parts: m.parts || [] };
+      const existing = prevById.get(m.info.id);
+      if (!existing) return normalized;
+      if (shallowEqualMessage(existing, normalized)) return existing;
+      // Preserve part references for parts that didn't change
+      const newParts = normalized.parts.map((p) => {
+        const prevPart = (existing.parts || []).find((pp) => pp.id === p.id);
+        if (prevPart && shallowEqualPart(prevPart, p)) return prevPart;
+        return p;
+      });
+      return { info: m.info, parts: newParts };
+    });
+  };
+
+  const setMessages = (next: MessageWithParts[] | ((prev: MessageWithParts[]) => MessageWithParts[])) => {
+    if (typeof next === 'function') {
+      // Use functional updater so mergeMessages reads the latest state
+      setMessagesRaw((prev) => mergeMessages(prev, (next as (prev: MessageWithParts[]) => MessageWithParts[])(prev)));
+    } else {
+      setMessagesRaw((prev) => mergeMessages(prev, next));
+    }
+  };
+  // Track which session is currently loading (not a global flag)
+  const [loadingSessionId, setLoadingSessionId] = createSignal<string>('');
+  // Compute loading state: true only if active session is the one loading
+  const loading = () => loadingSessionId() === activeSession()?.id && loadingSessionId() !== '';
+
+  // Check if any tools are currently running or pending.
+  // If the last assistant message has finished (stop/error/aborted), stale tool
+  // statuses shouldn't block the UI — the loop is done and won't update them.
+  const hasRunningTools = (): boolean => {
+    const msgs = messagesRaw();
+    // Only treat tools as stale when the loop was explicitly cancelled or errored.
+    // finish="stop" with pending tools means tools are about to execute — not stale.
+    let toolsAreStale = false;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].info.role === 'assistant') {
+        const finish = msgs[i].info.finish;
+        if (finish === 'error' || finish === 'aborted') {
+          toolsAreStale = true;
+        }
+        break;
+      }
+    }
+    for (const msg of msgs) {
+      if (msg.parts) {
+        for (const part of msg.parts) {
+          if (part.type === 'tool') {
+            try {
+              const toolData = JSON.parse(typeof part.data === 'string' ? part.data : JSON.stringify(part.data));
+              const status = toolData?.state?.status;
+              if (status === 'running' || status === 'pending') {
+                if (toolsAreStale) continue;
+                return true;
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  // Transient flag: true for 5 s after the server auto-compacts the context window
+  const [compacted, setCompacted] = createSignal(false);
+  let compactedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const [models, setModels] = createSignal<ModelInfo[]>([]);
+  // Model selection chosen before any session exists (e.g. on the home page).
+  // Used as the default for `newSession()` and read by `selectedModel()`.
+  const [pendingModel, setPendingModel] = createSignal<string>('');
+  // Two-tier polling:
+  //   fastPollInterval — 3 s, runs only while the agent loop is active
+  //   bgPollInterval   — 15 s, always runs for the active session so the UI
+  //                      stays in sync even when the loop is idle or SSE drops
+  let fastPollInterval: ReturnType<typeof setInterval> | null = null;
+  let bgPollInterval: ReturnType<typeof setInterval> | null = null;
+  let lastSSEUpdate = 0; // timestamp of last SSE-driven message refresh
+
+  // Load models on mount
+  getModels()
+    .then((list) => setModels(list || []))
+    .catch((e) => console.error('load models failed:', e));
+
+  // Compute selected model: pendingModel is the latest explicit user selection and takes
+  // priority so model changes take effect immediately without waiting for network round-trips.
+  // Falls back to the session's persisted model, then to the enabled default.
+  const selectedModel = (): string => {
+    if (pendingModel()) return pendingModel();
+    const sess = activeSession();
+    if (sess?.model) return sess.model;
+    const enabled = models().filter((m) => m.enabled);
+    const defaults = enabled.filter((m) => m.default);
+    if (defaults.length > 0) return defaults[0].id;
+    if (enabled.length > 0) return enabled[0].id;
+    return '';
+  };
+
+  async function selectModel(modelId: string) {
+    // Set pendingModel immediately (optimistic) so selectedModel() reflects the change
+    // before the network request completes — prevents the old model from being sent if
+    // the user sends a prompt quickly after changing the model.
+    setPendingModel(modelId);
+    const sess = activeSession();
+    if (!sess) return;
+    try {
+      const updated = await updateSession(sess.id, { model: modelId });
+      setActiveSession(updated);
+    } catch (e) {
+      console.error('update model failed:', e);
+    }
+  }
+
+  async function refresh() {
+    const dir = server.directory();
+    if (!dir) return;
+    try {
+      const list = await listSessions(dir);
+      setSessions(list);
+    } catch (e) {
+      console.error('refresh sessions failed:', e);
+    }
+  }
+
+  async function abort() {
+    const sess = activeSession();
+    if (!sess) return;
+
+    // Stop the fast poll and clear loading state immediately.
+    // The background poll keeps running so the session stays in sync.
+    stopFastPoll();
+    setLoadingSessionId('');
+
+    try {
+      // Tell server to cancel the request and all tool calls
+      await abortSession(sess.id);
+      console.info('abort request sent to server');
+    } catch (e) {
+      console.error('abort request failed:', e);
+    }
+
+    // Refresh messages to pick up the "aborted" finish state and cancelled tool calls
+    try {
+      const msgs = await getMessages(sess.id);
+      setMessages(msgs);
+    } catch (e) {
+      console.error('refresh after abort failed:', e);
+    }
+  }
+
+  async function refreshModels() {
+    try {
+      const list = await getModels();
+      setModels(list || []);
+    } catch (e) {
+      console.error('refresh models failed:', e);
+    }
+  }
+
+  async function toggleModel(model: ModelInfo, enabled: boolean) {
+    try {
+      const updated = await setModelPreference({
+        id: model.id,
+        providerId: model.providerId,
+        displayName: model.name,
+        enabled,
+        isCustom: model.isCustom,
+      });
+      setModels(updated || []);
+    } catch (e) {
+      console.error('toggle model failed:', e);
+    }
+  }
+
+  async function addCustomModel(id: string, providerId: string, displayName: string) {
+    try {
+      const updated = await setModelPreference({
+        id,
+        providerId,
+        displayName: displayName || id,
+        enabled: true,
+        isCustom: true,
+      });
+      setModels(updated || []);
+    } catch (e) {
+      console.error('add custom model failed:', e);
+    }
+  }
+
+  async function removeCustomModel(id: string) {
+    try {
+      await deleteModelPreference(id);
+      await refreshModels();
+    } catch (e) {
+      console.error('remove custom model failed:', e);
+    }
+  }
+
+  async function selectSession(id: string) {
+    const current = activeSession();
+    const sameSession = current?.id === id;
+
+    // Cancel any pending SSE refresh from previous session
+    if (sseRefreshDebounce) {
+      clearTimeout(sseRefreshDebounce);
+      sseRefreshDebounce = null;
+    }
+
+    // Find in local list, or create a stub
+    let session = sessions().find((s) => s.id === id);
+    if (!session) {
+      session = current?.id === id
+        ? current
+        : { id, projectId: '', directory: server.directory(), title: 'Loading...', createdAt: Date.now(), updatedAt: Date.now() };
+    }
+    setActiveSession(session);
+
+    // Clear pendingModel when switching sessions so the destination session's
+    // own persisted model is used, not whatever was selected in the previous session.
+    if (!sameSession) {
+      setPendingModel('');
+    }
+
+    // Stop any existing polling from previous session when switching
+    if (!sameSession) {
+      stopPolling();
+      // Always clear messages when switching to a different session
+      // This prevents cross-session data leakage
+      setMessages([]);
+    }
+    // Re-entering the same session keeps cached messages and refreshes in place.
+    try {
+      const msgs = await getMessages(id);
+      setMessages(msgs);
+
+      // Always keep a background poll so the session stays in sync
+      startBgPoll(id);
+
+      // Upgrade to fast poll if the agent loop is still running
+      if (isAgentLoopActive(msgs)) {
+        setLoadingSessionId(id);
+        startPolling(id);
+      }
+    } catch (e) {
+      console.error('load messages failed:', e);
+    }
+  }
+
+  async function newSession(model?: string) {
+    const session = await createSession(server.directory(), model || selectedModel());
+    setSessions((prev) => [session, ...prev]);
+    setActiveSession(session);
+    setMessages([]);
+    return session;
+  }
+
+  function stopFastPoll() {
+    if (fastPollInterval) {
+      clearInterval(fastPollInterval);
+      fastPollInterval = null;
+    }
+  }
+
+  function stopBgPoll() {
+    if (bgPollInterval) {
+      clearInterval(bgPollInterval);
+      bgPollInterval = null;
+    }
+  }
+
+  function stopPolling() {
+    stopFastPoll();
+    stopBgPoll();
+  }
+
+  // Background poll: always active for the current session (15 s interval).
+  // Keeps the message list in sync when SSE events are missed or the loop is idle.
+  function startBgPoll(sessionId: string) {
+    stopBgPoll();
+    bgPollInterval = setInterval(async () => {
+      if (activeSession()?.id !== sessionId) {
+        stopBgPoll();
+        return;
+      }
+      try {
+        const msgs = await getMessages(sessionId);
+        if (activeSession()?.id !== sessionId) return;
+        setMessages(msgs);
+      } catch (_e) {
+        // background — non-critical, ignore errors
+      }
+    }, 15_000);
+  }
+
+  // Check if the agent loop is still active by looking at the last assistant message
+  // and whether any tools are still running. A tool-result user message (role=user
+  // with tool parts) is created BETWEEN loop iterations — the loop is still running,
+  // it just hasn't created the next assistant message yet.
+  function isAgentLoopActive(msgs: MessageWithParts[]): boolean {
+    // Any running/pending tools means the loop is active
+    if (messagesHaveRunningTools(msgs)) return true;
+    // If the last message is a user text message (not a tool-result message), the loop
+    // has received the prompt but hasn't created an assistant response yet — still active.
+    if (msgs.length > 0) {
+      const last = msgs[msgs.length - 1];
+      if (last.info.role === 'user') {
+        const hasText = (last.parts || []).some((p) => p.type === 'text');
+        if (hasText) return true;
+      }
+    }
+    // Scan from the end for the last assistant message
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].info.role === 'assistant') {
+        // Unfinished assistant = still streaming
+        if (!msgs[i].info.finish && !msgs[i].info.error) return true;
+        // Finished with "stop" or "error" = loop is done
+        // Finished with "tool_calls" = loop will continue (but tools should have been caught above)
+        if (msgs[i].info.finish === 'tool_calls') return true;
+        // finish === "stop" or "error" or "aborted" — loop is done
+        return false;
+      }
+    }
+    // No assistant message yet — loop might not have started
+    return false;
+  }
+
+  // Check if any message in the list has a tool part that is still running or pending.
+  // If the last assistant has finished, stale tool statuses are ignored.
+  function messagesHaveRunningTools(msgs: MessageWithParts[]): boolean {
+    // Only treat tools as stale when the loop was explicitly cancelled or errored.
+    // finish="stop" alongside pending tools means execution is still in progress.
+    let toolsAreStale = false;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].info.role === 'assistant') {
+        const finish = msgs[i].info.finish;
+        if (finish === 'error' || finish === 'aborted') {
+          toolsAreStale = true;
+        }
+        break;
+      }
+    }
+    for (const msg of msgs) {
+      if (msg.parts) {
+        for (const part of msg.parts) {
+          if (part.type === 'tool') {
+            try {
+              const toolData = JSON.parse(typeof part.data === 'string' ? part.data : JSON.stringify(part.data));
+              const status = toolData?.state?.status;
+              if (status === 'running' || status === 'pending') {
+                if (toolsAreStale) continue;
+                return true;
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  // Fast poll: 3 s, runs only while the agent loop is active.
+  // Stops itself (reverts to background poll) when the loop is done.
+  function startPolling(sessionId: string) {
+    stopFastPoll();
+    const startedAt = Date.now();
+    const MAX_WAIT_MS = 2 * 60 * 1000;
+    fastPollInterval = setInterval(async () => {
+      try {
+        if (activeSession()?.id !== sessionId) {
+          stopFastPoll();
+          return;
+        }
+        // Skip if SSE delivered a fresh update in the last 2 s
+        if (Date.now() - lastSSEUpdate < 2000) {
+          return;
+        }
+        const msgs = await getMessages(sessionId);
+        setMessages(msgs);
+
+        const loopActive = isAgentLoopActive(msgs);
+
+        if (!loopActive) {
+          setLoadingSessionId('');
+          stopFastPoll(); // background poll keeps running
+        } else if (Date.now() - startedAt > MAX_WAIT_MS) {
+          console.warn('poll timeout, clearing loading state');
+          setLoadingSessionId('');
+          stopFastPoll(); // background poll keeps running
+        } else {
+          if (loadingSessionId() !== sessionId) {
+            setLoadingSessionId(sessionId);
+          }
+        }
+      } catch (e) {
+        console.error('poll messages failed:', e);
+      }
+    }, 3000);
+  }
+
+  async function prompt(content: string) {
+    const session = activeSession();
+    if (!session) return;
+    setLoadingSessionId(session.id);
+
+    // Optimistic: add user message immediately
+    const tempUserMsg: MessageWithParts = {
+      info: {
+        id: 'temp-' + Date.now(),
+        sessionId: session.id,
+        role: 'user',
+        createdAt: Date.now(),
+      },
+      parts: [{
+        id: 'temp-part-' + Date.now(),
+        messageId: 'temp-' + Date.now(),
+        sessionId: session.id,
+        type: 'text',
+        data: { text: content },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }],
+    };
+    setMessages((prev) => [...prev, tempUserMsg]);
+
+    try {
+      await sendPrompt(session.id, content, selectedModel());
+      // Immediately fetch to get the real user message + start seeing assistant
+      const msgs = await getMessages(session.id);
+      setMessages(msgs);
+      // Ensure background poll is running, then start the fast poll for the loop
+      startBgPoll(session.id);
+      startPolling(session.id);
+    } catch (e) {
+      console.error('send prompt failed:', e);
+      setLoadingSessionId('');
+    }
+  }
+
+  // Load sessions on mount
+  createEffect(on(server.directory, (dir) => {
+    if (dir) refresh();
+  }));
+
+  // On SSE reconnect, immediately re-fetch the active session so any messages
+  // that arrived while the connection was down are not missed.
+  createEffect(on(server.connected, (isConnected) => {
+    if (!isConnected) return;
+    const sess = activeSession();
+    if (!sess) return;
+    getMessages(sess.id).then((msgs) => {
+      if (activeSession()?.id !== sess.id) return;
+      setMessages(msgs);
+      lastSSEUpdate = Date.now();
+    }).catch(() => {});
+  }));
+
+  // SSE-driven real-time updates: when the backend publishes message.updated
+  // or message.part.updated events for the active session, fetch fresh messages
+  // immediately instead of waiting for the next poll tick.
+  let sseRefreshDebounce: ReturnType<typeof setTimeout> | null = null;
+  createEffect(on([server.eventTick, activeSession], ([_tick, sess]) => {
+    // Cancel any pending SSE refresh from a previous session
+    if (sseRefreshDebounce) {
+      clearTimeout(sseRefreshDebounce);
+      sseRefreshDebounce = null;
+    }
+    if (!sess) return;
+    const last = server.lastEvent();
+    if (!last) return;
+
+    // Handle loop.done: the backend explicitly signals that the agent loop finished.
+    // This is the most reliable way to detect completion — clear loading state immediately.
+    if (last.type === 'loop.done') {
+      const evtSessionId = last.properties?.sessionId;
+      if (evtSessionId && evtSessionId === sess.id) {
+        // Fetch final messages then clear loading
+        getMessages(sess.id).then((msgs) => {
+          if (activeSession()?.id !== sess.id) return;
+          setMessages(msgs);
+          lastSSEUpdate = Date.now();
+          setLoadingSessionId('');
+          stopFastPoll(); // background poll keeps running
+        }).catch((e) => {
+          console.error('loop.done refresh failed:', e);
+          // Clear loading even on fetch failure — the loop IS done
+          setLoadingSessionId('');
+          stopFastPoll(); // background poll keeps running
+        });
+      }
+      return;
+    }
+
+    // Handle loop.compacted: context was auto-trimmed to fit the model's window
+    if (last.type === 'loop.compacted') {
+      const evtSessionId = last.properties?.sessionId;
+      if (evtSessionId && evtSessionId === sess.id) {
+        if (compactedTimer) clearTimeout(compactedTimer);
+        setCompacted(true);
+        compactedTimer = setTimeout(() => setCompacted(false), 5000);
+      }
+      return;
+    }
+
+    if (last.type !== 'message.updated' && last.type !== 'message.part.updated') return;
+    // Only refresh if the event is for the active session
+    const evtSessionId = last.properties?.sessionId || last.properties?.id;
+    if (evtSessionId && evtSessionId !== sess.id) return;
+    // Capture current session ID to detect if session changes before timer fires
+    const targetSessionId = sess.id;
+    // Debounce: coalesce rapid bursts of events into a single fetch
+    sseRefreshDebounce = setTimeout(async () => {
+      // Guard: if the user switched sessions while the timer was pending, discard
+      if (activeSession()?.id !== targetSessionId) return;
+      try {
+        const msgs = await getMessages(targetSessionId);
+        // Double-check session is still active before writing
+        if (activeSession()?.id !== targetSessionId) return;
+        setMessages(msgs);
+        lastSSEUpdate = Date.now();
+        // Don't clear loading here — loop.done is the authoritative completion signal.
+        // Clearing on message.updated causes premature unblocking when the server
+        // writes finish="stop" to the assistant message before executing tool calls.
+      } catch (e) {
+        console.error('SSE-triggered refresh failed:', e);
+      }
+    }, 50);
+  }));
+
+  // Handle session.updated SSE events (e.g. auto-generated title)
+  createEffect(on(server.eventTick, () => {
+    const last = server.lastEvent();
+    if (!last || last.type !== 'session.updated') return;
+    const updated = last.properties as Session | undefined;
+    if (!updated?.id) return;
+    setSessions((prev) =>
+      prev.map((s) => (s.id === updated.id ? { ...s, title: updated.title, updatedAt: updated.updatedAt } : s))
+    );
+    // Also update activeSession if it matches
+    if (activeSession()?.id === updated.id) {
+      setActiveSession((prev) => (prev ? { ...prev, title: updated.title, updatedAt: updated.updatedAt } : prev));
+    }
+  }));
+
+  const value: SessionContextValue = {
+    sessions,
+    activeSession,
+    messages,
+    loading,
+    hasRunningTools,
+    compacted,
+    models,
+    selectedModel,
+    selectModel,
+    selectSession,
+    newSession,
+    prompt,
+    abort,
+    refreshModels,
+    toggleModel,
+    addCustomModel,
+    removeCustomModel,
+    refresh,
+  };
+
+  return (
+    <SessionContext.Provider value={value}>
+      {props.children}
+    </SessionContext.Provider>
+  );
+};
+
+export function useSession() {
+  const ctx = useContext(SessionContext);
+  if (!ctx) throw new Error('useSession must be used within SessionProvider');
+  return ctx;
+}

@@ -1,0 +1,18 @@
+# Binaries
+ogcode
+*.exe
+
+# Data directory
+.ogcode/
+
+# Web build artifacts
+web/dist/
+web/node_modules/
+web/.solid/
+
+# Environment
+.env
+
+# OS files
+.DS_Store
+*.swp

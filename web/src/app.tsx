@@ -1,0 +1,38 @@
+import { Route, Router } from '@solidjs/router';
+import { ServerProvider } from './context/server';
+import { SessionProvider } from './context/session';
+import { ThemeProvider } from './context/theme';
+import Home from './pages/home';
+import Chat from './pages/session';
+import SettingsLayout from './pages/settings/layout';
+import GeneralSettings from './pages/settings/general';
+import ModelsSettings from './pages/settings/models';
+import AboutSettings from './pages/settings/about';
+
+export default function App() {
+  return (
+    <Router root={AppWrapper}>
+      <Route path="/" component={Home} />
+      <Route path="/session/:id" component={Chat} />
+      <Route path="/settings" component={SettingsLayout}>
+        <Route path="/" component={GeneralSettings} />
+        <Route path="/models" component={ModelsSettings} />
+        <Route path="/about" component={AboutSettings} />
+      </Route>
+    </Router>
+  );
+}
+
+function AppWrapper(props: { children?: any }) {
+  return (
+    <ServerProvider>
+      <ThemeProvider>
+        <SessionProvider>
+          <div class="flex h-screen bg-[color:var(--bg-base)] text-zinc-100 antialiased">
+            {props.children}
+          </div>
+        </SessionProvider>
+      </ThemeProvider>
+    </ServerProvider>
+  );
+}
