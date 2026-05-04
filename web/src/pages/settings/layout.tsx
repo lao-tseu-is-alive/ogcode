@@ -3,6 +3,9 @@ import { For, Show, createEffect } from 'solid-js';
 import { createSignal } from 'solid-js';
 import { useServer } from '../../context/server';
 
+// Module-level store so previous route survives SettingsShell remounts.
+let storedPreviousRoute = '/plan';
+
 interface NavItem {
   id: string;
   label: string;
@@ -43,11 +46,12 @@ function SettingsShell(props: { children?: any }) {
   const navigate = useNavigate();
   const location = useLocation();
   const server = useServer();
-  const [previousRoute, setPreviousRoute] = createSignal<string>('/plan');
+  const [previousRoute, setPreviousRoute] = createSignal<string>(storedPreviousRoute);
 
   createEffect(() => {
     const pathname = location.pathname;
     if (!pathname.startsWith('/settings')) {
+      storedPreviousRoute = pathname;
       setPreviousRoute(pathname);
     }
   });
