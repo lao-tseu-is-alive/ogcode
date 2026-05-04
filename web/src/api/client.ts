@@ -230,3 +230,162 @@ export function setTheme(primaryColor: string, directory?: string): Promise<Them
 export function deleteTheme(directory: string): Promise<void> {
   return fetchAPI(`/theme/${encodeURIComponent(directory)}`, { method: 'DELETE' });
 }
+
+// Mode API
+export interface ModeInfo {
+  mode: string;
+}
+
+export function getMode(): Promise<ModeInfo> {
+  return fetchAPI('/mode');
+}
+
+// Plan API
+export interface Plan {
+  id: string;
+  sessionId: string;
+  projectId: string;
+  directory: string;
+  title: string;
+  status: 'open' | 'locked';
+  model?: string;
+  compactionSummary?: string;
+  breakdownStatus?: '' | 'in_progress' | 'completed' | 'failed';
+  allTasksCompleted?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Task {
+  id: string;
+  planId: string;
+  sessionId?: string;
+  parentTaskId?: string;
+  title: string;
+  description: string;
+  effort: 'S' | 'M' | 'L' | 'XL';
+  complexity: 'low' | 'medium' | 'high';
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  dependencies: string[];
+  branchName: string;
+  worktreePath?: string;
+  prUrl?: string;
+  prNumber?: number;
+  orderIndex: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function listPlans(directory?: string): Promise<Plan[]> {
+  const dir = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+  return fetchAPI(`/plans${dir}`);
+}
+
+export function createPlan(directory?: string, title?: string, model?: string): Promise<Plan> {
+  return fetchAPI('/plans', {
+    method: 'POST',
+    body: JSON.stringify({ directory, title, model }),
+  });
+}
+
+export function getPlan(id: string): Promise<Plan> {
+  return fetchAPI(`/plans/${id}`);
+}
+
+export function updatePlan(id: string, updates: { title?: string; model?: string }): Promise<Plan> {
+  return fetchAPI(`/plans/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
+export function deletePlan(id: string): Promise<void> {
+  return fetchAPI(`/plans/${id}`, { method: 'DELETE' });
+}
+
+export function lockPlan(id: string): Promise<Plan> {
+  return fetchAPI(`/plans/${id}/lock`, { method: 'POST' });
+}
+
+export function sendPlanPrompt(id: string, content: string, model?: string): Promise<void> {
+  return fetchAPI(`/plans/${id}/prompt`, {
+    method: 'POST',
+    body: JSON.stringify({ content, model }),
+  });
+}
+
+export function getPlanMessages(id: string, before?: string): Promise<MessageWithParts[]> {
+  const params = before ? `?before=${encodeURIComponent(before)}` : '';
+  return fetchAPI(`/plans/${id}/message${params}`);
+}
+
+export function abortPlan(id: string): Promise<void> {
+  return fetchAPI(`/plans/${id}/abort`, { method: 'POST' });
+}
+
+export async function downloadPlanExport(id: string): Promise<void> {
+  const res = await fetch(`${API}/plans/${id}/export`);
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const disp = res.headers.get('Content-Disposition') || '';
+  const match = disp.match(/filename="(.+)"/);
+  a.download = match?.[1] || 'plan.md';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Task API
+export function listTasks(planId: string): Promise<Task[]> {
+  return fetchAPI(`/plans/${planId}/tasks`);
+}
+
+export function createTasks(planId: string, tasks: Array<{
+  title: string;
+  description?: string;
+  effort?: string;
+  complexity?: string;
+  dependencies?: string[];
+  orderIndex?: number;
+}>): Promise<Task[]> {
+  return fetchAPI(`/plans/${planId}/tasks`, {
+    method: 'POST',
+    body: JSON.stringify({ tasks }),
+  });
+}
+
+export function getTask(id: string): Promise<Task> {
+  return fetchAPI(`/tasks/${id}`);
+}
+
+export function updateTask(id: string, updates: {
+  title?: string;
+  description?: string;
+  effort?: string;
+  complexity?: string;
+  status?: string;
+  branchName?: string;
+}): Promise<Task> {
+  return fetchAPI(`/tasks/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
+export function startTask(id: string): Promise<Task> {
+  return fetchAPI(`/tasks/${id}/start`, { method: 'POST' });
+}
+
+export function completeTask(id: string): Promise<Task> {
+  return fetchAPI(`/tasks/${id}/complete`, { method: 'POST' });
+}
+
+export function failTask(id: string): Promise<Task> {
+  return fetchAPI(`/tasks/${id}/fail`, { method: 'POST' });
+}
+
+export function retryTask(id: string): Promise<Task> {
+  return fetchAPI(`/tasks/${id}/retry`, { method: 'POST' });
+}

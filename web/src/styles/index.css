@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "highlight.js/styles/github-dark-dimmed.css";
 
 /* ============================================================
    Design tokens
@@ -252,6 +253,14 @@ textarea.auto-resize {
   white-space: pre;
 }
 
+/* highlight.js token colors are fine; override its block-level overrides so
+   our prose-chat pre container controls bg/padding/radius instead */
+.prose-chat pre code.hljs {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
 .prose-chat ul,
 .prose-chat ol {
   margin: 0.5em 0 0.75em;
@@ -319,6 +328,46 @@ textarea.auto-resize {
 .prose-chat th {
   background: var(--bg-overlay);
   font-weight: 600;
+}
+
+/* ============================================================
+   prose-chat — compact/preview variant
+   Collapses all block children to inline so -webkit-line-clamp
+   can clip rendered markdown at N visual lines.
+   ============================================================ */
+.prose-chat.prose-chat-preview {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1.4;
+}
+.prose-chat.prose-chat-preview p,
+.prose-chat.prose-chat-preview h1,
+.prose-chat.prose-chat-preview h2,
+.prose-chat.prose-chat-preview h3,
+.prose-chat.prose-chat-preview h4,
+.prose-chat.prose-chat-preview ul,
+.prose-chat.prose-chat-preview ol,
+.prose-chat.prose-chat-preview li,
+.prose-chat.prose-chat-preview pre,
+.prose-chat.prose-chat-preview blockquote,
+.prose-chat.prose-chat-preview hr {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+  border: none;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  white-space: normal;
+}
+.prose-chat.prose-chat-preview li::marker { content: none; }
+.prose-chat.prose-chat-preview code {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: inherit;
 }
 
 /* ============================================================

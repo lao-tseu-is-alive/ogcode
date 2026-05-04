@@ -22,6 +22,7 @@ func (s *Server) routes() http.Handler {
 		r.Get("/agent", s.handleAgents)
 		r.Get("/models", s.handleModels)
 		r.Get("/config", s.handleConfig)
+		r.Get("/mode", s.handleMode)
 
 		r.Post("/models/preference", s.handleSetModelPreference)
 		r.Delete("/models/preference/{id}", s.handleDeleteModelPreference)
@@ -42,6 +43,34 @@ func (s *Server) routes() http.Handler {
 				r.Post("/prompt", s.handlePrompt)
 				r.Get("/message", s.handleGetMessages)
 				r.Post("/permission/{permissionID}", s.handlePermissionReply)
+			})
+		})
+
+		r.Route("/plans", func(r chi.Router) {
+			r.Get("/", s.handleListPlans)
+			r.Post("/", s.handleCreatePlan)
+			r.Route("/{planID}", func(r chi.Router) {
+				r.Get("/", s.handleGetPlan)
+				r.Patch("/", s.handleUpdatePlan)
+				r.Delete("/", s.handleDeletePlan)
+				r.Post("/lock", s.handleLockPlan)
+				r.Post("/abort", s.handleAbortPlan)
+				r.Post("/prompt", s.handlePlanPrompt)
+				r.Get("/message", s.handleGetPlanMessages)
+				r.Get("/export", s.handleExportPlan)
+				r.Get("/tasks", s.handleListTasks)
+				r.Post("/tasks", s.handleCreateTasks)
+			})
+		})
+
+		r.Route("/tasks", func(r chi.Router) {
+			r.Route("/{taskID}", func(r chi.Router) {
+				r.Get("/", s.handleGetTask)
+				r.Patch("/", s.handleUpdateTask)
+				r.Post("/start", s.handleStartTask)
+				r.Post("/complete", s.handleCompleteTask)
+				r.Post("/fail", s.handleFailTask)
+				r.Post("/retry", s.handleRetryTask)
 			})
 		})
 

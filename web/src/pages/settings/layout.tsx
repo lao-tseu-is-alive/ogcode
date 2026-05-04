@@ -1,5 +1,6 @@
 import { useNavigate, useLocation, type RouteSectionProps } from '@solidjs/router';
-import { For, Show } from 'solid-js';
+import { For, Show, createEffect } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { useServer } from '../../context/server';
 
 interface NavItem {
@@ -42,12 +43,23 @@ function SettingsShell(props: { children?: any }) {
   const navigate = useNavigate();
   const location = useLocation();
   const server = useServer();
+  const [previousRoute, setPreviousRoute] = createSignal<string>('/plan');
+
+  createEffect(() => {
+    const pathname = location.pathname;
+    if (!pathname.startsWith('/settings')) {
+      setPreviousRoute(pathname);
+    }
+  });
 
   const goBack = () => {
-    if (window.history.length > 1) {
+    const previous = previousRoute();
+    if (previous && previous !== location.pathname) {
+      navigate(previous);
+    } else if (window.history.length > 1) {
       window.history.back();
     } else {
-      navigate('/');
+      navigate('/plan');
     }
   };
 

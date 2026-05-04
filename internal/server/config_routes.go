@@ -20,6 +20,13 @@ func (s *Server) handlePath(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, []map[string]string{
 		{"id": "build", "name": "Build", "description": "Full-access coding agent"},
+		{"id": "plan", "name": "Plan", "description": "Planning agent — reads and understands code, plans changes but never writes"},
+	})
+}
+
+func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"mode": string(s.mode),
 	})
 }
 

@@ -1,32 +1,25 @@
 import { useNavigate } from '@solidjs/router';
-import { createSignal, createEffect, For, Show, onMount } from 'solid-js';
-import { useSession } from '../context/session';
+import { createSignal, createEffect, onMount, For, Show } from 'solid-js';
+import { usePlan } from '../context/plan';
 import { useServer } from '../context/server';
-import SessionSidebar from '../components/session-sidebar';
+import PlanSidebar from '../components/plan-sidebar';
 import ModelSelector from '../components/model-selector';
 
 const SUGGESTIONS: string[] = [
-  'Explain this codebase',
-  'Find and fix a bug',
-  'Write tests for a module',
-  'Refactor for clarity',
+  'Plan a REST API',
+  'Design a database schema',
+  'Architect a microservice',
+  'Refactor a module',
 ];
 
-export default function Home() {
-  return <HomeContent />;
+export default function PlanList() {
+  return <PlanListContent />;
 }
 
-function HomeContent() {
-  const session = useSession();
+function PlanListContent() {
+  const plan = usePlan();
   const server = useServer();
   const navigate = useNavigate();
-
-  // Redirect to plan mode landing page when in plan mode
-  createEffect(() => {
-    if (server.mode() === 'plan') {
-      navigate('/plan', { replace: true });
-    }
-  });
 
   const [text, setText] = createSignal('');
   const [submitting, setSubmitting] = createSignal(false);
@@ -36,7 +29,6 @@ function HomeContent() {
     textareaRef?.focus();
   });
 
-  // Auto-resize textarea
   createEffect(() => {
     text();
     if (textareaRef) {
@@ -45,31 +37,36 @@ function HomeContent() {
     }
   });
 
-  const startSession = async (content: string) => {
+  const startPlan = async (content: string) => {
     if (submitting()) return;
     const trimmed = content.trim();
     if (!trimmed) return;
     setSubmitting(true);
     try {
-      const sess = await session.newSession();
-      // Navigate first so the session context is active, then prompt
-      navigate(`/session/${sess.id}`);
-      // Wait a tick for the route to settle, then send the prompt
-      // through the session context (which handles loading state, polling, etc.)
+      // Reuse the active plan if it's still empty and open, rather than creating a new one
+      let targetPlan = plan.activePlan();
+      const isReusable = targetPlan &&
+        targetPlan.status === 'open' &&
+        plan.messages().filter((m: any) => m.info.role === 'user').length === 0;
+
+      if (!isReusable) {
+        targetPlan = await plan.newPlan(undefined, plan.selectedModel());
+      }
+      navigate(`/plan/${targetPlan!.id}`);
       requestAnimationFrame(() => {
-        session.prompt(trimmed).catch((e) => {
-          console.error('prompt failed:', e);
+        plan.sendPrompt(trimmed).catch((e) => {
+          console.error('plan prompt failed:', e);
         });
       });
     } catch (e) {
-      console.error('start session failed:', e);
+      console.error('start plan failed:', e);
       setSubmitting(false);
     }
   };
 
   const handleSubmit = (e: Event) => {
     e.preventDefault();
-    startSession(text());
+    startPlan(text());
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -83,7 +80,7 @@ function HomeContent() {
 
   return (
     <div class="flex h-screen w-full">
-      <SessionSidebar />
+      <PlanSidebar />
 
       <div class="flex-1 flex flex-col overflow-hidden relative bg-[color:var(--bg-base)]">
         {/* Soft accent glow */}
@@ -101,11 +98,11 @@ function HomeContent() {
             <div class="mb-8 flex flex-col items-center">
               <div class="w-11 h-11 rounded-2xl bg-[color:var(--accent)] flex items-center justify-center shadow-lg ring-1 ring-white/10 mb-4">
                 <svg class="w-5 h-5 text-[color:var(--on-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
               <h1 class="text-[26px] md:text-[28px] font-semibold tracking-tight text-zinc-50 text-center">
-                What can I help you with?
+                What would you like to build?
               </h1>
             </div>
 
@@ -118,7 +115,7 @@ function HomeContent() {
                   value={text()}
                   onInput={(e) => setText(e.currentTarget.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Message ogcode…"
+                  placeholder="Describe your project or requirement…"
                   disabled={submitting()}
                   rows={2}
                   class="block w-full resize-none bg-transparent px-5 pt-4 pb-2 text-[15px] text-zinc-100
@@ -126,7 +123,11 @@ function HomeContent() {
                          min-h-[56px] max-h-[280px] leading-relaxed"
                 />
                 <div class="flex items-center gap-2 px-3 pb-2.5 pt-1">
-                  <ModelSelector />
+                  <ModelSelector
+                    selectedModel={plan.selectedModel}
+                    models={plan.models}
+                    onSelect={plan.selectModel}
+                  />
                   <div class="flex-1" />
                   <button
                     type="submit"
@@ -177,7 +178,7 @@ function HomeContent() {
             </div>
           </div>
 
-          {/* Tiny status footer */}
+          {/* Footer */}
           <div class="relative pb-5 px-6 flex items-center justify-center gap-3 text-[10.5px] text-zinc-600">
             <span class="flex items-center gap-1">
               <kbd class="px-1 py-[1px] rounded border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] font-mono text-[9.5px]">↵</kbd>

@@ -45,13 +45,14 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := &session.Session{
-		ID:        session.NewSessionID(),
-		ProjectID: dir,
-		Directory: dir,
-		Title:     "New session",
-		Model:     input.Model,
-		CreatedAt: session.Now(),
-		UpdatedAt: session.Now(),
+		ID:          session.NewSessionID(),
+		ProjectID:   dir,
+		Directory:   dir,
+		Title:       "New session",
+		Model:       input.Model,
+		SessionType: "build",
+		CreatedAt:   session.Now(),
+		UpdatedAt:   session.Now(),
 	}
 
 	if err := s.store.Create(sess); err != nil {

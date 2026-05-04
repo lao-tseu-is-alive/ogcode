@@ -1,0 +1,981 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/ogcode/ogcode/internal/agent"
+	"github.com/ogcode/ogcode/internal/git"
+	"github.com/ogcode/ogcode/internal/id"
+	"github.com/ogcode/ogcode/internal/plan"
+	"github.com/ogcode/ogcode/internal/provider"
+	"github.com/ogcode/ogcode/internal/session"
+	"github.com/ogcode/ogcode/internal/task"
+)
+
+func (s *Server) handleListPlans(w http.ResponseWriter, r *http.Request) {
+	directory := r.URL.Query().Get("directory")
+	if directory == "" {
+		directory = s.dir
+	}
+
+	plans, err := s.planStore.List(directory)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if plans == nil {
+		plans = []*plan.Plan{}
+	}
+
+	// Compute AllTasksCompleted for each plan
+	for _, p := range plans {
+		if p.Status == plan.StatusLocked {
+			tasks, err := s.taskStore.ListByPlan(p.ID)
+			if err == nil && len(tasks) > 0 {
+				allDone := true
+				for _, t := range tasks {
+					if t.Status != task.StatusCompleted {
+						allDone = false
+						break
+					}
+				}
+				p.AllTasksCompleted = allDone
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, plans)
+}
+
+func (s *Server) handleCreatePlan(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Directory string `json:"directory"`
+		Title     string `json:"title,omitempty"`
+		Model     string `json:"model,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	dir := input.Directory
+	if dir == "" {
+		dir = s.dir
+	}
+
+	// Create a plan-type session for message reuse
+	sess := &session.Session{
+		ID:          session.NewSessionID(),
+		ProjectID:   dir,
+		Directory:   dir,
+		Title:       "Plan: " + input.Title,
+		Model:       input.Model,
+		SessionType: "plan",
+		CreatedAt:   session.Now(),
+		UpdatedAt:   session.Now(),
+	}
+	if err := s.store.Create(sess); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	planID := string(id.NewPlanID())
+	now := plan.Now()
+	p := &plan.Plan{
+		ID:        planID,
+		SessionID: string(sess.ID),
+		ProjectID: dir,
+		Directory: dir,
+		Title:     input.Title,
+		Status:    plan.StatusOpen,
+		Model:     input.Model,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.planStore.Create(p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.bus.Publish("plan.created", p)
+	writeJSON(w, http.StatusCreated, p)
+}
+
+func (s *Server) handleGetPlan(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+	p, err := s.planStore.Get(planID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if p == nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleUpdatePlan(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+	p, err := s.planStore.Get(planID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if p == nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+
+	var update struct {
+		Title *string `json:"title"`
+		Model *string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if update.Title != nil {
+		p.Title = *update.Title
+	}
+	if update.Model != nil {
+		p.Model = *update.Model
+	}
+	p.UpdatedAt = plan.Now()
+
+	if err := s.planStore.Update(p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.bus.Publish("plan.updated", p)
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleDeletePlan(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+
+	// Clean up any task worktrees before deleting the plan.
+	// The DB cascade delete handles task/session rows, but worktree directories
+	// and git branches must be cleaned up explicitly.
+	tasks, _ := s.taskStore.ListByPlan(planID)
+	for _, t := range tasks {
+		if t.WorktreePath != "" {
+			go func(branch string) {
+				if err := git.RemoveTaskWorktree(s.dir, branch); err != nil {
+					slog.Warn("delete plan: remove worktree", "plan", planID, "branch", branch, "err", err)
+				}
+			}(t.BranchName)
+		}
+	}
+
+	if err := s.planStore.Delete(planID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.bus.Publish("plan.deleted", map[string]string{"id": planID})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleLockPlan(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+
+	p, err := s.planStore.Get(planID)
+	if err != nil || p == nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+	if p.Status == plan.StatusLocked {
+		http.Error(w, "plan is already locked", http.StatusBadRequest)
+		return
+	}
+
+	// Cancel any in-flight interactive loop before taking over the session.
+	s.cancelPlanLoop(p)
+
+	// Ask the LLM to produce a final comprehensive plan document.
+	// This response becomes the canonical summary stored in the archive.
+	// Failure is non-fatal — we still proceed with locking.
+	if err := s.generateFinalPlanSummary(p); err != nil {
+		slog.Warn("final plan summary failed, proceeding without", "plan", p.ID, "err", err)
+	}
+
+	if err := s.planStore.Lock(planID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	p, _ = s.planStore.Get(planID)
+
+	if p != nil {
+		go s.runBreakdown(p)
+	}
+
+	s.bus.Publish("plan.locked", p)
+	writeJSON(w, http.StatusOK, p)
+}
+
+const finalPlanPrompt = "The planning phase is now complete. " +
+	"Please write a comprehensive final plan document that captures everything discussed: " +
+	"goals, requirements, technical approach, key decisions, constraints, and any implementation details. " +
+	"This document will be the single reference used during implementation — make it thorough and self-contained."
+
+// generateFinalPlanSummary injects a finalization prompt into the plan session and
+// runs the agent loop synchronously (3-minute timeout) so the LLM's response is
+// persisted as the last message before the plan is locked.
+func (s *Server) generateFinalPlanSummary(p *plan.Plan) error {
+	sessionID := session.SessionID(p.SessionID)
+
+	userMsg := &session.MessageInfo{
+		ID:        session.NewMessageID(),
+		SessionID: sessionID,
+		Role:      session.RoleUser,
+		Agent:     "plan",
+		CreatedAt: session.Now(),
+	}
+	if err := s.store.CreateMessage(userMsg); err != nil {
+		return fmt.Errorf("create finalization message: %w", err)
+	}
+
+	textData, _ := json.Marshal(session.TextPartData{Text: finalPlanPrompt})
+	userPart := &session.Part{
+		ID:        session.NewPartID(),
+		MessageID: userMsg.ID,
+		SessionID: sessionID,
+		Type:      session.PartText,
+		Data:      textData,
+		CreatedAt: session.Now(),
+		UpdatedAt: session.Now(),
+	}
+	if err := s.store.CreatePart(userPart); err != nil {
+		return fmt.Errorf("create finalization message part: %w", err)
+	}
+
+	s.bus.Publish("message.updated", userMsg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	return s.loopRunner.RunLoop(ctx, sessionID, "plan")
+}
+
+func (s *Server) handleAbortPlan(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+	p, err := s.planStore.Get(planID)
+	if err != nil || p == nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+
+	s.cancelPlanLoop(p)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// cancelPlanLoop cancels any running agent loop for the plan's session
+// and marks unfinished assistant messages and in-progress tool calls as aborted.
+func (s *Server) cancelPlanLoop(p *plan.Plan) {
+	sessionID := session.SessionID(p.SessionID)
+
+	// Cancel the running loop
+	s.mu.Lock()
+	cancel, ok := s.running[sessionID]
+	if ok {
+		delete(s.running, sessionID)
+		delete(s.runningToken, sessionID)
+	}
+	s.mu.Unlock()
+
+	if ok {
+		cancel()
+		slog.Info("aborted plan loop", "plan", p.ID, "session", sessionID)
+	}
+
+	// Mark unfinished assistant messages as aborted and cancel in-progress tool calls
+	messages, err := s.store.GetMessages(sessionID, "", 100)
+	if err != nil {
+		return
+	}
+	abortedReason := "aborted"
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+
+		// Mark first unfinished assistant message as aborted
+		if m.Info.Role == session.RoleAssistant && m.Info.Finish == nil && m.Info.Error == nil {
+			m.Info.Finish = &abortedReason
+			if err := s.store.UpdateMessage(&m.Info); err != nil {
+				slog.Error("update aborted message", "err", err)
+			}
+			slog.Info("marked plan message as aborted", "session", sessionID, "message", m.Info.ID)
+			s.bus.Publish("message.updated", &m.Info)
+		}
+
+		// Cancel all in-progress tool calls
+		if len(m.Parts) > 0 {
+			for _, part := range m.Parts {
+				if part.Type == session.PartTool {
+					var toolData session.ToolPartData
+					if err := json.Unmarshal(part.Data, &toolData); err == nil {
+						if toolData.State.Status == session.ToolPending || toolData.State.Status == session.ToolRunning {
+							cancelledErr := "Request cancelled by user"
+							toolData.State.Status = session.ToolError
+							toolData.State.Error = &cancelledErr
+							toolData.State.Time.End = session.Now()
+
+							updatedData, _ := json.Marshal(toolData)
+							part.Data = updatedData
+							part.UpdatedAt = session.Now()
+
+							if err := s.store.UpdatePart(&part); err != nil {
+								slog.Error("update cancelled tool part", "err", err)
+							}
+							slog.Info("cancelled tool call", "session", sessionID, "tool", toolData.Tool, "callId", toolData.CallID)
+							s.bus.Publish("message.part.updated", map[string]string{
+								"sessionId": string(sessionID),
+								"partId":    string(part.ID),
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// runBreakdown executes the task breakdown flow for a locked plan.
+// It loads the plan conversation, sends it to the breakdown agent, parses the result,
+// creates task records, and creates git branches.
+func (s *Server) runBreakdown(p *plan.Plan) {
+	// Update plan breakdown status to in_progress
+	p.BreakdownStatus = plan.BreakdownInProgress
+	p.UpdatedAt = plan.Now()
+	if err := s.planStore.Update(p); err != nil {
+		slog.Error("update plan breakdown status", "plan", p.ID, "err", err)
+	}
+	s.bus.Publish("plan.breakdown.started", map[string]string{"planId": p.ID})
+
+	// Load the plan conversation
+	messages, err := s.store.GetMessages(session.SessionID(p.SessionID), "", 1000)
+	if err != nil {
+		slog.Error("load plan messages for breakdown", "plan", p.ID, "err", err)
+		s.failBreakdown(p, "failed to load plan messages")
+		return
+	}
+
+	// Pass paths of previous plan archives so the breakdown agent can read them if needed.
+	archivePaths := s.planArchivePaths(p.Directory, p.ID)
+
+	// Construct the breakdown prompt
+	promptText := agent.BreakdownPrompt(messages, archivePaths)
+
+	// Create a breakdown session
+	breakdownSession := &session.Session{
+		ID:          session.NewSessionID(),
+		ProjectID:   p.ProjectID,
+		Directory:   p.Directory,
+		Title:       "Breakdown: " + p.Title,
+		Model:       p.Model,
+		SessionType: "build",
+		CreatedAt:   session.Now(),
+		UpdatedAt:   session.Now(),
+	}
+	if err := s.store.Create(breakdownSession); err != nil {
+		slog.Error("create breakdown session", "plan", p.ID, "err", err)
+		s.failBreakdown(p, "failed to create breakdown session")
+		return
+	}
+
+	// Create user message with the breakdown prompt
+	userMsg := &session.MessageInfo{
+		ID:        session.NewMessageID(),
+		SessionID: breakdownSession.ID,
+		Role:      session.RoleUser,
+		Agent:     "breakdown",
+		CreatedAt: session.Now(),
+	}
+	if err := s.store.CreateMessage(userMsg); err != nil {
+		slog.Error("create breakdown message", "plan", p.ID, "err", err)
+		s.failBreakdown(p, "failed to create breakdown message")
+		return
+	}
+
+	textData, _ := json.Marshal(session.TextPartData{Text: promptText})
+	userPart := &session.Part{
+		ID:        session.NewPartID(),
+		MessageID: userMsg.ID,
+		SessionID: breakdownSession.ID,
+		Type:      session.PartText,
+		Data:      textData,
+		CreatedAt: session.Now(),
+		UpdatedAt: session.Now(),
+	}
+	if err := s.store.CreatePart(userPart); err != nil {
+		slog.Error("create breakdown part", "plan", p.ID, "err", err)
+		s.failBreakdown(p, "failed to create breakdown part")
+		return
+	}
+
+	s.bus.Publish("message.updated", userMsg)
+
+	// Run the breakdown agent loop
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	slog.Info("starting breakdown agent loop", "plan", p.ID, "session", breakdownSession.ID)
+	if err := s.loopRunner.RunLoop(ctx, breakdownSession.ID, "breakdown"); err != nil {
+		slog.Error("breakdown agent loop error", "plan", p.ID, "err", err)
+		s.failBreakdown(p, "breakdown agent loop failed")
+		return
+	}
+
+	// Load the breakdown session messages and find the assistant's response
+	breakdownMessages, err := s.store.GetMessages(breakdownSession.ID, "", 100)
+	if err != nil {
+		slog.Error("load breakdown messages", "plan", p.ID, "err", err)
+		s.failBreakdown(p, "failed to load breakdown result")
+		return
+	}
+
+	// Try to parse tasks from the submit_task_breakdown tool call first.
+	// Tool-calling guarantees structurally valid JSON from the provider.
+	var taskDefs []agent.TaskDefinition
+	var toolInput struct {
+		Tasks []agent.TaskDefinition `json:"tasks"`
+	}
+	for i := len(breakdownMessages) - 1; i >= 0 && len(taskDefs) == 0; i-- {
+		for _, part := range breakdownMessages[i].Parts {
+			if part.Type != session.PartTool {
+				continue
+			}
+			var td session.ToolPartData
+			if err := json.Unmarshal(part.Data, &td); err != nil || td.Tool != "submit_task_breakdown" {
+				continue
+			}
+			if err := json.Unmarshal(td.State.Input, &toolInput); err == nil && len(toolInput.Tasks) > 0 {
+				taskDefs = toolInput.Tasks
+				break
+			}
+		}
+	}
+
+	if len(taskDefs) == 0 {
+		// Fallback: parse free-text JSON from the assistant's response
+		var responseText string
+		for i := len(breakdownMessages) - 1; i >= 0; i-- {
+			if breakdownMessages[i].Info.Role == session.RoleAssistant {
+				for _, part := range breakdownMessages[i].Parts {
+					if part.Type == session.PartText {
+						var data session.TextPartData
+						if err := json.Unmarshal(part.Data, &data); err == nil {
+							responseText = data.Text
+							break
+						}
+					}
+				}
+				if responseText != "" {
+					break
+				}
+			}
+		}
+		if responseText == "" {
+			slog.Error("no breakdown response found", "plan", p.ID)
+			s.failBreakdown(p, "breakdown agent produced no response")
+			return
+		}
+		var parseErr error
+		taskDefs, parseErr = agent.ParseTasks(responseText)
+		if parseErr != nil {
+			slog.Error("parse breakdown tasks", "plan", p.ID, "err", parseErr)
+			s.failBreakdown(p, "failed to parse task breakdown")
+			return
+		}
+	}
+
+	slog.Info("parsed breakdown tasks", "plan", p.ID, "count", len(taskDefs))
+
+	// Create task records.
+	// Pre-allocate all task IDs so dependency index resolution uses stable IDs
+	// even when a task creation fails (which would shift slice indices).
+	taskIDs := make([]string, len(taskDefs))
+	for i := range taskDefs {
+		taskIDs[i] = string(id.NewTaskID())
+	}
+
+	var createdTasks []*task.Task
+	var failures int
+	now := task.Now()
+	for i, td := range taskDefs {
+		// Resolve dependency indices to pre-allocated task IDs
+		var deps []string
+		for _, depIdx := range td.Dependencies {
+			if depIdx >= 0 && depIdx < len(taskIDs) {
+				deps = append(deps, taskIDs[depIdx])
+			}
+		}
+		if deps == nil {
+			deps = []string{}
+		}
+
+		effort := td.Effort
+		if effort == "" {
+			effort = task.EffortM
+		}
+		complexity := td.Complexity
+		if complexity == "" {
+			complexity = task.ComplexityMedium
+		}
+
+		newTask := &task.Task{
+			ID:           taskIDs[i],
+			PlanID:       p.ID,
+			Title:        td.Title,
+			Description:  td.Description,
+			Effort:       effort,
+			Complexity:   complexity,
+			Status:       task.StatusPending,
+			Dependencies: deps,
+			OrderIndex:   td.OrderIndex,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+		if err := s.taskStore.Create(newTask); err != nil {
+			slog.Error("create task", "plan", p.ID, "task", td.Title, "err", err)
+			failures++
+			continue
+		}
+
+		createdTasks = append(createdTasks, newTask)
+	}
+
+	// Update plan breakdown status
+	if failures > 0 && len(createdTasks) == 0 {
+		// All tasks failed to create — treat as full failure
+		s.failBreakdown(p, fmt.Sprintf("%d task(s) failed to create", failures))
+		return
+	}
+	p.BreakdownStatus = plan.BreakdownCompleted
+	p.UpdatedAt = plan.Now()
+	if err := s.planStore.Update(p); err != nil {
+		slog.Error("update plan breakdown completed", "plan", p.ID, "err", err)
+	}
+
+	eventProps := map[string]any{
+		"planId": p.ID,
+		"count":  len(createdTasks),
+	}
+	if failures > 0 {
+		eventProps["warnings"] = fmt.Sprintf("%d task(s) failed to create", failures)
+	}
+	s.bus.Publish("plan.breakdown.completed", eventProps)
+	slog.Info("breakdown completed", "plan", p.ID, "tasks", len(createdTasks), "failures", failures)
+}
+
+// failBreakdown sets the plan's breakdown status to failed and publishes an event.
+func (s *Server) failBreakdown(p *plan.Plan, reason string) {
+	p.BreakdownStatus = plan.BreakdownFailed
+	p.UpdatedAt = plan.Now()
+	if err := s.planStore.Update(p); err != nil {
+		slog.Error("update plan breakdown failed status", "plan", p.ID, "err", err)
+	}
+	s.bus.Publish("plan.breakdown.failed", map[string]string{"planId": p.ID, "reason": reason})
+	slog.Error("breakdown failed", "plan", p.ID, "reason", reason)
+}
+
+func (s *Server) handlePlanPrompt(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+	p, err := s.planStore.Get(planID)
+	if err != nil || p == nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+	if p.Status == plan.StatusLocked {
+		http.Error(w, "plan is locked", http.StatusBadRequest)
+		return
+	}
+
+	var input struct {
+		Content string `json:"content"`
+		Model   string `json:"model,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	sessionID := session.SessionID(p.SessionID)
+
+	// Update session and plan model if provided and different
+	if input.Model != "" {
+		slog.Info("updating plan model", "plan", p.ID, "newModel", input.Model)
+		sess, err := s.store.Get(sessionID)
+		if err == nil && sess != nil && sess.Model != input.Model {
+			slog.Info("updating session model", "session", sessionID, "oldModel", sess.Model, "newModel", input.Model)
+			sess.Model = input.Model
+			sess.UpdatedAt = session.Now()
+			if err := s.store.Update(sess); err != nil {
+				slog.Error("update plan session model", "err", err)
+			}
+		}
+		// Also update the plan's model to keep them in sync
+		if p.Model != input.Model {
+			slog.Info("updating plan object model", "plan", p.ID, "oldModel", p.Model, "newModel", input.Model)
+			p.Model = input.Model
+			p.UpdatedAt = plan.Now()
+			if err := s.planStore.Update(p); err != nil {
+				slog.Error("update plan model", "err", err)
+			}
+		}
+	}
+
+	// Create user message on the plan's session
+	userMsg := &session.MessageInfo{
+		ID:        session.NewMessageID(),
+		SessionID: sessionID,
+		Role:      session.RoleUser,
+		Agent:     "plan",
+		CreatedAt: session.Now(),
+	}
+	if err := s.store.CreateMessage(userMsg); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	textData, _ := json.Marshal(session.TextPartData{Text: input.Content})
+	userPart := &session.Part{
+		ID:        session.NewPartID(),
+		MessageID: userMsg.ID,
+		SessionID: sessionID,
+		Type:      session.PartText,
+		Data:      textData,
+		CreatedAt: session.Now(),
+		UpdatedAt: session.Now(),
+	}
+	if err := s.store.CreatePart(userPart); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.bus.Publish("message.updated", userMsg)
+
+	// Auto-generate a plan title from the first user message
+	if p.Title == "" || p.Title == "Untitled" {
+		go s.autoNamePlan(p, input.Content)
+	}
+
+	// Mark any unfinished assistant messages as aborted
+	if orphans, err := s.store.GetMessages(sessionID, "", 100); err == nil {
+		abortedReason := "aborted"
+		for _, m := range orphans {
+			if m.Info.Role == session.RoleAssistant && m.Info.Finish == nil && m.Info.Error == nil {
+				m.Info.Finish = &abortedReason
+				if updateErr := s.store.UpdateMessage(&m.Info); updateErr == nil {
+					s.bus.Publish("message.updated", &m.Info)
+				}
+			}
+		}
+	}
+
+	// Start agent loop with PlanAgent
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	if old, ok := s.running[sessionID]; ok {
+		old()
+		slog.Info("cancelled previous running loop", "session", sessionID)
+	}
+	s.nextToken++
+	token := s.nextToken
+	s.running[sessionID] = cancel
+	s.runningToken[sessionID] = token
+	s.mu.Unlock()
+
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			if s.runningToken[sessionID] == token {
+				delete(s.running, sessionID)
+				delete(s.runningToken, sessionID)
+			}
+			s.mu.Unlock()
+		}()
+		if err := s.loopRunner.RunLoop(ctx, sessionID, "plan"); err != nil {
+			slog.Error("plan agent loop error", "plan", planID, "err", err)
+		}
+	}()
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleGetPlanMessages(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+	p, err := s.planStore.Get(planID)
+	if err != nil || p == nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+
+	sessionID := session.SessionID(p.SessionID)
+	before := session.MessageID(r.URL.Query().Get("before"))
+	limit := 300
+
+	messages, err := s.store.GetMessages(sessionID, before, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if messages == nil {
+		messages = []*session.MessageWithParts{}
+	}
+	writeJSON(w, http.StatusOK, messages)
+}
+
+// generatePlanMarkdown renders a plan archive: title, the final assistant summary
+// message (written just before lock), and the completed task list.
+func (s *Server) generatePlanMarkdown(p *plan.Plan) string {
+	messages, _ := s.store.GetMessages(session.SessionID(p.SessionID), "", 1000)
+	tasks, _ := s.taskStore.ListByPlan(p.ID)
+
+	var md strings.Builder
+	md.WriteString(fmt.Sprintf("# %s\n\n", p.Title))
+	md.WriteString(fmt.Sprintf("**Created**: %s\n\n", time.UnixMilli(p.CreatedAt).Format("2006-01-02 15:04")))
+
+	// Find the last assistant message — the comprehensive summary generated on lock.
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg.Info.Role != session.RoleAssistant {
+			continue
+		}
+		for _, part := range msg.Parts {
+			if part.Type != session.PartText {
+				continue
+			}
+			var data session.TextPartData
+			if err := json.Unmarshal(part.Data, &data); err == nil && data.Text != "" {
+				md.WriteString("## Plan Summary\n\n")
+				md.WriteString(data.Text)
+				md.WriteString("\n\n")
+			}
+		}
+		break
+	}
+
+	if len(tasks) > 0 {
+		md.WriteString("## Tasks\n\n")
+		statusIcons := map[string]string{
+			task.StatusPending:    "⬜",
+			task.StatusInProgress: "🔵",
+			task.StatusCompleted:  "✅",
+			task.StatusFailed:     "❌",
+		}
+		for _, t := range tasks {
+			icon := statusIcons[t.Status]
+			if icon == "" {
+				icon = "⬜"
+			}
+			md.WriteString(fmt.Sprintf("- %s **%s** [%s/%s]\n", icon, t.Title, t.Effort, t.Complexity))
+			if t.Description != "" {
+				for _, line := range strings.Split(t.Description, "\n") {
+					md.WriteString("  ")
+					md.WriteString(line)
+					md.WriteString("\n")
+				}
+			}
+			md.WriteString("\n")
+		}
+	}
+
+	return md.String()
+}
+
+func (s *Server) handleExportPlan(w http.ResponseWriter, r *http.Request) {
+	planID := chi.URLParam(r, "planID")
+	p, err := s.planStore.Get(planID)
+	if err != nil || p == nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+
+	content := s.generatePlanMarkdown(p)
+
+	filename := strings.ToLower(strings.ReplaceAll(p.Title, " ", "-"))
+	filename = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		return -1
+	}, filename)
+	if filename == "" {
+		filename = "plan"
+	}
+	if len(filename) > 50 {
+		filename = filename[:50]
+	}
+
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.md"`, filename))
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(content))
+}
+
+// tryArchivePlan checks whether all tasks in the plan are completed and, if so,
+// writes the plan as a markdown file to <projectDir>/.ogcode/archives/<planID>.md.
+// The file is written only once — subsequent calls are no-ops when the file exists.
+func (s *Server) tryArchivePlan(planID string) {
+	p, err := s.planStore.Get(planID)
+	if err != nil || p == nil || p.Status != plan.StatusLocked {
+		return
+	}
+
+	tasks, err := s.taskStore.ListByPlan(planID)
+	if err != nil || len(tasks) == 0 {
+		return
+	}
+	for _, t := range tasks {
+		if t.Status != task.StatusCompleted {
+			return
+		}
+	}
+
+	archiveDir := filepath.Join(p.Directory, ".ogcode", "archives")
+	// Use "<title-slug>-<planID>.md" so files are human-readable but still unique.
+	slug := git.Slugify(p.Title)
+	archivePath := filepath.Join(archiveDir, slug+"-"+planID+".md")
+
+	// Skip if already archived.
+	if _, err := os.Stat(archivePath); err == nil {
+		return
+	}
+
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		slog.Error("create archive dir", "plan", planID, "err", err)
+		return
+	}
+
+	content := s.generatePlanMarkdown(p)
+	if err := os.WriteFile(archivePath, []byte(content), 0o644); err != nil {
+		slog.Error("write plan archive", "plan", planID, "path", archivePath, "err", err)
+		return
+	}
+	slog.Info("plan archived", "plan", planID, "path", archivePath)
+	s.bus.Publish("plan.archived", map[string]string{"planId": planID, "path": archivePath})
+}
+
+// planArchivePaths returns absolute paths to all completed plan archives in
+// <directory>/.ogcode/archives/, excluding the current plan's own file.
+func (s *Server) planArchivePaths(directory, excludePlanID string) []string {
+	archiveDir := filepath.Join(directory, ".ogcode", "archives")
+	entries, err := os.ReadDir(archiveDir)
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		// Filename is "<slug>-<planID>.md" — skip the current plan's archive.
+		if strings.Contains(e.Name(), excludePlanID) {
+			continue
+		}
+		paths = append(paths, filepath.Join(archiveDir, e.Name()))
+	}
+	return paths
+}
+
+// autoNamePlan generates a short descriptive title for the plan from the user's
+// first message, then updates the plan and publishes an event.
+func (s *Server) autoNamePlan(p *plan.Plan, userMessage string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Resolve the provider from the plan's model
+	var pr provider.Provider
+	if p.Model != "" {
+		pr = s.registry.ResolveProvider(p.Model)
+	}
+	if pr == nil {
+		pr = s.defaultProvider
+	}
+
+	systemPrompt := "Generate a short, concise title (maximum 7 words) that captures the goal of the request below. Return ONLY the title, no quotes, no extra text, no markdown."
+	text, err := collectStreamText(ctx, pr, p.Model, systemPrompt, userMessage)
+	if err != nil {
+		slog.Warn("auto-name plan: stream failed", "plan", p.ID, "err", err)
+		return
+	}
+
+	title := strings.TrimSpace(text)
+	// Clean up common artifacts from LLM output
+	title = strings.Trim(title, "\"'`*#- \n")
+	if title == "" {
+		return
+	}
+	// Cap length at 100 chars to keep it display-friendly
+	if len(title) > 100 {
+		title = title[:100]
+	}
+
+	p.Title = title
+	p.UpdatedAt = plan.Now()
+	if err := s.planStore.Update(p); err != nil {
+		slog.Error("auto-name plan: update failed", "plan", p.ID, "err", err)
+		return
+	}
+
+	// Also update the session title
+	sessionID := session.SessionID(p.SessionID)
+	sess, err := s.store.Get(sessionID)
+	if err == nil && sess != nil {
+		sess.Title = "Plan: " + title
+		sess.UpdatedAt = session.Now()
+		if err := s.store.Update(sess); err != nil {
+			slog.Error("auto-name plan: update session title", "plan", p.ID, "err", err)
+		}
+	} else if err != nil {
+		slog.Error("auto-name plan: get session for title", "plan", p.ID, "err", err)
+	}
+
+	s.bus.Publish("plan.updated", p)
+	slog.Info("auto-named plan", "plan", p.ID, "title", title)
+}
+
+// collectStreamText sends a simple system+user prompt to the provider and
+// collects all text deltas into a single string. Used for short generations
+// like title naming.
+func collectStreamText(ctx context.Context, pr provider.Provider, modelID, systemPrompt, userMessage string) (string, error) {
+	userParts, _ := json.Marshal([]provider.ContentPart{{Type: "text", Text: userMessage}})
+
+	req := provider.StreamRequest{
+		Model:    modelID,
+		System:   []string{systemPrompt},
+		Messages: []provider.ModelMessage{
+			{Role: "user", Content: userParts},
+		},
+		Temperature: 0.3,
+		MaxTokens:   50,
+		Abort:       ctx,
+	}
+
+	ch, err := pr.StreamChat(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("stream chat: %w", err)
+	}
+
+	var text strings.Builder
+	for ev := range ch {
+		if ev.Type == provider.EventTextDelta {
+			text.WriteString(ev.Text)
+		}
+		if ev.Type == provider.EventError {
+			return text.String(), fmt.Errorf("stream error: %s", ev.Error)
+		}
+	}
+	return text.String(), nil
+}

@@ -11,6 +11,7 @@ type Session struct {
 	Directory         string    `json:"directory"`
 	Title             string    `json:"title"`
 	Model             string    `json:"model,omitempty"`
+	SessionType       string    `json:"sessionType,omitempty"`
 	Permission        string    `json:"permission,omitempty"`
 	CompactionSummary string    `json:"compactionSummary,omitempty"`
 	CreatedAt         int64     `json:"createdAt"`

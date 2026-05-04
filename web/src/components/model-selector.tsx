@@ -26,11 +26,18 @@ const PROVIDER_TEXT: Record<string, string> = {
   mistral: 'text-rose-400',
 };
 
-export default function ModelSelector() {
+interface ModelSelectorProps {
+  selectedModel?: () => string;
+  models?: () => ModelInfo[];
+  onSelect?: (modelId: string) => void;
+}
+
+export default function ModelSelector(props: ModelSelectorProps = {}) {
   const session = useSession();
   const [open, setOpen] = createSignal(false);
 
-  const enabledModels = createMemo(() => session.models().filter((m) => m.enabled));
+  const allModels = () => (props.models ? props.models() : session.models());
+  const enabledModels = createMemo(() => allModels().filter((m) => m.enabled));
 
   const grouped = createMemo((): Map<string, ModelInfo[]> => {
     const map = new Map<string, ModelInfo[]>();
@@ -43,12 +50,16 @@ export default function ModelSelector() {
   });
 
   const selectedModelInfo = (): ModelInfo | undefined => {
-    const id = session.selectedModel();
-    return session.models().find((m) => m.id === id);
+    const id = props.selectedModel ? props.selectedModel() : session.selectedModel();
+    return allModels().find((m) => m.id === id);
   };
 
   const handleSelect = (modelId: string) => {
-    session.selectModel(modelId);
+    if (props.onSelect) {
+      props.onSelect(modelId);
+    } else {
+      session.selectModel(modelId);
+    }
     setOpen(false);
   };
 

@@ -1,0 +1,100 @@
+# GoReleaser configuration for ogcode
+# See: https://goreleaser.com
+
+version: 2
+
+project_name: ogcode
+
+before:
+  hooks:
+    # Build the web UI assets before compiling Go
+    - cd web && npm install --legacy-peer-deps --cache /tmp/npm-cache && npm run build
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: ogcode
+    main: .
+    binary: ogcode
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - "7"
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/ogcode/ogcode/internal/cli.version={{.Version}}
+      - -X github.com/ogcode/ogcode/internal/cli.commit={{.Commit}}
+      - -X github.com/ogcode/ogcode/internal/cli.date={{.Date}}
+
+archives:
+  - id: ogcode
+    builds:
+      - ogcode
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+      - README*
+
+brews:
+  - repository:
+      owner: prasenjeet-symon
+      name: homebrew-ogcode
+    directory: Formula
+    goarm: "7"
+    homepage: "https://github.com/prasenjeet-symon/ogcode"
+    description: "Agentic coding assistant with web UI"
+    license: "MIT"
+    skip_upload: false
+    dependencies:
+      - name: go
+        type: optional
+    test: |
+      system "#{bin}/ogcode", "version"
+    install: |
+      bin.install "ogcode"
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  github:
+    owner: prasenjeet-symon
+    name: ogcode
+  draft: false
+  prerelease: auto
+
+# GitHub Actions will need GITHUB_TOKEN, so we don't need goreleaser pro
+# For signing (optional), you can enable later
+cosign:
+  skip: true

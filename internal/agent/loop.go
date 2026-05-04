@@ -65,10 +65,17 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 	var p provider.Provider
 	var modelID string
 	if sess != nil && sess.Model != "" {
+		slog.Info("resolving model for session", "session", sessionID, "requestedModel", sess.Model)
 		p = lr.Registry.ResolveProvider(sess.Model)
 		modelID = sess.Model
+		if p != nil {
+			slog.Info("resolved provider for model", "session", sessionID, "model", sess.Model, "provider", p.ID())
+		} else {
+			slog.Warn("failed to resolve provider for model, using default", "session", sessionID, "model", sess.Model)
+		}
 	}
 	if p == nil {
+		slog.Info("using default provider", "session", sessionID)
 		p = lr.DefaultProvider
 	}
 
@@ -377,7 +384,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 				if streamTextPart == nil {
 					// Create the part in DB on first delta so the client can see text arriving
 					textData, _ := json.Marshal(session.TextPartData{Text: currentText.String()})
-					p := &session.Part{
+					newTextPart := &session.Part{
 						ID:        session.PartID(id.NewPartID()),
 						MessageID: assistantID,
 						SessionID: sessionID,
@@ -386,14 +393,14 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 						CreatedAt: session.Now(),
 						UpdatedAt: session.Now(),
 					}
-					if err := lr.Store.CreatePart(p); err != nil {
+					if err := lr.Store.CreatePart(newTextPart); err != nil {
 						slog.Error("create streaming text part", "err", err)
 					} else {
-						streamTextPart = p
+						streamTextPart = newTextPart
 						lastTextFlush = time.Now()
 						lr.Bus.Publish("message.part.updated", map[string]string{
 							"sessionId": string(sessionID),
-							"partId":    string(p.ID),
+							"partId":    string(newTextPart.ID),
 						})
 					}
 				} else {
@@ -415,18 +422,18 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 				pendingToolCalls = append(pendingToolCalls, tc)
 
 				// Create tool part
-					toolInput := evt.ToolInput
-					if len(toolInput) == 0 {
-						toolInput = json.RawMessage("{}")
-					}
-					toolData, _ := json.Marshal(session.ToolPartData{
-						Tool:   evt.ToolName,
-						CallID: evt.ToolCallID,
-						State: session.ToolState{
-							Status: session.ToolPending,
-							Input:  toolInput,
-						},
-					})
+				toolInput := evt.ToolInput
+				if len(toolInput) == 0 {
+					toolInput = json.RawMessage("{}")
+				}
+				toolData, _ := json.Marshal(session.ToolPartData{
+					Tool:   evt.ToolName,
+					CallID: evt.ToolCallID,
+					State: session.ToolState{
+						Status: session.ToolPending,
+						Input:  toolInput,
+					},
+				})
 				toolPart := &session.Part{
 					ID:        session.PartID(id.NewPartID()),
 					MessageID: assistantID,
@@ -474,7 +481,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 						text = text[:maxReasoningLen] + "\n... (truncated)"
 					}
 					reasonData, _ := json.Marshal(session.ReasoningPartData{Text: text})
-					p := &session.Part{
+					newReasoningPart := &session.Part{
 						ID:        session.PartID(id.NewPartID()),
 						MessageID: assistantID,
 						SessionID: sessionID,
@@ -483,14 +490,14 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 						CreatedAt: session.Now(),
 						UpdatedAt: session.Now(),
 					}
-					if err := lr.Store.CreatePart(p); err != nil {
+					if err := lr.Store.CreatePart(newReasoningPart); err != nil {
 						slog.Error("create streaming reasoning part", "err", err)
 					} else {
-						streamReasoningPart = p
+						streamReasoningPart = newReasoningPart
 						lastReasoningFlush = time.Now()
 						lr.Bus.Publish("message.part.updated", map[string]string{
 							"sessionId": string(sessionID),
-							"partId":    string(p.ID),
+							"partId":    string(newReasoningPart.ID),
 						})
 					}
 				} else {
@@ -609,18 +616,19 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 
 		// Execute ready tool calls
 		toolCallsExecuted := false
+		cancelledMidExecution := false
 		for _, tc := range pendingToolCalls {
 			if !tc.Ready {
 				continue
 			}
-			toolCallsExecuted = true
 
 			// Check for context cancellation before each tool execution
 			if ctx.Err() != nil {
 				slog.Info("agent loop cancelled before tool execution", "session", sessionID, "tool", tc.Name)
-				// Mark any remaining pending/running tool parts as cancelled
+				cancelledMidExecution = true
 				break
 			}
+			toolCallsExecuted = true
 
 
 			// Mark tool part as running
@@ -694,6 +702,14 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 				"sessionId": string(sessionID),
 				"partId":    string(part.ID),
 			})
+		}
+
+		// If context was cancelled mid-execution, bail out now. The tool-result
+		// message must not be created — it would contain partial/missing outputs
+		// for unexecuted tool calls, leaving the DB in an inconsistent state.
+		if cancelledMidExecution {
+			exitReason = "aborted"
+			return ctx.Err()
 		}
 
 		// If tool calls were executed, always continue the loop regardless of

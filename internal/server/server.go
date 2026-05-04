@@ -20,17 +20,30 @@ import (
 	"github.com/ogcode/ogcode/internal/db"
 	"github.com/ogcode/ogcode/internal/mcp"
 	"github.com/ogcode/ogcode/internal/memory"
+	"github.com/ogcode/ogcode/internal/plan"
 	"github.com/ogcode/ogcode/internal/provider"
 	"github.com/ogcode/ogcode/internal/session"
+	"github.com/ogcode/ogcode/internal/task"
 	"github.com/ogcode/ogcode/internal/tool"
+)
+
+// ServerMode determines the operational mode of the server.
+type ServerMode string
+
+const (
+	ModeBuild ServerMode = "build"
+	ModePlan  ServerMode = "plan"
 )
 
 type Server struct {
 	port       int
 	dir        string
+	mode       ServerMode
 	db         *db.DB
 	bus        *bus.Bus
 	store      *session.Store
+	planStore  *plan.Store
+	taskStore  *task.Store
 	registry   *provider.Registry
 	defaultProvider provider.Provider
 	loopRunner *agent.LoopRunner
@@ -45,8 +58,8 @@ type Server struct {
 	nextToken    uint64
 }
 
-func New(port int, dir string) *Server {
-	return &Server{port: port, dir: dir, running: make(map[session.SessionID]context.CancelFunc), runningToken: make(map[session.SessionID]uint64)}
+func New(port int, dir string, mode ServerMode) *Server {
+	return &Server{port: port, dir: dir, mode: mode, running: make(map[session.SessionID]context.CancelFunc), runningToken: make(map[session.SessionID]uint64)}
 }
 
 func (s *Server) Start() error {
@@ -62,6 +75,15 @@ func (s *Server) Start() error {
 	s.db = database
 	s.bus = bus.New(256)
 	s.store = session.NewStore(database)
+	s.planStore = plan.NewStore(database)
+	s.taskStore = task.NewStore(database)
+
+	// Recover tasks that were in_progress when the server last stopped.
+	if n, err := s.taskStore.FailStuckTasks(); err != nil {
+		slog.Warn("recover stuck tasks", "err", err)
+	} else if n > 0 {
+		slog.Info("marked stuck tasks as failed", "count", n)
+	}
 
 	// Initialize provider
 	registry := provider.NewRegistry()
@@ -90,6 +112,7 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.EditTool{})
 	toolRegistry.Register(tool.GlobTool{})
 	toolRegistry.Register(tool.GrepTool{})
+	toolRegistry.Register(tool.BreakdownTool{})
 
 	// Determine default provider
 	var defaultProvider provider.Provider

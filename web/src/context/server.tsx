@@ -1,11 +1,12 @@
 import { createContext, useContext, type ParentComponent } from 'solid-js';
 import { createSignal } from 'solid-js';
-import { getPath, getConfig, getVCS } from '../api/client';
+import { getPath, getConfig, getVCS, getMode } from '../api/client';
 import { createSSE, type SSEEvent } from '../api/sse';
 
 interface ServerContextValue {
   directory: () => string;
   branch: () => string;
+  mode: () => 'build' | 'plan';
   connected: () => boolean;
   memoryEnabled: () => boolean;
   memoryProvider: () => string;
@@ -20,6 +21,7 @@ const ServerContext = createContext<ServerContextValue>();
 export const ServerProvider: ParentComponent = (props) => {
   const [directory, setDirectory] = createSignal('');
   const [branch, setBranch] = createSignal('');
+  const [mode, setMode] = createSignal<'build' | 'plan'>('build');
   const [connected, setConnected] = createSignal(false);
   const [memoryEnabled, setMemoryEnabled] = createSignal(false);
   const [memoryProvider, setMemoryProvider] = createSignal('');
@@ -34,6 +36,11 @@ export const ServerProvider: ParentComponent = (props) => {
   // Load VCS branch info
   getVCS().then((info) => {
     if (info.branch) setBranch(info.branch);
+  }).catch(() => { /* ignore */ });
+
+  // Load server mode
+  getMode().then((info) => {
+    if (info.mode) setMode(info.mode as 'build' | 'plan');
   }).catch(() => { /* ignore */ });
 
   getConfig().then((config) => {
@@ -59,6 +66,7 @@ export const ServerProvider: ParentComponent = (props) => {
   const value: ServerContextValue = {
     directory,
     branch,
+    mode,
     connected,
     memoryEnabled,
     memoryProvider,

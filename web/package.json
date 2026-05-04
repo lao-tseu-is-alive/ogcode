@@ -11,7 +11,9 @@
   "dependencies": {
     "@solidjs/router": "^0.16.1",
     "dompurify": "^3.4.1",
+    "highlight.js": "^11.11.1",
     "marked": "^18.0.2",
+    "marked-highlight": "^2.2.4",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {

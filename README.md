@@ -2,6 +2,42 @@
 
 An agentic coding assistant with a web UI, written in Go.
 
+## Installation
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap prasenjeet-symon/ogcode
+brew install ogcode
+```
+
+### Direct Download
+
+Download pre-built binaries from the [releases page](https://github.com/prasenjeet-symon/ogcode/releases).
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/prasenjeet-symon/ogcode/releases/latest/download/ogcode_Darwin_arm64.tar.gz | tar xz
+
+# macOS (Intel)
+curl -L https://github.com/prasenjeet-symon/ogcode/releases/latest/download/ogcode_Darwin_x86_64.tar.gz | tar xz
+
+# Linux
+# (See releases page for exact URL for your architecture)
+```
+
+### Go Install
+
+```bash
+go install github.com/prasenjeet-symon/ogcode@latest
+```
+
+### Docker
+
+```bash
+docker run -p 8080:8080 -v $(pwd):/workspace -w /workspace ghcr.io/prasenjeet-symon/ogcode:latest
+```
+
 ## Overview
 
 Ogcode is an AI-powered coding assistant that provides a web-based interface for interacting with AI agents. It supports the Model Context Protocol (MCP) for extending functionality and uses SQLite for persistent storage.
@@ -134,6 +170,16 @@ ogcode --help
 
 # Show version
 ogcode version
+```
+
+### Version
+
+```bash
+$ ogcode version
+ogcode v0.1.0 (darwin/arm64)
+  commit: abc1234
+  built:  2026-05-04
+  go:     go1.26.1
 ```
 
 ## API Endpoints
