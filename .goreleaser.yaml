@@ -53,24 +53,6 @@ archives:
       - LICENSE*
       - README*
 
-brews:
-  - repository:
-      owner: prasenjeet-symon
-      name: homebrew-ogcode
-    directory: Formula
-    goarm: "7"
-    homepage: "https://github.com/prasenjeet-symon/ogcode"
-    description: "Agentic coding assistant with web UI"
-    license: "MIT"
-    skip_upload: true
-    dependencies:
-      - name: go
-        type: optional
-    test: |
-      system "#{bin}/ogcode", "version"
-    install: |
-      bin.install "ogcode"
-
 winget:
   - name: ogcode
     publisher: prasenjeet-symon

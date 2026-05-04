@@ -11,16 +11,9 @@ Ogcode gives you two ways to work with AI on your codebase:
 
 ## Installation
 
-### Homebrew (macOS/Linux)
+### macOS / Linux
 
-```bash
-brew tap prasenjeet-symon/ogcode
-brew install ogcode
-```
-
-### Direct Download
-
-Download pre-built binaries from the [releases page](https://github.com/prasenjeet-symon/ogcode/releases).
+**Direct download (recommended):**
 
 ```bash
 # macOS (Apple Silicon)
@@ -31,6 +24,12 @@ curl -L https://github.com/prasenjeet-symon/ogcode/releases/latest/download/ogco
 
 # Linux
 # (See releases page for exact URL for your architecture)
+```
+
+Then move the `ogcode` binary to your PATH, e.g.:
+
+```bash
+sudo mv ogcode /usr/local/bin/
 ```
 
 ### Windows
@@ -67,7 +66,7 @@ ogcode version
 ### Go Install
 
 ```bash
-go install github.com/prasenjeet-symon/ogcode@latest
+go install github.com/ogcode/ogcode@latest
 ```
 
 ### Docker
