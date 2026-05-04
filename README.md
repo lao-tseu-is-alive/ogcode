@@ -35,6 +35,22 @@ curl -L https://github.com/prasenjeet-symon/ogcode/releases/latest/download/ogco
 
 ### Windows
 
+**One-liner install (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/prasenjeet-symon/ogcode/main/install.ps1 | iex
+```
+
+This downloads the latest release, extracts it to `%LOCALAPPDATA%\ogcode`, and adds it to your PATH automatically.
+
+**Via winget (after next release):**
+
+```powershell
+winget install prasenjeet-symon.ogcode
+```
+
+**Manual install:**
+
 1. Go to the [releases page](https://github.com/prasenjeet-symon/ogcode/releases) and download `ogcode_Windows_x86_64.zip` (or `_arm64.zip` if you have an ARM device).
 2. Extract the zip file to a folder (e.g. `C:\Tools\ogcode`).
 3. Add that folder to your `Path` environment variable:

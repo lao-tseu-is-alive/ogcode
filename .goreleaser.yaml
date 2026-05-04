@@ -71,6 +71,25 @@ brews:
     install: |
       bin.install "ogcode"
 
+winget:
+  - name: ogcode
+    publisher: prasenjeet-symon
+    license: MIT
+    short_description: "Agentic coding assistant with web UI"
+    homepage: "https://github.com/prasenjeet-symon/ogcode"
+    repository:
+      owner: prasenjeet-symon
+      name: ogcode
+      branch: main
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "{{ .PackageIdentifier }} {{ .Version }}"
+    path: manifests/p/prasenjeet-symon/ogcode
+    ids:
+      - ogcode
+
 checksum:
   name_template: "checksums.txt"
 
