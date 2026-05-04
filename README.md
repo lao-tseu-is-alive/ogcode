@@ -60,9 +60,38 @@ Set at least one API key (or use Ollama):
 | `ANTHROPIC_API_KEY` | Anthropic (Claude) |
 | `OPENAI_API_KEY` | OpenAI (GPT) |
 | `OPENROUTER_API_KEY` | OpenRouter |
-| `OLLAMA_BASE_URL` | Ollama (local models) |
+| `OLLAMA_BASE_URL` | Ollama (local / cloud) |
 
-Ollama is also auto-detected if the `ollama` binary is installed at a common path.
+#### Ollama (local models)
+
+Ogcode auto-detects Ollama if the binary is installed at a common path (`/usr/local/bin/ollama` or `/opt/homebrew/bin/ollama`). You can also explicitly enable it by setting `OLLAMA_BASE_URL`.
+
+**Local setup (default):**
+
+```bash
+# Ollama runs on localhost by default — just start the server
+ollama serve
+
+# Ogcode will auto-detect it. Or be explicit:
+export OLLAMA_BASE_URL=http://localhost:11434/v1
+ogcode
+```
+
+**Remote or Ollama Cloud:**
+
+```bash
+export OLLAMA_BASE_URL=https://api.ollama.com/v1   # or your custom endpoint
+export OLLAMA_API_KEY=your-api-key                  # required for cloud / authenticated endpoints
+ogcode
+```
+
+**Set a default model:**
+
+```bash
+export OLLAMA_MODEL=codellama   # defaults to qwen3 if not set
+```
+
+Available models in the UI include: `qwen3`, `codellama`, `llama3.1`, `deepseek-coder-v2`, `mistral`, and others. Any model you have pulled in Ollama will work — just select it from the model dropdown in the web UI.
 
 ### Optional: Agentic Memory
 
