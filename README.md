@@ -13,31 +13,16 @@ Ogcode gives you two ways to work with AI on your codebase:
 
 ### macOS / Linux
 
-**Direct download (recommended):**
-
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/prasenjeet-symon/ogcode/releases/latest/download/ogcode_Darwin_arm64.tar.gz | tar xz
-
-# macOS (Intel)
-curl -L https://github.com/prasenjeet-symon/ogcode/releases/latest/download/ogcode_Darwin_x86_64.tar.gz | tar xz
-
-# Linux
-# (See releases page for exact URL for your architecture)
+curl -fsSL https://raw.githubusercontent.com/ogcode/ogcode/main/install.sh | sh
 ```
 
-Then move the `ogcode` binary to your PATH, e.g.:
-
-```bash
-sudo mv ogcode /usr/local/bin/
-```
+The installer auto-detects your platform, downloads the latest release, and installs to `/usr/local/bin` (uses `sudo` if needed).
 
 ### Windows
 
-**One-liner install (PowerShell):**
-
 ```powershell
-irm https://raw.githubusercontent.com/prasenjeet-symon/ogcode/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/ogcode/ogcode/main/install.ps1 | iex
 ```
 
 This downloads the latest release, extracts it to `%LOCALAPPDATA%\ogcode`, and adds it to your PATH automatically.
