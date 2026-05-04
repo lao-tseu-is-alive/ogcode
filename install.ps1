@@ -1,9 +1,9 @@
 # Ogcode Installer for Windows
-# Usage: irm https://raw.githubusercontent.com/ogcode/ogcode/main/install.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/prasenjeet-symon/ogcode/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$repo = "ogcode/ogcode"
+$repo = "prasenjeet-symon/ogcode"
 $installDir = "$env:LOCALAPPDATA\ogcode"
 
 # Detect architecture

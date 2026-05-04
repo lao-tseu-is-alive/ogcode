@@ -1,10 +1,10 @@
 #!/bin/sh
 # Ogcode installer for macOS and Linux
-# Usage: curl -fsSL https://raw.githubusercontent.com/ogcode/ogcode/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/prasenjeet-symon/ogcode/main/install.sh | sh
 
 set -e
 
-REPO="ogcode/ogcode"
+REPO="prasenjeet-symon/ogcode"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY="ogcode"
 

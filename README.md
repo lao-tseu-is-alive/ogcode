@@ -14,7 +14,7 @@ Ogcode gives you two ways to work with AI on your codebase:
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ogcode/ogcode/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/prasenjeet-symon/ogcode/main/install.sh | sh
 ```
 
 The installer auto-detects your platform, downloads the latest release, and installs to `/usr/local/bin` (uses `sudo` if needed).
@@ -22,7 +22,7 @@ The installer auto-detects your platform, downloads the latest release, and inst
 ### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/ogcode/ogcode/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/prasenjeet-symon/ogcode/main/install.ps1 | iex
 ```
 
 This downloads the latest release, extracts it to `%LOCALAPPDATA%\ogcode`, and adds it to your PATH automatically.
