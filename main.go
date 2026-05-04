@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ogcode/ogcode/internal/cli"
+	"github.com/prasenjeet-symon/ogcode/internal/cli"
 )
 
 func main() {

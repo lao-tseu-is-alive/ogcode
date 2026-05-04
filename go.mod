@@ -1,4 +1,4 @@
-module github.com/ogcode/ogcode
+module github.com/prasenjeet-symon/ogcode
 
 go 1.26.1
 

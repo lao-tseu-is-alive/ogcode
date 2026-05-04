@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ogcode/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
 // TaskDefinition represents a single task parsed from the breakdown agent's JSON output.

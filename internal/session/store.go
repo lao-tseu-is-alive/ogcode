@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ogcode/ogcode/internal/db"
+	"github.com/prasenjeet-symon/ogcode/internal/db"
 )
 
 type Store struct {

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/ogcode/ogcode/internal/server"
+	"github.com/prasenjeet-symon/ogcode/internal/server"
 	"github.com/spf13/cobra"
 )
 

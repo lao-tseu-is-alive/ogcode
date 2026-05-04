@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/ogcode/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
 // ToolDef is the interface every tool must implement.

@@ -4,7 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/ogcode/ogcode/web"
+	"github.com/prasenjeet-symon/ogcode/web"
 )
 
 func (s *Server) serveStatic(r chiRouter) {

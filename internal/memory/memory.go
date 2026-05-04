@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ogcode/ogcode/internal/mcp"
+	"github.com/prasenjeet-symon/ogcode/internal/mcp"
 )
 
 // Memory provides the agentic memory lifecycle: read, recall, and write.

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ogcode/ogcode/internal/db"
+	"github.com/prasenjeet-symon/ogcode/internal/db"
 )
 
 // Store provides persistence operations for Plan entities.

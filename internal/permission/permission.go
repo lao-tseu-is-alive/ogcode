@@ -1,6 +1,6 @@
 package permission
 
-import "github.com/ogcode/ogcode/internal/id"
+import "github.com/prasenjeet-symon/ogcode/internal/id"
 
 type PermissionID = id.PermissionID
 

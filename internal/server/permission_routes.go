@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/ogcode/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
 // handlePermissionReply handles user responses to permission requests

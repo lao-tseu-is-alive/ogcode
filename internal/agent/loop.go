@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ogcode/ogcode/internal/bus"
-	"github.com/ogcode/ogcode/internal/id"
-	"github.com/ogcode/ogcode/internal/mcp"
-	"github.com/ogcode/ogcode/internal/memory"
-	"github.com/ogcode/ogcode/internal/provider"
-	"github.com/ogcode/ogcode/internal/session"
-	"github.com/ogcode/ogcode/internal/tool"
+	"github.com/prasenjeet-symon/ogcode/internal/bus"
+	"github.com/prasenjeet-symon/ogcode/internal/id"
+	"github.com/prasenjeet-symon/ogcode/internal/mcp"
+	"github.com/prasenjeet-symon/ogcode/internal/memory"
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/tool"
 )
 
 // LoopRunner orchestrates the agent loop for a session.

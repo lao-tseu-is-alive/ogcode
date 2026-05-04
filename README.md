@@ -51,7 +51,7 @@ ogcode version
 ### Go Install
 
 ```bash
-go install github.com/ogcode/ogcode@latest
+go install github.com/prasenjeet-symon/ogcode@latest
 ```
 
 ### Docker

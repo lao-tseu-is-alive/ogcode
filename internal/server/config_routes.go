@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/ogcode/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
 func (s *Server) handlePath(w http.ResponseWriter, r *http.Request) {

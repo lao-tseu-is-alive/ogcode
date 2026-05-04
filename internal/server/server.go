@@ -15,16 +15,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ogcode/ogcode/internal/agent"
-	"github.com/ogcode/ogcode/internal/bus"
-	"github.com/ogcode/ogcode/internal/db"
-	"github.com/ogcode/ogcode/internal/mcp"
-	"github.com/ogcode/ogcode/internal/memory"
-	"github.com/ogcode/ogcode/internal/plan"
-	"github.com/ogcode/ogcode/internal/provider"
-	"github.com/ogcode/ogcode/internal/session"
-	"github.com/ogcode/ogcode/internal/task"
-	"github.com/ogcode/ogcode/internal/tool"
+	"github.com/prasenjeet-symon/ogcode/internal/agent"
+	"github.com/prasenjeet-symon/ogcode/internal/bus"
+	"github.com/prasenjeet-symon/ogcode/internal/db"
+	"github.com/prasenjeet-symon/ogcode/internal/mcp"
+	"github.com/prasenjeet-symon/ogcode/internal/memory"
+	"github.com/prasenjeet-symon/ogcode/internal/plan"
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/task"
+	"github.com/prasenjeet-symon/ogcode/internal/tool"
 )
 
 // ServerMode determines the operational mode of the server.

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/ogcode/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
 // Theme holds a per-directory color palette derived from a user-chosen primary color.

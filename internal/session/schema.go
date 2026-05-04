@@ -1,7 +1,7 @@
 package session
 
 import (
-	"github.com/ogcode/ogcode/internal/id"
+	"github.com/prasenjeet-symon/ogcode/internal/id"
 )
 
 type SessionID = id.SessionID

@@ -14,7 +14,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
 COPY --from=web-builder /app/web/dist /app/web/dist
-RUN CGO_ENABLED=0 go build -ldflags "-s -w -X github.com/ogcode/ogcode/internal/cli.version=$(git describe --tags --always) -X github.com/ogcode/ogcode/internal/cli.commit=$(git rev-parse --short HEAD) -X github.com/ogcode/ogcode/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ogcode .
+RUN CGO_ENABLED=0 go build -ldflags "-s -w -X github.com/prasenjeet-symon/ogcode/internal/cli.version=$(git describe --tags --always) -X github.com/prasenjeet-symon/ogcode/internal/cli.commit=$(git rev-parse --short HEAD) -X github.com/prasenjeet-symon/ogcode/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ogcode .
 
 # Final stage
 FROM alpine:latest

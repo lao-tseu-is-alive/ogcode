@@ -29,9 +29,9 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w
-      - -X github.com/ogcode/ogcode/internal/cli.version={{.Version}}
-      - -X github.com/ogcode/ogcode/internal/cli.commit={{.Commit}}
-      - -X github.com/ogcode/ogcode/internal/cli.date={{.Date}}
+      - -X github.com/prasenjeet-symon/ogcode/internal/cli.version={{.Version}}
+      - -X github.com/prasenjeet-symon/ogcode/internal/cli.commit={{.Commit}}
+      - -X github.com/prasenjeet-symon/ogcode/internal/cli.date={{.Date}}
 
 archives:
   - id: ogcode

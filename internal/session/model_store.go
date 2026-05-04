@@ -1,6 +1,6 @@
 package session
 
-import "github.com/ogcode/ogcode/internal/db"
+import "github.com/prasenjeet-symon/ogcode/internal/db"
 
 func modelStore() *ModelPreferenceStore {
 	return &ModelPreferenceStore{}

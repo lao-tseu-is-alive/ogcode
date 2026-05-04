@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/ogcode/ogcode/internal/provider"
-	"github.com/ogcode/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
