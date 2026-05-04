@@ -72,10 +72,14 @@ fi
 # Verify
 if command -v ogcode >/dev/null 2>&1; then
     echo ""
-    ogcode version
+    echo "✅ ogcode $LATEST is installed at $INSTALL_DIR/$BINARY"
+    echo "Run 'ogcode --help' to get started."
 else
     echo ""
-    echo "ogcode is installed but not in your PATH. Add $INSTALL_DIR to your PATH:"
+    echo "✅ ogcode $LATEST is installed at $INSTALL_DIR/$BINARY"
+    echo "Run 'ogcode --help' to get started."
+    echo ""
+    echo "ogcode is not in your PATH. Add $INSTALL_DIR to your PATH:"
     echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
 fi
 
