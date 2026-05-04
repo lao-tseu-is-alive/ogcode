@@ -99,7 +99,13 @@ func (s *Server) Start() error {
 		registry.Register(provider.NewOpenRouterProvider())
 		slog.Info("registered openrouter provider")
 	}
-	if os.Getenv("OLLAMA_BASE_URL") != "" || fileExists("/usr/local/bin/ollama") || fileExists("/opt/homebrew/bin/ollama") {
+	ollamaBaseURL := os.Getenv("OLLAMA_BASE_URL")
+	ollamaAPIKey := os.Getenv("OLLAMA_API_KEY")
+	if ollamaBaseURL != "" || ollamaAPIKey != "" || fileExists("/usr/local/bin/ollama") || fileExists("/opt/homebrew/bin/ollama") {
+		if ollamaAPIKey != "" && ollamaBaseURL == "" {
+			// API key set but no URL — default to localhost but warn that cloud needs a URL
+			slog.Warn("OLLAMA_API_KEY is set but OLLAMA_BASE_URL is not; using http://localhost:11434/v1. Set OLLAMA_BASE_URL for cloud Ollama.")
+		}
 		registry.Register(provider.NewOllamaProvider())
 		slog.Info("registered ollama provider")
 	}
@@ -121,7 +127,7 @@ func (s *Server) Start() error {
 		break
 	}
 	if defaultProvider == nil {
-		slog.Warn("no LLM provider configured; set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or install Ollama")
+		slog.Warn("no LLM provider configured; set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, OLLAMA_API_KEY, or install Ollama")
 		defaultProvider = provider.NewAnthropicProvider()
 	}
 

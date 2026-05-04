@@ -8,6 +8,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
+  ollama: 'Ollama',
   google: 'Google',
   mistral: 'Mistral',
 };

@@ -75,7 +75,8 @@ Set at least one API key (or use Ollama):
 | `ANTHROPIC_API_KEY` | Anthropic (Claude) |
 | `OPENAI_API_KEY` | OpenAI (GPT) |
 | `OPENROUTER_API_KEY` | OpenRouter |
-| `OLLAMA_BASE_URL` | Ollama (local / cloud) |
+| `OLLAMA_API_KEY` | Ollama Cloud (see below) |
+| `OLLAMA_BASE_URL` | Ollama (local / cloud URL) |
 
 #### Ollama (local models)
 
@@ -119,7 +120,7 @@ ogcode
 **Set a default model:**
 
 ```bash
-export OLLAMA_MODEL=codellama   # defaults to qwen3 if not set
+export OLLAMA_MODEL=codellama   # defaults to qwen3-coder-next if not set
 ```
 
 Available models in the UI include: `qwen3`, `codellama`, `llama3.1`, `deepseek-coder-v2`, `mistral`, and others. Any model you have pulled in Ollama will work — just select it from the model dropdown in the web UI.
