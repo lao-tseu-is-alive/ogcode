@@ -8,7 +8,7 @@ project_name: ogcode
 before:
   hooks:
     # Build the web UI assets before compiling Go
-    - cd web && npm install --legacy-peer-deps --cache /tmp/npm-cache && npm run build
+    - bash -c 'cd web && npm install --legacy-peer-deps --cache /tmp/npm-cache && npm run build'
     - go mod tidy
     - go mod verify
 
@@ -35,7 +35,7 @@ builds:
 
 archives:
   - id: ogcode
-    builds:
+    ids:
       - ogcode
     name_template: >-
       {{ .ProjectName }}_
@@ -47,7 +47,8 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - LICENSE*
       - README*
@@ -74,7 +75,7 @@ checksum:
   name_template: "checksums.txt"
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
