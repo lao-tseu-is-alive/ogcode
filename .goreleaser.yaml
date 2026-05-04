@@ -96,5 +96,3 @@ release:
 
 # GitHub Actions will need GITHUB_TOKEN, so we don't need goreleaser pro
 # For signing (optional), you can enable later
-cosign:
-  skip: true
