@@ -1,0 +1,10 @@
+title: ogcode
+description: AI-powered coding agent for your terminal
+url: "https://ogcode.dev"
+
+theme: null
+
+# Serve everything from docs/ as static files
+# install.sh will be served as text/plain automatically by GitHub Pages
+include:
+  - install.sh
