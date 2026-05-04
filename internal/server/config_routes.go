@@ -110,6 +110,12 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.configPayload())
 }
 
+func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
+	s.registry.RefreshModels()
+	// Return the updated model list
+	s.handleModels(w, r)
+}
+
 func (s *Server) handleVCS(w http.ResponseWriter, r *http.Request) {
 	branch := getCurrentBranch(s.dir)
 	writeJSON(w, http.StatusOK, map[string]string{

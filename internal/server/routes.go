@@ -21,6 +21,7 @@ func (s *Server) routes() http.Handler {
 		r.Get("/path", s.handlePath)
 		r.Get("/agent", s.handleAgents)
 		r.Get("/models", s.handleModels)
+		r.Post("/models/refresh", s.handleModelsRefresh)
 		r.Get("/config", s.handleConfig)
 		r.Get("/mode", s.handleMode)
 

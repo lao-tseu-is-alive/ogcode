@@ -11,16 +11,23 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
 // OpenAIProvider implements Provider for the OpenAI Chat Completions API.
-// Also used for OpenRouter (same API format, different base URL).
+// Also used for OpenRouter and Ollama (same API format, different base URL).
 type OpenAIProvider struct {
 	id      string
 	apiKey  string
 	model   string
 	baseURL string
+
+	// cachedModels caches models fetched from /v1/models for Ollama cloud.
+	// Nil means not yet fetched; empty slice means fetched but none found.
+	cachedModels []ModelInfo
+	modelsOnce   sync.Once
+	modelsMu      sync.Mutex
 }
 
 func NewOpenAIProvider() *OpenAIProvider {
@@ -52,6 +59,9 @@ func NewOpenRouterProvider() *OpenAIProvider {
 }
 
 // NewOllamaProvider creates an OpenAI-compatible provider for Ollama.
+// When OLLAMA_BASE_URL points to a cloud endpoint (not localhost), the model
+// list is fetched dynamically from /v1/models. For local Ollama, a static
+// fallback list is used.
 func NewOllamaProvider() *OpenAIProvider {
 	baseURL := os.Getenv("OLLAMA_BASE_URL")
 	if baseURL == "" {
@@ -60,7 +70,9 @@ func NewOllamaProvider() *OpenAIProvider {
 	apiKey := os.Getenv("OLLAMA_API_KEY")
 	model := os.Getenv("OLLAMA_MODEL")
 	if model == "" {
-		model = "qwen3"
+		// Use a model that exists on both local and cloud Ollama.
+		// "qwen3" only exists locally; "qwen3-coder-next" exists on cloud too.
+		model = "qwen3-coder-next"
 	}
 	return &OpenAIProvider{
 		id:      "ollama",
@@ -71,6 +83,85 @@ func NewOllamaProvider() *OpenAIProvider {
 }
 
 func (p *OpenAIProvider) ID() string { return p.id }
+
+// RefreshModels clears the cached model list so the next call to Models()
+// will re-fetch from the endpoint (for cloud providers).
+func (p *OpenAIProvider) RefreshModels() {
+	p.modelsMu.Lock()
+	p.cachedModels = nil
+	p.modelsOnce = sync.Once{}
+	p.modelsMu.Unlock()
+}
+
+// isCloudOllama returns true if the base URL points to a remote/cloud endpoint
+// (i.e. not localhost or a local network address).
+func isCloudURL(baseURL string) bool {
+	u := strings.ToLower(baseURL)
+	return !strings.Contains(u, "localhost") && !strings.Contains(u, "127.0.0.1") && !strings.Contains(u, "0.0.0.0") && !strings.HasPrefix(u, "http://10.") && !strings.HasPrefix(u, "http://192.168.") && !strings.HasPrefix(u, "http://172.16.")
+}
+
+// oaiModelsResponse is the response from GET /v1/models (OpenAI-compatible).
+type oaiModelsResponse struct {
+	Data []oaiModelEntry `json:"data"`
+}
+
+type oaiModelEntry struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	OwnedBy string `json:"owned_by"`
+}
+
+// fetchDynamicModels fetches the model list from /v1/models for cloud providers.
+// Returns nil if fetching fails (use static fallback). Returns an empty non-nil
+// slice if the endpoint returns an empty list (cached to avoid re-fetching).
+func (p *OpenAIProvider) fetchDynamicModels() []ModelInfo {
+	url := strings.TrimRight(p.baseURL, "/") + "/models"
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		slog.Warn("failed to create models request", "provider", p.id, "err", err)
+		return nil
+	}
+	req.Header.Set("Accept", "application/json")
+	if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Warn("failed to fetch models from endpoint", "provider", p.id, "url", url, "err", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Warn("models endpoint returned non-200", "provider", p.id, "status", resp.StatusCode, "body", string(body))
+		return nil
+	}
+
+	var listResp oaiModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+		slog.Warn("failed to decode models response", "provider", p.id, "err", err)
+		return nil
+	}
+
+	var models []ModelInfo
+	for _, m := range listResp.Data {
+		models = append(models, ModelInfo{
+			ID:         m.ID,
+			Name:       m.ID, // Use ID as display name; cloud models have descriptive IDs
+			ProviderID: p.id,
+		})
+	}
+	slog.Info("dynamically fetched models from endpoint", "provider", p.id, "count", len(models))
+	// Ensure we return a non-nil (possibly empty) slice so the caller can cache it.
+	if models == nil {
+		models = []ModelInfo{}
+	}
+	return models
+}
 
 func (p *OpenAIProvider) Models() []ModelInfo {
 	var list []ModelInfo
@@ -85,18 +176,54 @@ func (p *OpenAIProvider) Models() []ModelInfo {
 			{ID: "minimax/minimax-m2.5", Name: "MiniMax M2.5", ProviderID: "openrouter"},
 		}
 	} else if p.id == "ollama" {
-		list = []ModelInfo{
-			{ID: "glm-5.1", Name: "GLM-5.1", ProviderID: "ollama"},
-			{ID: "kimi-k2.6", Name: "Kimi K2.6", ProviderID: "ollama"},
-			{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", ProviderID: "ollama"},
+		// For cloud Ollama endpoints, fetch models dynamically from /v1/models
+		if isCloudURL(p.baseURL) {
+			p.modelsMu.Lock()
+			cached := p.cachedModels
+			p.modelsMu.Unlock()
+			if cached != nil {
+				// Already fetched (may be empty slice for no models)
+				list = cached
+			} else {
+				// Try fetching from the endpoint; fall back to static cloud list
+				fetched := p.fetchDynamicModels()
+				if fetched != nil {
+					list = fetched
+					p.modelsMu.Lock()
+					p.cachedModels = fetched
+					p.modelsMu.Unlock()
+				} else {
+					// Fallback: static list of known ollama.com cloud models
+					list = []ModelInfo{
+						{ID: "glm-5.1", Name: "GLM-5.1", ProviderID: "ollama"},
+						{ID: "glm-5", Name: "GLM-5", ProviderID: "ollama"},
+						{ID: "kimi-k2.6", Name: "Kimi K2.6", ProviderID: "ollama"},
+						{ID: "kimi-k2.5", Name: "Kimi K2.5", ProviderID: "ollama"},
+						{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", ProviderID: "ollama"},
+						{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro", ProviderID: "ollama"},
+						{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next", ProviderID: "ollama"},
+						{ID: "qwen3.5", Name: "Qwen3.5", ProviderID: "ollama"},
+						{ID: "minimax-m2.7", Name: "MiniMax M2.7", ProviderID: "ollama"},
+						{ID: "devstral-2", Name: "Devstral 2", ProviderID: "ollama"},
+						{ID: "mistral-large-3", Name: "Mistral Large 3", ProviderID: "ollama"},
+					}
+				}
+			}
+		} else {
+			// Local Ollama: use static list (covers both local and cloud model names)
+			list = []ModelInfo{
+				{ID: "glm-5.1", Name: "GLM-5.1", ProviderID: "ollama"},
+				{ID: "kimi-k2.6", Name: "Kimi K2.6", ProviderID: "ollama"},
+				{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", ProviderID: "ollama"},
 				{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro", ProviderID: "ollama"},
-			{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next", ProviderID: "ollama"},
-			{ID: "qwen3.6", Name: "Qwen3.6", ProviderID: "ollama"},
-			{ID: "qwen3", Name: "Qwen3", ProviderID: "ollama"},
-			{ID: "llama3.1", Name: "Llama 3.1", ProviderID: "ollama"},
-			{ID: "codellama", Name: "Code Llama", ProviderID: "ollama"},
-			{ID: "deepseek-coder-v2", Name: "DeepSeek Coder V2", ProviderID: "ollama"},
-			{ID: "mistral", Name: "Mistral", ProviderID: "ollama"},
+				{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next", ProviderID: "ollama"},
+				{ID: "qwen3.5", Name: "Qwen3.5", ProviderID: "ollama"},
+				{ID: "qwen3", Name: "Qwen3", ProviderID: "ollama"},
+				{ID: "llama3.1", Name: "Llama 3.1", ProviderID: "ollama"},
+				{ID: "codellama", Name: "Code Llama", ProviderID: "ollama"},
+				{ID: "deepseek-coder-v2", Name: "DeepSeek Coder V2", ProviderID: "ollama"},
+				{ID: "mistral", Name: "Mistral", ProviderID: "ollama"},
+			}
 		}
 	} else {
 		list = []ModelInfo{
@@ -217,7 +344,7 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		slog.Error("API error response", "provider", p.id, "status", resp.StatusCode, "body", string(body))
-		return nil, fmt.Errorf("openai API error %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("%s API error %d: %s", p.id, resp.StatusCode, string(body))
 	}
 	slog.Info("stream connected", "provider", p.id, "model", model)
 

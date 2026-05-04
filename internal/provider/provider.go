@@ -82,6 +82,12 @@ type Provider interface {
 	StreamChat(ctx context.Context, req StreamRequest) (<-chan StreamEvent, error)
 }
 
+// ModelRefresher is an optional interface that providers can implement
+// to support dynamic model list refreshing.
+type ModelRefresher interface {
+	RefreshModels()
+}
+
 type Registry struct {
 	providers    map[string]Provider
 	customModels map[string]string // modelID -> providerID
@@ -154,4 +160,14 @@ func (r *Registry) ResolveProvider(modelID string) Provider {
 		return p
 	}
 	return nil
+}
+
+// RefreshModels clears cached model lists for all providers that support it,
+// forcing re-fetch on next Models() call.
+func (r *Registry) RefreshModels() {
+	for _, p := range r.providers {
+		if refresher, ok := p.(ModelRefresher); ok {
+			refresher.RefreshModels()
+		}
+	}
 }
