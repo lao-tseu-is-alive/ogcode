@@ -62,7 +62,7 @@ brews:
     homepage: "https://github.com/prasenjeet-symon/ogcode"
     description: "Agentic coding assistant with web UI"
     license: "MIT"
-    skip_upload: false
+    skip_upload: true
     dependencies:
       - name: go
         type: optional
