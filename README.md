@@ -14,7 +14,7 @@ Ogcode gives you two ways to work with AI on your codebase:
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://ogcode.dev/install.sh | sh
+curl -fsSL https://ogcode.xyz/install.sh | sh
 ```
 
 The installer auto-detects your platform, downloads the latest release, and installs to `/usr/local/bin` (uses `sudo` if needed).

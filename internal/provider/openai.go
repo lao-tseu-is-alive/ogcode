@@ -330,7 +330,7 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 	if p.id == "openrouter" {
-		httpReq.Header.Set("HTTP-Referer", "https://ogcode.dev")
+		httpReq.Header.Set("HTTP-Referer", "https://ogcode.xyz")
 		httpReq.Header.Set("X-Title", "ogcode")
 	}
 

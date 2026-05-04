@@ -1,6 +1,6 @@
 #!/bin/sh
 # Ogcode installer for macOS and Linux
-# Usage: curl -fsSL https://ogcode.dev/install.sh | sh
+# Usage: curl -fsSL https://ogcode.xyz/install.sh | sh
 
 set -e
 
