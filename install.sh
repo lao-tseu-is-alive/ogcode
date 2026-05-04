@@ -39,7 +39,10 @@ if [ -z "$LATEST" ]; then
     exit 1
 fi
 
-ASSET="${BINARY}_${LATEST}_${PLATFORM}_${ARCH}.tar.gz"
+# GoReleaser strips the 'v' prefix from the version in asset filenames
+VERSION_NO_V=$(echo "$LATEST" | sed 's/^v//')
+
+ASSET="${BINARY}_${VERSION_NO_V}_${PLATFORM}_${ARCH}.tar.gz"
 URL="https://github.com/$REPO/releases/download/$LATEST/$ASSET"
 
 echo "Downloading ogcode $LATEST for $PLATFORM ($ARCH)..."

@@ -20,17 +20,14 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 Write-Host "Fetching latest release..." -ForegroundColor Cyan
 $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
 $tag = $releases.tag_name
+# GoReleaser strips the 'v' prefix from the version in asset filenames
+$versionNoV = $tag -replace "^v"
 
-$assetName = "ogcode_${tag}_${arch}.zip"
-if ($arch -eq "x86_64") {
-    $assetName = "ogcode_${tag}_Windows_x86_64.zip"
-} elseif ($arch -eq "arm64") {
-    $assetName = "ogcode_${tag}_Windows_arm64.zip"
-}
+$assetName = "ogcode_${versionNoV}_Windows_${arch}.zip"
 
-$asset = $releases.assets | Where-Object { $_.name -like "*${arch}*" -or $_.name -like "*${arch}*" } | Select-Object -First 1
+$asset = $releases.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
 if (-not $asset) {
-    Write-Host "Could not find release asset for architecture: $arch" -ForegroundColor Red
+    Write-Host "Could not find release asset: $assetName" -ForegroundColor Red
     exit 1
 }
 
