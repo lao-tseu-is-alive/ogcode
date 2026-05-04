@@ -3,53 +3,832 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ogcode</title>
-  <meta http-equiv="refresh" content="0;url=https://github.com/prasenjeet-symon/ogcode">
+  <title>ogcode — AI-Powered Coding Agent</title>
+  <meta name="description" content="An agentic coding assistant with Build Mode and Plan Mode. Chat with AI to read, write, edit, and execute code — or plan features and auto-generate PRs.">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta property="og:title" content="ogcode — AI-Powered Coding Agent">
+  <meta property="og:description" content="An agentic coding assistant with Build Mode and Plan Mode. Chat with AI to read, write, edit, and execute code.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://ogcode.xyz">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #050505;
+      --surface: #0a0a0a;
+      --surface-2: #111111;
+      --surface-3: #1a1a1a;
+      --border: #222222;
+      --border-2: #333333;
+      --text: #e5e5e5;
+      --text-dim: #a3a3a3;
+      --text-muted: #737373;
+      --accent: #3b82f6;
+      --accent-bright: #60a5fa;
+      --accent-glow: rgba(59, 130, 246, 0.15);
+      --green: #4ade80;
+      --green-dim: #22c55e;
+      --purple: #a78bfa;
+      --amber: #fbbf24;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      --mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #0a0a0a;
-      color: #e5e5e5;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
     }
-    .container {
-      text-align: center;
-      padding: 2rem;
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
     }
-    h1 { font-size: 3rem; margin-bottom: 0.5rem; }
-    p { color: #a3a3a3; margin-bottom: 2rem; }
-    a {
-      display: inline-block;
-      padding: 0.75rem 1.5rem;
-      background: #2563eb;
-      color: white;
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes typing {
+      from { width: 0; }
+      to { width: 100%; }
+    }
+    @keyframes blink {
+      50% { border-color: transparent; }
+    }
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.1); }
+      50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.2); }
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .animate { opacity: 0; transform: translateY(30px); transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
+    .animate.visible { opacity: 1; transform: translateY(0); }
+
+    /* ── Container ── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(5, 5, 5, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 1.25rem; font-weight: 700; color: var(--text);
       text-decoration: none;
-      border-radius: 8px;
-      font-weight: 600;
     }
-    a:hover { background: #1d4ed8; }
-    code {
-      display: block;
+    .nav-logo span { color: var(--accent-bright); }
+    .nav-logo .logo-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .nav-links { display: flex; align-items: center; gap: 2rem; }
+    .nav-links a {
+      color: var(--text-dim); text-decoration: none; font-size: 0.875rem;
+      font-weight: 500; transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      padding: 0.4rem 1rem; background: var(--accent); color: white !important;
+      border-radius: 6px; font-weight: 600 !important;
+      transition: background 0.2s !important;
+    }
+    .nav-cta:hover { background: #2563eb !important; }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden; padding-top: 64px;
+    }
+    .hero::before {
+      content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+      background: radial-gradient(ellipse at 50% 50%, var(--accent-glow), transparent 60%);
+      animation: glow 8s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .hero-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+      opacity: 0.3;
+    }
+    .hero .container { text-align: center; position: relative; z-index: 1; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.375rem 1rem; background: var(--surface-2);
+      border: 1px solid var(--border-2); border-radius: 100px;
+      font-size: 0.8rem; color: var(--text-dim); margin-bottom: 1.5rem;
+      animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px; background: var(--green);
+      border-radius: 50%; animation: pulse 2s ease-in-out infinite;
+    }
+    .hero h1 {
+      font-size: clamp(2.5rem, 7vw, 5rem); font-weight: 800;
+      line-height: 1.05; letter-spacing: -0.03em;
+      margin-bottom: 1.25rem;
+      animation: fadeUp 0.6s 0.1s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent-bright), var(--purple), var(--accent-bright));
+      background-size: 200% 200%;
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradientShift 6s ease infinite;
+    }
+    .hero .subtitle {
+      font-size: clamp(1rem, 2.5vw, 1.25rem);
+      color: var(--text-dim); max-width: 600px;
+      margin: 0 auto 2.5rem; line-height: 1.7;
+      animation: fadeUp 0.6s 0.2s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+
+    /* ── Buttons ── */
+    .btn-group {
+      display: flex; align-items: center; justify-content: center;
+      gap: 1rem; flex-wrap: wrap;
+      animation: fadeUp 0.6s 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.75rem 1.5rem; border-radius: 8px;
+      font-size: 0.95rem; font-weight: 600;
+      text-decoration: none; transition: all 0.2s;
+      cursor: pointer; border: none;
+    }
+    .btn-primary {
+      background: var(--accent); color: white;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3), 0 4px 12px rgba(59, 130, 246, 0.25);
+    }
+    .btn-primary:hover {
+      background: #2563eb;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5), 0 8px 20px rgba(59, 130, 246, 0.3);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border-2);
+    }
+    .btn-secondary:hover {
+      background: var(--surface-3); border-color: var(--text-muted);
+      transform: translateY(-1px);
+    }
+
+    /* ── Install Command ── */
+    .install-cmd {
       margin-top: 2rem;
-      padding: 1rem;
-      background: #1a1a1a;
+      animation: fadeUp 0.6s 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+    .install-cmd .cmd-box {
+      display: inline-flex; align-items: center; gap: 0.75rem;
+      padding: 0.625rem 1.25rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border-2);
       border-radius: 8px;
-      font-size: 0.9rem;
-      text-align: left;
-      color: #4ade80;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .install-cmd .cmd-box:hover { border-color: var(--text-muted); }
+    .install-cmd .cmd-box .dollar { color: var(--green); font-family: var(--mono); font-size: 0.875rem; }
+    .install-cmd .cmd-box code {
+      font-family: var(--mono); font-size: 0.875rem; color: var(--text);
+    }
+    .install-cmd .cmd-box .copy-hint {
+      font-size: 0.7rem; color: var(--text-muted);
+      position: absolute; right: 10px; top: -18px;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .install-cmd .cmd-box:hover .copy-hint { opacity: 1; }
+    .install-cmd .copied {
+      position: absolute; right: 10px; top: -18px;
+      font-size: 0.7rem; color: var(--green);
+      display: none;
+    }
+
+    /* ── Section ── */
+    section { padding: 6rem 0; position: relative; }
+    .section-label {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--accent-bright);
+      margin-bottom: 0.75rem;
+    }
+    .section-label .line { width: 20px; height: 1px; background: var(--accent); }
+    .section-title {
+      font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 700;
+      letter-spacing: -0.02em; margin-bottom: 0.75rem; line-height: 1.2;
+    }
+    .section-desc {
+      font-size: 1.05rem; color: var(--text-dim);
+      max-width: 560px; line-height: 1.7; margin-bottom: 3rem;
+    }
+
+    /* ── Mode Cards ── */
+    .modes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 768px) { .modes-grid { grid-template-columns: 1fr; } }
+
+    .mode-card {
+      padding: 2rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .mode-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .mode-card:hover {
+      border-color: var(--border-2);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    }
+    .mode-card:hover::before { opacity: 1; }
+    .mode-card.build::before { background: linear-gradient(90deg, var(--accent), var(--accent-bright)); }
+    .mode-card.plan::before { background: linear-gradient(90deg, var(--purple), #c4b5fd); }
+
+    .mode-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem; margin-bottom: 1.25rem;
+    }
+    .mode-card.build .mode-icon { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); }
+    .mode-card.plan .mode-icon { background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.2); }
+
+    .mode-card h3 {
+      font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem;
+      letter-spacing: -0.01em;
+    }
+    .mode-card p { color: var(--text-dim); font-size: 0.925rem; line-height: 1.7; margin-bottom: 1.25rem; }
+
+    .mode-features { list-style: none; }
+    .mode-features li {
+      display: flex; align-items: flex-start; gap: 0.625rem;
+      font-size: 0.875rem; color: var(--text-dim); padding: 0.375rem 0;
+    }
+    .mode-features li .check { color: var(--green); font-size: 0.75rem; margin-top: 3px; flex-shrink: 0; }
+    .mode-card.build .mode-features li .check { color: var(--accent-bright); }
+    .mode-card.plan .mode-features li .check { color: var(--purple); }
+
+    /* ── Terminal Demo ── */
+    .terminal-demo {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    .terminal-bar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 0.75rem 1rem;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .terminal-dot.red { background: #ef4444; }
+    .terminal-dot.yellow { background: #eab308; }
+    .terminal-dot.green { background: #22c55e; }
+    .terminal-bar span { margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-muted); }
+    .terminal-body { padding: 1.25rem; font-family: var(--mono); font-size: 0.8rem; line-height: 1.8; }
+    .terminal-body .prompt { color: var(--green); }
+    .terminal-body .cmd { color: var(--text); }
+    .terminal-body .output { color: var(--text-muted); }
+    .terminal-body .accent { color: var(--accent-bright); }
+    .terminal-body .purple { color: var(--purple); }
+    .terminal-body .amber { color: var(--amber); }
+    .terminal-body .cursor {
+      display: inline-block; width: 8px; height: 15px;
+      background: var(--green); vertical-align: middle; margin-left: 2px;
+      animation: blink 1s step-end infinite;
+    }
+
+    /* ── Workflow Steps ── */
+    .workflow-steps { display: flex; flex-direction: column; gap: 0; counter-reset: step; }
+    .workflow-step {
+      display: flex; gap: 1.5rem; padding: 1.5rem 0;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .workflow-step:last-child { border-bottom: none; }
+    .step-number {
+      width: 36px; height: 36px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      font-size: 0.8rem; font-weight: 700;
+      background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.2);
+      color: var(--purple);
+    }
+    .workflow-step h4 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .workflow-step p { font-size: 0.875rem; color: var(--text-dim); line-height: 1.6; }
+
+    /* ── Features Grid ── */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
+    }
+    @media (max-width: 768px) { .features-grid { grid-template-columns: 1fr; } }
+    @media (min-width: 769px) and (max-width: 1024px) { .features-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .feature-card {
+      padding: 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: all 0.3s;
+    }
+    .feature-card:hover {
+      border-color: var(--border-2);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      font-size: 1.5rem; margin-bottom: 1rem;
+      width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      background: var(--surface-2);
+    }
+    .feature-card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.375rem; }
+    .feature-card p { font-size: 0.825rem; color: var(--text-dim); line-height: 1.6; }
+
+    /* ── Providers ── */
+    .providers-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 2.5rem; flex-wrap: wrap;
+      padding: 2rem 0;
+    }
+    .provider {
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+      color: var(--text-muted); font-size: 0.8rem; font-weight: 500;
+      transition: color 0.2s;
+    }
+    .provider:hover { color: var(--text-dim); }
+    .provider .provider-icon {
+      width: 48px; height: 48px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 10px; font-size: 1.25rem;
+      transition: all 0.2s;
+    }
+    .provider:hover .provider-icon {
+      border-color: var(--border-2);
+      transform: translateY(-2px);
+    }
+
+    /* ── Install Section ── */
+    .install-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+    @media (max-width: 768px) { .install-methods { grid-template-columns: 1fr; } }
+
+    .install-method {
+      padding: 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .install-method h4 {
+      font-size: 0.9rem; font-weight: 600; margin-bottom: 0.75rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .install-method pre {
+      font-family: var(--mono); font-size: 0.8rem;
+      background: var(--surface-2); padding: 0.875rem;
+      border-radius: 8px; overflow-x: auto;
+      border: 1px solid var(--border);
+      line-height: 1.7; color: var(--text-dim);
+    }
+    .install-method pre .dollar { color: var(--green); }
+    .install-method pre .comment { color: var(--text-muted); }
+    .install-method pre .flag { color: var(--accent-bright); }
+
+    /* ── CTA Section ── */
+    .cta-section {
+      text-align: center; padding: 6rem 0;
+    }
+    .cta-section .cta-box {
+      padding: 3rem 2rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-box::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), var(--purple), transparent);
+    }
+    .cta-box h2 { font-size: 2rem; font-weight: 700; margin-bottom: 0.75rem; letter-spacing: -0.02em; }
+    .cta-box p { color: var(--text-dim); font-size: 1.05rem; margin-bottom: 2rem; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem 0;
+    }
+    footer .container {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    footer p { font-size: 0.8rem; color: var(--text-muted); }
+    footer .footer-links { display: flex; gap: 1.5rem; }
+    footer .footer-links a {
+      font-size: 0.8rem; color: var(--text-muted); text-decoration: none;
+      transition: color 0.2s;
+    }
+    footer .footer-links a:hover { color: var(--text-dim); }
+
+    /* ── Mobile ── */
+    @media (max-width: 640px) {
+      .nav-links a:not(.nav-cta) { display: none; }
+      .hero h1 { font-size: 2.25rem; }
+      .btn-group { flex-direction: column; }
+      .btn { width: 100%; justify-content: center; }
+      section { padding: 4rem 0; }
+      footer .container { flex-direction: column; gap: 1rem; text-align: center; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>ogcode</h1>
-    <p>AI-powered coding agent for your terminal</p>
-    <a href="https://github.com/prasenjeet-symon/ogcode">View on GitHub</a>
-    <code>curl -fsSL https://ogcode.xyz/install.sh | sh</code>
-  </div>
+
+  <!-- ── Nav ── -->
+  <nav>
+    <div class="container">
+      <a href="/" class="nav-logo">
+        <div class="logo-icon">⚡</div>
+        og<span>code</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#modes">Modes</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/prasenjeet-symon/ogcode" class="nav-cta">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-grid"></div>
+    <div class="container">
+      <div class="hero-badge">
+        <span class="dot"></span>
+        Open source &middot; Go powered &middot; Multi-provider
+      </div>
+      <h1>Your AI coding<br><span class="gradient">agent in the terminal</span></h1>
+      <p class="subtitle">
+        Chat with AI to read, write, edit, and execute code — or plan features
+        with structured task breakdowns and auto-generated pull requests.
+      </p>
+      <div class="btn-group">
+        <a href="#install" class="btn btn-primary">⚡ Install now</a>
+        <a href="https://github.com/prasenjeet-symon/ogcode" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <div class="install-cmd">
+        <div class="cmd-box" onclick="copyInstall()">
+          <span class="copy-hint">Click to copy</span>
+          <span class="copied">Copied!</span>
+          <span class="dollar">$</span>
+          <code id="installCmd">curl -fsSL https://ogcode.xyz/install.sh | sh</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Modes ── -->
+  <section id="modes">
+    <div class="container">
+      <div class="animate">
+        <div class="section-label"><span class="line"></span>Two ways to work</div>
+        <h2 class="section-title">Build <span style="color:var(--text-muted)">&</span> Plan</h2>
+        <p class="section-desc">
+          Whether you need to ship fast or think first, ogcode has a mode for
+          your workflow.
+        </p>
+      </div>
+      <div class="modes-grid">
+        <div class="mode-card build animate">
+          <div class="mode-icon">⚡</div>
+          <h3>Build Mode</h3>
+          <p>Chat directly with an AI agent that can read, write, edit, and execute code in your project — all from the terminal.</p>
+          <ul class="mode-features">
+            <li><span class="check">✓</span> Read & understand your entire codebase</li>
+            <li><span class="check">✓</span> Write, edit, and refactor code in real time</li>
+            <li><span class="check">✓</span> Execute shell commands and scripts</li>
+            <li><span class="check">✓</span> Search files, grep patterns, glob matches</li>
+            <li><span class="check">✓</span> Interactive web UI alongside terminal</li>
+          </ul>
+        </div>
+        <div class="mode-card plan animate">
+          <div class="mode-icon">🗺️</div>
+          <h3>Plan Mode</h3>
+          <p>Collaboratively plan a feature or refactor, then break it into tasks with auto-generated branches, commits, and pull requests.</p>
+          <ul class="mode-features">
+            <li><span class="check">✓</span> Collaborative planning with read-only agent</li>
+            <li><span class="check">✓</span> Structured task breakdown with effort estimates</li>
+            <li><span class="check">✓</span> Kanban board with dependencies</li>
+            <li><span class="check">✓</span> Auto-create git branches per task</li>
+            <li><span class="check">✓</span> Auto-generate pull requests on completion</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Terminal Demo ── -->
+  <section style="padding-bottom:2rem;">
+    <div class="container">
+      <div class="animate" style="text-align:center;">
+        <div class="section-label"><span class="line"></span>See it in action</div>
+        <h2 class="section-title" style="margin-bottom:2.5rem;">Up and running in seconds</h2>
+      </div>
+      <div class="terminal-demo animate">
+        <div class="terminal-bar">
+          <div class="terminal-dot red"></div>
+          <div class="terminal-dot yellow"></div>
+          <div class="terminal-dot green"></div>
+          <span>ogcode</span>
+        </div>
+        <div class="terminal-body">
+          <div><span class="prompt">$</span> <span class="cmd">ogcode</span></div>
+          <div><span class="output">⚡ Starting ogcode on http://localhost:8080</span></div>
+          <div><span class="output">✓ Detected Anthropic API key</span></div>
+          <div><span class="output">✓ Build mode active</span></div>
+          <div>&nbsp;</div>
+          <div><span class="accent">You:</span> <span class="cmd">Add error handling to the database layer</span></div>
+          <div>&nbsp;</div>
+          <div><span class="purple">ogcode:</span> <span class="output">I'll analyze the database layer and add proper error handling.</span></div>
+          <div><span class="output">  Reading </span><span class="amber">db/connection.go</span></div>
+          <div><span class="output">  Reading </span><span class="amber">db/queries.go</span></div>
+          <div><span class="output">  Editing </span><span class="amber">db/connection.go</span> <span class="output">→ wrapped errors with fmt.Errorf</span></div>
+          <div><span class="output">  Editing </span><span class="amber">db/queries.go</span> <span class="output">→ added retry logic and context cancellation</span></div>
+          <div><span class="output">  Running </span><span class="green">go build ./...</span> <span class="output">✓</span></div>
+          <div><span class="output">  Running </span><span class="green">go test ./db/...</span> <span class="output">✓ 8/8 passed</span></div>
+          <div>&nbsp;</div>
+          <div><span class="purple">ogcode:</span> <span class="output">Done! Added error wrapping, retry logic, and context support.</span></div>
+          <div><span class="prompt">$</span> <span class="cursor"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Plan Mode Workflow ── -->
+  <section>
+    <div class="container">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:4rem; align-items:start;">
+        <div class="animate">
+          <div class="section-label"><span class="line"></span>Plan mode workflow</div>
+          <h2 class="section-title">Think first,<br>ship after</h2>
+          <p class="section-desc" style="max-width:none;">
+            Describe your goal, refine the plan with AI, then let ogcode
+            break it into tasks — each with its own branch, agent, and PR.
+          </p>
+        </div>
+        <div class="workflow-steps animate">
+          <div class="workflow-step">
+            <div class="step-number">1</div>
+            <div>
+              <h4>Describe</h4>
+              <p>Open a new plan and describe your goal. The planning agent reads your codebase and helps refine the approach.</p>
+            </div>
+          </div>
+          <div class="workflow-step">
+            <div class="step-number">2</div>
+            <div>
+              <h4>Lock Plan</h4>
+              <p>When ready, lock the plan. The agent generates a structured task breakdown with effort, complexity, and dependencies.</p>
+            </div>
+          </div>
+          <div class="workflow-step">
+            <div class="step-number">3</div>
+            <div>
+              <h4>Execute Tasks</h4>
+              <p>Each task gets its own git branch and isolated agent session. Watch the agent work in real time.</p>
+            </div>
+          </div>
+          <div class="workflow-step">
+            <div class="step-number">4</div>
+            <div>
+              <h4>Auto PR</h4>
+              <p>When a task finishes, the agent commits its changes and a pull request is automatically created. Dependencies auto-start.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ── -->
+  <section id="features">
+    <div class="container">
+      <div class="animate" style="text-align:center;">
+        <div class="section-label" style="justify-content:center;"><span class="line"></span>Features<span class="line"></span></div>
+        <h2 class="section-title">Everything you need</h2>
+        <p class="section-desc" style="margin:0.75rem auto 3rem;text-align:center;">
+          Built for real-world development — not just demos.
+        </p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card animate">
+          <div class="feature-icon">🔒</div>
+          <h4>Zero config</h4>
+          <p>Set an API key and go. Auto-detects providers, models, and your project setup.</p>
+        </div>
+        <div class="feature-card animate">
+          <div class="feature-icon">🌐</div>
+          <h4>Web UI</h4>
+          <p>Interactive web interface alongside the terminal. Manage chats, plans, and tasks visually.</p>
+        </div>
+        <div class="feature-card animate">
+          <div class="feature-icon">🔀</div>
+          <h4>Git native</h4>
+          <p>Automatic branch creation, commits, and PR generation. Each task gets an isolated workspace.</p>
+        </div>
+        <div class="feature-card animate">
+          <div class="feature-icon">🧠</div>
+          <h4>Agentic memory</h4>
+          <p>Long-term memory across sessions via MCP-compatible memory servers. Context that persists.</p>
+        </div>
+        <div class="feature-card animate">
+          <div class="feature-icon">🐳</div>
+          <h4>Docker ready</h4>
+          <p>Run in a container with your workspace mounted. Perfect for CI or isolated environments.</p>
+        </div>
+        <div class="feature-card animate">
+          <div class="feature-icon">🔌</div>
+          <h4>Multi-provider</h4>
+          <p>Anthropic, OpenAI, OpenRouter, Ollama — use any provider or mix and match.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Providers ── -->
+  <section>
+    <div class="container">
+      <div class="animate" style="text-align:center;">
+        <div class="section-label" style="justify-content:center;"><span class="line"></span>Providers<span class="line"></span></div>
+        <h2 class="section-title">Works with your AI of choice</h2>
+      </div>
+      <div class="providers-row animate">
+        <div class="provider">
+          <div class="provider-icon">🟠</div>
+          Anthropic
+        </div>
+        <div class="provider">
+          <div class="provider-icon">🟢</div>
+          OpenAI
+        </div>
+        <div class="provider">
+          <div class="provider-icon">🔵</div>
+          OpenRouter
+        </div>
+        <div class="provider">
+          <div class="provider-icon">🦙</div>
+          Ollama
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Install ── -->
+  <section id="install">
+    <div class="container">
+      <div class="animate" style="text-align:center;">
+        <div class="section-label" style="justify-content:center;"><span class="line"></span>Install<span class="line"></span></div>
+        <h2 class="section-title">Get started now</h2>
+        <p class="section-desc" style="margin:0.75rem auto 3rem;text-align:center;">
+          One command to install. Set your API key and start building.
+        </p>
+      </div>
+      <div class="install-methods">
+        <div class="install-method animate">
+          <h4>🍎 macOS / Linux</h4>
+          <pre><span class="dollar">$</span> <span class="flag">curl</span> -fsSL https://ogcode.xyz/install.sh <span class="flag">|</span> sh</pre>
+        </div>
+        <div class="install-method animate">
+          <h4>🪟 Windows</h4>
+          <pre><span class="flag">irm</span> https://ogcode.xyz/install.ps1 <span class="flag">|</span> iex</pre>
+        </div>
+        <div class="install-method animate">
+          <h4>📦 Go install</h4>
+          <pre><span class="dollar">$</span> <span class="flag">go</span> install github.com/prasenjeet-symon/ogcode@latest</pre>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:1.5rem;" class="animate">
+        <p style="font-size:0.8rem;color:var(--text-muted);">
+          Docker: <code style="font-family:var(--mono);font-size:0.75rem;background:var(--surface-2);padding:0.2rem 0.5rem;border-radius:4px;">docker run -p 8080:8080 -v $(pwd):/workspace ghcr.io/prasenjeet-symon/ogcode:latest</code>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-box animate">
+        <h2>Ready to ship faster?</h2>
+        <p>Install ogcode and let your AI agent handle the heavy lifting.</p>
+        <div class="btn-group">
+          <a href="#install" class="btn btn-primary">⚡ Install now</a>
+          <a href="https://github.com/prasenjeet-symon/ogcode" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            Star on GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <div class="container">
+      <p>© 2026 ogcode — MIT License</p>
+      <div class="footer-links">
+        <a href="https://github.com/prasenjeet-symon/ogcode">GitHub</a>
+        <a href="https://github.com/prasenjeet-symon/ogcode/releases">Releases</a>
+        <a href="https://github.com/prasenjeet-symon/ogcode/issues">Issues</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ── Scripts ── -->
+  <script>
+    // Copy install command
+    function copyInstall() {
+      const cmd = 'curl -fsSL https://ogcode.xyz/install.sh | sh';
+      navigator.clipboard.writeText(cmd).then(() => {
+        const hint = document.querySelector('.copy-hint');
+        const copied = document.querySelector('.copied');
+        hint.style.display = 'none';
+        copied.style.display = 'block';
+        setTimeout(() => { copied.style.display = 'none'; hint.style.display = ''; }, 1500);
+      });
+    }
+
+    // Scroll animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry, i) => {
+        if (entry.isIntersecting) {
+          setTimeout(() => entry.target.classList.add('visible'), i * 80);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.animate').forEach(el => observer.observe(el));
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  </script>
 </body>
 </html>
