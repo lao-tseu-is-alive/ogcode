@@ -33,6 +33,21 @@ curl -L https://github.com/prasenjeet-symon/ogcode/releases/latest/download/ogco
 # (See releases page for exact URL for your architecture)
 ```
 
+### Windows
+
+1. Go to the [releases page](https://github.com/prasenjeet-symon/ogcode/releases) and download `ogcode_Windows_x86_64.zip` (or `_arm64.zip` if you have an ARM device).
+2. Extract the zip file to a folder (e.g. `C:\Tools\ogcode`).
+3. Add that folder to your `Path` environment variable:
+   - Press `Win + S`, search for **Edit environment variables for your account**
+   - Under **User variables**, find `Path` and click **Edit**
+   - Click **New** and add the path to your ogcode folder (e.g. `C:\Tools\ogcode`)
+   - Click **OK** on all dialogs
+4. Open a new PowerShell or Command Prompt and run:
+
+```powershell
+ogcode version
+```
+
 ### Go Install
 
 ```bash
@@ -64,16 +79,24 @@ Set at least one API key (or use Ollama):
 
 #### Ollama (local models)
 
-Ogcode auto-detects Ollama if the binary is installed at a common path (`/usr/local/bin/ollama` or `/opt/homebrew/bin/ollama`). You can also explicitly enable it by setting `OLLAMA_BASE_URL`.
+Ogcode auto-detects Ollama on macOS/Linux if the binary is installed at a common path. On Windows, or if you have a non-standard install, set `OLLAMA_BASE_URL` explicitly.
 
 **Local setup (default):**
 
 ```bash
-# Ollama runs on localhost by default — just start the server
+# macOS / Linux — auto-detected if ollama is installed
 ollama serve
+ogcode
 
-# Ogcode will auto-detect it. Or be explicit:
+# Or be explicit on any OS:
 export OLLAMA_BASE_URL=http://localhost:11434/v1
+ogcode
+```
+
+On Windows (PowerShell):
+
+```powershell
+$env:OLLAMA_BASE_URL = "http://localhost:11434/v1"
 ogcode
 ```
 
@@ -82,6 +105,14 @@ ogcode
 ```bash
 export OLLAMA_BASE_URL=https://api.ollama.com/v1   # or your custom endpoint
 export OLLAMA_API_KEY=your-api-key                  # required for cloud / authenticated endpoints
+ogcode
+```
+
+On Windows (PowerShell):
+
+```powershell
+$env:OLLAMA_BASE_URL = "https://api.ollama.com/v1"
+$env:OLLAMA_API_KEY = "your-api-key"
 ogcode
 ```
 
