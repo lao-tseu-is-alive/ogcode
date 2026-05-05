@@ -37,3 +37,44 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          WINGET_PKGS_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
+
+      - name: Create Winget PR to microsoft/winget-pkgs
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BRANCH="prasenjeet-symon-ogcode-${VERSION}"
+          REPO="https://github.com/prasenjeet-symon/winget-pkgs"
+          UPSTREAM="https://github.com/microsoft/winget-pkgs"
+
+          # Clone the fork
+          git clone --depth 1 "${REPO}" winget-pkgs-work
+          cd winget-pkgs-work
+
+          # Configure git
+          git config user.name "goreleaserbot"
+          git config user.email "bot@goreleaser.com"
+
+          # Create a new branch with the manifest changes
+          git checkout -b "${BRANCH}"
+
+          # Copy updated manifests from the source repo (GoReleaser committed them to main)
+          git clone --depth 1 "https://github.com/prasenjeet-symon/ogcode" ogcode-src
+          cp -r ogcode-src/manifests/p/prasenjeet-symon/ogcode/* "manifests/p/prasenjeet-symon/ogcode/"
+          rm -rf ogcode-src
+
+          # Commit and push
+          git add .
+          git commit -m "Update prasenjeet-symon.ogcode to ${VERSION}" || exit 0
+          git push origin "${BRANCH}" --force
+
+          # Create PR via GitHub CLI
+          gh pr create \
+            --repo microsoft/winget-pkgs \
+            --title "New version: prasenjeet-symon.ogcode version ${VERSION}" \
+            --body "Automated PR created by GoReleaser." \
+            --head "prasenjeet-symon:${BRANCH}" \
+            --base master \
+            --label "New-Package-Version"
