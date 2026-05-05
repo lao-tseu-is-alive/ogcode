@@ -2,6 +2,8 @@
 
 [![Discord](https://img.shields.io/discord/1373677337985056828?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/TVHsWuJe)
 
+![Ogcode Demo](assets/ogcode_intro.mp4)
+
 An agentic coding assistant with a web UI, written in Go.
 
 Ogcode gives you two ways to work with AI on your codebase:
