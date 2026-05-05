@@ -97,7 +97,13 @@ func (p *OpenAIProvider) RefreshModels() {
 // (i.e. not localhost or a local network address).
 func isCloudURL(baseURL string) bool {
 	u := strings.ToLower(baseURL)
-	return !strings.Contains(u, "localhost") && !strings.Contains(u, "127.0.0.1") && !strings.Contains(u, "0.0.0.0") && !strings.HasPrefix(u, "http://10.") && !strings.HasPrefix(u, "http://192.168.") && !strings.HasPrefix(u, "http://172.16.")
+	if strings.Contains(u, "localhost") || strings.Contains(u, "127.0.0.1") || strings.Contains(u, "0.0.0.0") {
+		return false
+	}
+	if strings.Contains(u, "://10.") || strings.Contains(u, "://192.168.") || strings.Contains(u, "://172.16.") || strings.Contains(u, "://172.17.") || strings.Contains(u, "://172.18.") || strings.Contains(u, "://172.19.") || strings.Contains(u, "://172.2") || strings.Contains(u, "://172.30.") || strings.Contains(u, "://172.31.") {
+		return false
+	}
+	return true
 }
 
 // oaiModelsResponse is the response from GET /v1/models (OpenAI-compatible).
@@ -124,7 +130,14 @@ func (p *OpenAIProvider) fetchDynamicModels() []ModelInfo {
 	}
 	req.Header.Set("Accept", "application/json")
 	if p.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+		token := p.apiKey
+		if !strings.Contains(token, " ") {
+			token = "Bearer " + token
+		}
+		req.Header.Set("Authorization", token)
+		if p.id == "ollama" {
+			req.Header.Set("X-Ollama-Key", p.apiKey)
+		}
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -310,8 +323,10 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 		MaxTokens:   req.MaxTokens,
 	}
 	// stream_options.include_usage is supported by OpenAI, OpenRouter, and Ollama (v0.5+).
-	// The final chunk will contain a usage object alongside an empty choices array.
-	body.StreamOptions = &oaiStreamOptions{IncludeUsage: true}
+	// We disable it for custom Ollama cloud endpoints as many proxies don't yet support it.
+	if p.id == "openai" || p.id == "openrouter" || (p.id == "ollama" && !isCloudURL(p.baseURL)) {
+		body.StreamOptions = &oaiStreamOptions{IncludeUsage: true}
+	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -327,7 +342,14 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	if p.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+		token := p.apiKey
+		if !strings.Contains(token, " ") {
+			token = "Bearer " + token
+		}
+		httpReq.Header.Set("Authorization", token)
+		if p.id == "ollama" {
+			httpReq.Header.Set("X-Ollama-Key", p.apiKey)
+		}
 	}
 	if p.id == "openrouter" {
 		httpReq.Header.Set("HTTP-Referer", "https://ogcode.xyz")

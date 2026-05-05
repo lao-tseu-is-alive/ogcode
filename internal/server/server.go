@@ -124,12 +124,15 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.GrepTool{})
 	toolRegistry.Register(tool.BreakdownTool{})
 
-	// Determine default provider
-	var defaultProvider provider.Provider
-	for _, id := range registry.List() {
-		defaultProvider = registry.Get(id)
-		break
-	}
+		// Determine default provider with stable priority
+		var defaultProvider provider.Provider
+		priority := []string{"anthropic", "openai", "openrouter", "ollama"}
+		for _, id := range priority {
+			if p := registry.Get(id); p != nil {
+				defaultProvider = p
+				break
+			}
+		}
 	if defaultProvider == nil {
 		slog.Warn("no LLM provider configured; set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, OLLAMA_API_KEY, or install Ollama")
 		defaultProvider = provider.NewAnthropicProvider()
