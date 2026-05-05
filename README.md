@@ -1,5 +1,7 @@
 # Ogcode
 
+[![Discord](https://img.shields.io/discord/1373677337985056828?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/TVHsWuJe)
+
 An agentic coding assistant with a web UI, written in Go.
 
 Ogcode gives you two ways to work with AI on your codebase:
@@ -184,6 +186,18 @@ ogcode version
 6. **Retry** — If a task fails, retry it. The stale branch is removed and the task starts fresh.
 
 Plans are archived as markdown files in `.ogcode/archives/` once all tasks are completed.
+
+---
+
+## Community
+
+Join the Ogcode community on Discord for discussions, support, and updates:
+
+[![Join us on Discord](https://img.shields.io/discord/1373677337985056828?label=Join%20Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge)](https://discord.gg/TVHsWuJe)
+
+- Ask questions and get help
+- Share feedback and feature ideas
+- Stay up to date with releases and announcements
 
 ---
 
