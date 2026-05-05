@@ -11,7 +11,7 @@ Ogcode acts as a pair programmer that actually codes with you. It doesn't just s
 Ogcode gives you two ways to work with AI on your codebase:
 
 - **Build Mode** — Chat directly with an AI agent that can read, write, edit, and execute code in your project.
-- **Plan Mode** — Collaboratively plan a feature or refactor with a read-only planning agent, then break the plan into tasks. Each task gets its own git branch and an isolated agent session. Completed tasks auto-create pull requests.
+- **Plan Mode** — Collaboratively plan a feature or refactor with a read-only planning agent, then break the plan into tasks. Each task gets its own git branch and an isolated agent session. Completed tasks auto-create pull requests. Multiple tasks can run in parallel, drastically speeding up complex feature implementations.
 
 ---
 
@@ -186,7 +186,7 @@ ogcode version
 2. **Lock** — When ready, lock the plan. The agent generates a structured task breakdown.
 3. **Review** — View tasks in the Kanban board. Each task has a title, description, effort (S/M/L/XL), complexity, and dependencies.
 4. **Execute** — Start tasks. Each one gets its own git branch and an isolated agent session. You can watch the agent work in real time.
-5. **Complete** — When a task finishes, the agent commits its changes and a pull request is automatically created. Dependent tasks auto-start once prerequisites complete.
+5. **Complete** — When a task finishes, the agent commits its changes and a pull request is automatically created. Ogcode manages dependencies between tasks and runs independent tasks in parallel.
 6. **Retry** — If a task fails, retry it. The stale branch is removed and the task starts fresh.
 
 Plans are archived as markdown files in `.ogcode/archives/` once all tasks are completed.
