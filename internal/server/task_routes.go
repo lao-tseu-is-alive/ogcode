@@ -253,6 +253,8 @@ func (s *Server) executeTask(t *task.Task, p *plan.Plan) error {
 
 	// Resolve the base branch: if this task depends on exactly one predecessor,
 	// branch from that task's branch so PRs stack correctly.
+	// Read the dependency branch name from the DB before acquiring gitMu so we
+	// don't hold the lock longer than necessary.
 	baseBranch := ""
 	if len(t.Dependencies) > 0 {
 		dep, depErr := s.taskStore.Get(t.Dependencies[0])
@@ -260,19 +262,29 @@ func (s *Server) executeTask(t *task.Task, p *plan.Plan) error {
 			return fmt.Errorf("get dependency task: %w", depErr)
 		}
 		if dep != nil && dep.BranchName != "" {
-			if err := git.EnsureLocalBranch(s.dir, dep.BranchName); err != nil {
-				slog.Warn("could not ensure local dependency branch, falling back to HEAD",
-					"dep", dep.ID, "branch", dep.BranchName, "err", err)
-			} else {
-				baseBranch = dep.BranchName
-			}
+			baseBranch = dep.BranchName
 		}
 	}
 
+	// Serialize repo-level git operations. git worktree add/prune/branch are
+	// not safe under concurrent access — they write to .git/worktrees/ and
+	// .git/config without holding git's own lock for the full sequence.
+	s.gitMu.Lock()
+	// If we have a dependency branch, make sure it exists locally while we
+	// hold the lock (before the prior task's cleanup goroutine can delete it).
+	if baseBranch != "" {
+		if err := git.EnsureLocalBranch(s.dir, baseBranch); err != nil {
+			slog.Warn("could not ensure local dependency branch, falling back to HEAD",
+				"branch", baseBranch, "err", err)
+			baseBranch = ""
+		}
+	}
 	slug := git.Slugify(t.Title)
-	wt, err := git.CreateTaskWorktree(s.dir, t.ID, slug, baseBranch)
-	if err != nil {
-		return fmt.Errorf("create worktree: %w", err)
+	wt, wtErr := git.CreateTaskWorktree(s.dir, t.ID, slug, baseBranch)
+	s.gitMu.Unlock()
+
+	if wtErr != nil {
+		return fmt.Errorf("create worktree: %w", wtErr)
 	}
 
 	sess := &session.Session{
@@ -289,18 +301,26 @@ func (s *Server) executeTask(t *task.Task, p *plan.Plan) error {
 		sess.Model = p.Model
 	}
 	if err := s.store.Create(sess); err != nil {
+		s.gitMu.Lock()
 		_ = git.RemoveTaskWorktreeKeepBranch(s.dir, wt.BranchName)
+		s.gitMu.Unlock()
 		return fmt.Errorf("create session: %w", err)
 	}
 
 	// Atomic DB claim — only one goroutine wins when auto-start races with itself.
 	claimed, err := s.taskStore.Claim(t.ID, string(sess.ID), wt.BranchName, wt.Path)
 	if err != nil {
+		s.gitMu.Lock()
 		_ = git.RemoveTaskWorktreeKeepBranch(s.dir, wt.BranchName)
+		s.gitMu.Unlock()
+		_ = s.store.Delete(sess.ID)
 		return fmt.Errorf("claim task: %w", err)
 	}
 	if !claimed {
+		s.gitMu.Lock()
 		_ = git.RemoveTaskWorktreeKeepBranch(s.dir, wt.BranchName)
+		s.gitMu.Unlock()
+		_ = s.store.Delete(sess.ID)
 		slog.Info("task already claimed by another goroutine, skipping", "task", t.ID)
 		return fmt.Errorf("task already started")
 	}
@@ -457,13 +477,18 @@ func (s *Server) completeTaskWithPR(t *task.Task) {
 	}
 
 	// Remove worktree. Keep the branch if not pushed (work stays accessible locally).
+	// Run in a goroutine to avoid blocking the completion path, but serialize
+	// through gitMu so it doesn't race with concurrent worktree-add calls.
 	if t.WorktreePath != "" {
+		branchName := t.BranchName
 		go func() {
+			s.gitMu.Lock()
+			defer s.gitMu.Unlock()
 			var err error
 			if pushed {
-				err = git.RemoveTaskWorktree(s.dir, t.BranchName)
+				err = git.RemoveTaskWorktree(s.dir, branchName)
 			} else {
-				err = git.RemoveTaskWorktreeKeepBranch(s.dir, t.BranchName)
+				err = git.RemoveTaskWorktreeKeepBranch(s.dir, branchName)
 			}
 			if err != nil {
 				slog.Warn("remove worktree", "task", t.ID, "err", err)
@@ -506,6 +531,13 @@ func (s *Server) autoCompleteTask(t *task.Task) {
 	t.Status = task.StatusCompleted
 	t.UpdatedAt = task.Now()
 
+	// Start dependent tasks BEFORE removing the worktree. This ensures
+	// that dependent tasks can still find this branch as a local ref when
+	// they call EnsureLocalBranch inside executeTask — even when no remote
+	// is configured. completeTaskWithPR's async removal goroutine will then
+	// block on gitMu until after the dependent's CreateTaskWorktree finishes.
+	s.autoStartDependentTasks(t.PlanID)
+
 	s.completeTaskWithPR(t)
 
 	fresh, err := s.taskStore.Get(t.ID)
@@ -514,7 +546,6 @@ func (s *Server) autoCompleteTask(t *task.Task) {
 	}
 	s.bus.Publish("task.completed", t)
 
-	go s.autoStartDependentTasks(t.PlanID)
 	go s.tryArchivePlan(t.PlanID)
 }
 

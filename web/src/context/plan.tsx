@@ -307,12 +307,14 @@ export const PlanProvider: ParentComponent = (props) => {
   async function lockPlan() {
     const plan = activePlan();
     if (!plan) return;
+    setLoadingPlanId(plan.id);
     try {
       const updated = await lockPlanAPI(plan.id);
       setActivePlan(updated);
       stopFastPoll();
       setLoadingPlanId('');
     } catch (e) {
+      setLoadingPlanId('');
       console.error('lock plan failed:', e);
     }
   }
@@ -512,12 +514,13 @@ export const PlanProvider: ParentComponent = (props) => {
 
     if (last.type === 'plan.breakdown.completed') {
       const evtPlanId = last.properties?.planId;
+      const warnings: string = last.properties?.warnings || '';
       if (evtPlanId === plan.id) {
         setActivePlan((prev) => {
           if (!prev || prev.breakdownStatus === 'completed') return prev;
-          return { ...prev, breakdownStatus: 'completed' };
+          return { ...prev, breakdownStatus: 'completed', breakdownWarnings: warnings };
         });
-        setPlans((prev) => prev.map((p) => (p.id === evtPlanId ? { ...p, breakdownStatus: 'completed' as const } : p)));
+        setPlans((prev) => prev.map((p) => (p.id === evtPlanId ? { ...p, breakdownStatus: 'completed' as const, breakdownWarnings: warnings } : p)));
         // Reload tasks for this plan
         listTasks(plan.id).then((t) => {
           if (activePlan()?.id === plan.id) setTasks(t || []);
@@ -529,12 +532,13 @@ export const PlanProvider: ParentComponent = (props) => {
 
     if (last.type === 'plan.breakdown.failed') {
       const evtPlanId = last.properties?.planId;
+      const reason: string = last.properties?.reason || '';
       if (evtPlanId === plan.id) {
         setActivePlan((prev) => {
           if (!prev || prev.breakdownStatus === 'failed') return prev;
-          return { ...prev, breakdownStatus: 'failed' };
+          return { ...prev, breakdownStatus: 'failed', breakdownWarnings: reason };
         });
-        setPlans((prev) => prev.map((p) => (p.id === evtPlanId ? { ...p, breakdownStatus: 'failed' as const } : p)));
+        setPlans((prev) => prev.map((p) => (p.id === evtPlanId ? { ...p, breakdownStatus: 'failed' as const, breakdownWarnings: reason } : p)));
       }
       return;
     }
@@ -573,7 +577,7 @@ export const PlanProvider: ParentComponent = (props) => {
       } catch (e) {
         console.error('SSE-triggered plan refresh failed:', e);
       }
-    }, 50);
+    }, 150);
   }));
 
   // Refresh plan metadata (title, etc.) after loop.done — kept in a separate
@@ -605,7 +609,7 @@ export const PlanProvider: ParentComponent = (props) => {
     });
   }));
 
-  // On SSE reconnect, refresh active plan (messages + plan metadata for title)
+  // On SSE reconnect, refresh active plan (messages + plan metadata + tasks)
   createEffect(on(server.connected, (isConnected) => {
     if (!isConnected) return;
     const plan = activePlan();
@@ -613,11 +617,13 @@ export const PlanProvider: ParentComponent = (props) => {
     Promise.all([
       getPlanMessages(plan.id),
       getPlan(plan.id),
-    ]).then(([msgs, updatedPlan]) => {
+      listTasks(plan.id),
+    ]).then(([msgs, updatedPlan, updatedTasks]) => {
       if (activePlan()?.id !== plan.id) return;
       setMessages(msgs);
       setActivePlan((prev) => prev ? { ...prev, ...updatedPlan } : prev);
       setPlans((prev) => prev.map((p) => (p.id === updatedPlan.id ? { ...p, ...updatedPlan } : p)));
+      setTasks(updatedTasks || []);
       lastSSEUpdate = Date.now();
     }).catch(() => {});
   }));

@@ -623,7 +623,7 @@ export const SessionProvider: ParentComponent = (props) => {
       } catch (e) {
         console.error('SSE-triggered refresh failed:', e);
       }
-    }, 50);
+    }, 150);
   }));
 
   // Handle session.updated SSE events (e.g. auto-generated title)

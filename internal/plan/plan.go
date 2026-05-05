@@ -27,6 +27,7 @@ type Plan struct {
 	Model             string `json:"model,omitempty"`
 	CompactionSummary string `json:"compactionSummary,omitempty"`
 	BreakdownStatus    string `json:"breakdownStatus,omitempty"`    // "" | "in_progress" | "completed" | "failed"
+	BreakdownWarnings  string `json:"breakdownWarnings,omitempty"`  // non-empty when some tasks failed to create
 	AllTasksCompleted  bool   `json:"allTasksCompleted,omitempty"`  // true when locked and all tasks done
 	CreatedAt          int64  `json:"createdAt"`
 	UpdatedAt          int64  `json:"updatedAt"`

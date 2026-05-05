@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from '@solidjs/router';
+import { useParams, useNavigate, useLocation } from '@solidjs/router';
 import { useSession } from '../context/session';
 import { useServer } from '../context/server';
 import { createEffect, on, Show } from 'solid-js';
@@ -32,6 +32,7 @@ function ChatContent() {
   const server = useServer();
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   createEffect(on(() => params.id, (id) => {
     if (id) {
@@ -91,7 +92,7 @@ function ChatContent() {
             </Show>
             <button
               type="button"
-              onClick={() => navigate('/settings')}
+              onClick={() => navigate('/settings', { state: { from: location.pathname } })}
               class="w-7 h-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-[color:var(--bg-hover)] transition"
               title="Settings"
             >

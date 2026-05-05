@@ -103,6 +103,10 @@ func removeWorktreeDir(repoDir string, branchName string) {
 		_ = os.RemoveAll(worktreeDir)
 		_ = runGit(repoDir, "worktree", "prune")
 	}
+	// Clean up any empty parent directories left by the branch name's path
+	// separator (e.g., ".ogcode/worktrees/task/" after all task/ worktrees
+	// are removed). Ignore errors — the directory may not be empty yet.
+	_ = os.Remove(filepath.Dir(worktreeDir))
 }
 
 // PullRequest holds the result of creating a pull request.
@@ -245,6 +249,8 @@ func Slugify(title string) string {
 // ensureRepoHasCommits checks whether the repo has any commits, and creates an
 // initial empty commit if not. This is required because git branch and git
 // worktree add both need a valid HEAD commit to branch from.
+// Callers must hold their git serialization lock before calling this function
+// so that concurrent goroutines do not both attempt to create the first commit.
 func ensureRepoHasCommits(repoDir string) error {
 	out, err := runGitOutput(repoDir, "rev-list", "--count", "HEAD")
 	if err == nil && strings.TrimSpace(out) != "0" {
@@ -254,6 +260,11 @@ func ensureRepoHasCommits(repoDir string) error {
 		"commit", "--allow-empty", "-m", "Initial commit")
 	cmd.Dir = repoDir
 	if out, err := cmd.CombinedOutput(); err != nil {
+		// A concurrent goroutine may have won the race and already created the
+		// commit. Re-check before propagating the error.
+		if out2, err2 := runGitOutput(repoDir, "rev-list", "--count", "HEAD"); err2 == nil && strings.TrimSpace(out2) != "0" {
+			return nil
+		}
 		return fmt.Errorf("create initial commit: %s: %w", string(out), err)
 	}
 	return nil

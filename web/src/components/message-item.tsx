@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, onMount } from 'solid-js';
+import { Index, Show, createEffect, createSignal, onMount } from 'solid-js';
 import type { MessageWithParts, Part, TextPartData, ToolPartData, ReasoningPartData } from '../api/client';
 import MarkdownContent from './markdown-content';
 
@@ -322,9 +322,9 @@ function UserMessage(props: { msg: MessageWithParts }) {
             }}
             style={{ background: 'linear-gradient(var(--tint), var(--tint)) var(--bg-elevated)', ...(!expanded() ? { 'max-height': `${CLAMP_HEIGHT}px` } : {}) }}
           >
-            <For each={props.msg.parts}>
-              {(part) => <PartDisplay part={part} />}
-            </For>
+            <Index each={props.msg.parts}>
+              {(part) => <PartDisplay part={part()} />}
+            </Index>
           </div>
           {/* Bottom fade to indicate truncated content */}
           <Show when={!expanded() && overflow()}>
@@ -386,9 +386,9 @@ function AssistantMessage(props: { msg: MessageWithParts }) {
         </div>
 
         <div class="space-y-1 min-w-0 overflow-hidden">
-          <For each={props.msg.parts}>
-            {(part) => <PartDisplay part={part} />}
-          </For>
+          <Index each={props.msg.parts}>
+            {(part) => <PartDisplay part={part()} />}
+          </Index>
 
           <Show when={props.msg.parts.length === 0 && props.msg.info.finish && !props.msg.info.error}>
             <div class="text-[13px] text-zinc-500 italic">No response</div>

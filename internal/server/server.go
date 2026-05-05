@@ -56,6 +56,10 @@ type Server struct {
 	running      map[session.SessionID]context.CancelFunc
 	runningToken map[session.SessionID]uint64 // prevents goroutine from deleting a newer cancel
 	nextToken    uint64
+
+	// gitMu serializes all repo-level git operations (worktree add/remove/prune,
+	// branch creation) to prevent concurrent writes from corrupting .git metadata.
+	gitMu sync.Mutex
 }
 
 func New(port int, dir string, mode ServerMode) *Server {

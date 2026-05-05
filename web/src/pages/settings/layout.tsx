@@ -1,6 +1,5 @@
 import { useNavigate, useLocation, type RouteSectionProps } from '@solidjs/router';
-import { For, Show, createEffect } from 'solid-js';
-import { createSignal } from 'solid-js';
+import { For, Show } from 'solid-js';
 import { useServer } from '../../context/server';
 
 // Module-level store so previous route survives SettingsShell remounts.
@@ -46,30 +45,18 @@ function SettingsShell(props: { children?: any }) {
   const navigate = useNavigate();
   const location = useLocation();
   const server = useServer();
-  const [previousRoute, setPreviousRoute] = createSignal<string>(storedPreviousRoute);
 
-  createEffect(() => {
-    const pathname = location.pathname;
-    if (!pathname.startsWith('/settings')) {
-      storedPreviousRoute = pathname;
-      setPreviousRoute(pathname);
-    }
-  });
+  // Read the route we came from (passed as router state by each navigate('/settings') call site).
+  const from = location.state?.from;
+  if (typeof from === 'string' && !from.startsWith('/settings')) {
+    storedPreviousRoute = from;
+  }
 
-  const goBack = () => {
-    const previous = previousRoute();
-    if (previous && previous !== location.pathname) {
-      navigate(previous);
-    } else if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      navigate('/plan');
-    }
-  };
+  const goBack = () => navigate(storedPreviousRoute);
 
   return (
     <div class="flex h-screen w-full">
-      <aside class="w-[220px] shrink-0 border-r border-[color:var(--border-subtle)] flex flex-col" style={{ background: 'linear-gradient(var(--tint), var(--tint)) var(--bg-surface)' }}>
+      <aside class="w-[260px] shrink-0 border-r border-[color:var(--border-subtle)] flex flex-col" style={{ background: 'linear-gradient(var(--tint), var(--tint)) var(--bg-surface)' }}>
         {/* Header: back + title */}
         <div class="h-12 shrink-0 px-3 flex items-center gap-2">
           <button

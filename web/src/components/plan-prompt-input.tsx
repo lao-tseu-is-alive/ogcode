@@ -101,7 +101,7 @@ export default function PlanPromptInput() {
               </span>
             </Show>
 
-            <Show when={!isLocked() && plan.activePlan()?.status === 'open' && plan.messages().length > 0}>
+            <Show when={!isRunning() && !isLocked() && plan.activePlan()?.status === 'open' && plan.messages().length > 0}>
               <button
                 type="button"
                 onClick={() => plan.lockPlan()}

@@ -1,4 +1,4 @@
-import { For, Show, createEffect, on, onMount, onCleanup, createSignal } from 'solid-js';
+import { Index, Show, createEffect, on, onMount, onCleanup, createSignal } from 'solid-js';
 import { usePlan } from '../context/plan';
 import MessageItem from './message-item';
 import { saveScroll, getScroll } from '../lib/scroll-memory';
@@ -111,18 +111,6 @@ export default function PlanMessageList() {
     },
   ));
 
-  createEffect(on(
-    () => plan.loading(),
-    (isStreaming) => {
-      if (!isStreaming || !stickToBottom()) return;
-      const id = setInterval(() => {
-        if (stickToBottom() && bottomAnchor) {
-          bottomAnchor.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 500);
-      onCleanup(() => clearInterval(id));
-    },
-  ));
 
   const scrollToBottom = () => {
     if (bottomAnchor) bottomAnchor.scrollIntoView({ behavior: 'smooth' });
@@ -146,11 +134,11 @@ export default function PlanMessageList() {
             </div>
           </Show>
 
-          <For each={visibleMessages()}>
+          <Index each={visibleMessages()}>
             {(msg) => (
               <>
-                <MessageItem msg={msg} />
-                <Show when={msg.info.role === 'assistant' && msg.info.error}>
+                <MessageItem msg={msg()} />
+                <Show when={msg().info.role === 'assistant' && msg().info.error}>
                   <div class="flex gap-3">
                     <div class="w-7 h-7 shrink-0 rounded-lg bg-red-500/20 border border-red-500/30 flex items-center justify-center">
                       <svg class="w-3.5 h-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
@@ -159,13 +147,13 @@ export default function PlanMessageList() {
                     </div>
                     <div class="flex-1 min-w-0 py-1">
                       <p class="text-[13px] text-red-400 font-medium">Agent error</p>
-                      <p class="text-[12px] text-red-400/70 mt-0.5 break-all">{msg.info.error}</p>
+                      <p class="text-[12px] text-red-400/70 mt-0.5 break-all">{msg().info.error}</p>
                     </div>
                   </div>
                 </Show>
               </>
             )}
-          </For>
+          </Index>
 
           <Show when={plan.loading()}>
             <div class="flex gap-3 animate-fade-in">

@@ -1,4 +1,4 @@
-import { useNavigate } from '@solidjs/router';
+import { useNavigate, useLocation } from '@solidjs/router';
 import { usePlan } from '../context/plan';
 import { useServer } from '../context/server';
 import type { Plan } from '../api/client';
@@ -31,6 +31,7 @@ export default function PlanSidebar() {
   const plan = usePlan();
   const server = useServer();
   const navigate = useNavigate();
+  const location = useLocation();
   const [query, setQuery] = createSignal('');
   const [collapsed, setCollapsed] = createSignal(false);
   const [archiveFilter, setArchiveFilter] = createSignal<'active' | 'archived'>('active');
@@ -99,7 +100,7 @@ export default function PlanSidebar() {
           </button>
           <div class="flex-1" />
           <button
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/settings', { state: { from: location.pathname } })}
             title="Settings"
             class="w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)] flex items-center justify-center transition"
           >
@@ -264,7 +265,7 @@ export default function PlanSidebar() {
       <div class="border-t border-[color:var(--border-subtle)] h-10 px-2 flex items-center gap-1">
         <button
           type="button"
-          onClick={() => navigate('/settings')}
+          onClick={() => navigate('/settings', { state: { from: location.pathname } })}
           title="Settings"
           class="w-7 h-7 rounded-md text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)] flex items-center justify-center transition shrink-0"
         >

@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from '@solidjs/router';
+import { useParams, useNavigate, useLocation } from '@solidjs/router';
 import { usePlan } from '../context/plan';
 import { useServer } from '../context/server';
 import { downloadPlanExport } from '../api/client';
@@ -26,6 +26,7 @@ function PlanDetailContent() {
   const server = useServer();
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = createSignal<'conversation' | 'tasks'>('conversation');
 
   createEffect(on(() => params.id, (id) => {
@@ -113,7 +114,7 @@ function PlanDetailContent() {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/settings')}
+              onClick={() => navigate('/settings', { state: { from: location.pathname } })}
               class="w-7 h-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-[color:var(--bg-hover)] transition"
               title="Settings"
             >
@@ -124,6 +125,23 @@ function PlanDetailContent() {
             <NotificationBell />
           </div>
         </header>
+
+        {/* Breakdown warning / failure reason banner */}
+        <Show when={plan.activePlan()?.breakdownWarnings}>
+          {(msg) => {
+            const isFailed = () => plan.activePlan()?.breakdownStatus === 'failed';
+            return (
+              <div class={`shrink-0 px-4 py-2 border-b flex items-center gap-2 ${isFailed() ? 'bg-red-500/10 border-red-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
+                <svg class={`w-4 h-4 shrink-0 ${isFailed() ? 'text-red-400' : 'text-amber-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                <span class={`text-[12px] ${isFailed() ? 'text-red-300' : 'text-amber-300'}`}>
+                  <strong>{isFailed() ? 'Breakdown failed:' : 'Breakdown warning:'}</strong> {msg()}
+                </span>
+              </div>
+            );
+          }}
+        </Show>
 
         {/* Content: two-panel on lg, tabbed on mobile */}
         <div class="flex-1 flex min-h-0">

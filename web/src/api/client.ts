@@ -251,6 +251,7 @@ export interface Plan {
   model?: string;
   compactionSummary?: string;
   breakdownStatus?: '' | 'in_progress' | 'completed' | 'failed';
+  breakdownWarnings?: string;
   allTasksCompleted?: boolean;
   createdAt: number;
   updatedAt: number;

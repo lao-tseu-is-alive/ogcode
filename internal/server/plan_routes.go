@@ -425,14 +425,21 @@ func (s *Server) runBreakdown(p *plan.Plan) {
 
 	s.bus.Publish("message.updated", userMsg)
 
-	// Run the breakdown agent loop
-	ctx, cancel := context.WithCancel(context.Background())
+	// Run the breakdown agent loop with a hard timeout so a stuck agent cannot
+	// leave the plan permanently in "in_progress" state.
+	const breakdownTimeout = 10 * time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), breakdownTimeout)
 	defer cancel()
 
 	slog.Info("starting breakdown agent loop", "plan", p.ID, "session", breakdownSession.ID)
 	if err := s.loopRunner.RunLoop(ctx, breakdownSession.ID, "breakdown"); err != nil {
-		slog.Error("breakdown agent loop error", "plan", p.ID, "err", err)
-		s.failBreakdown(p, "breakdown agent loop failed")
+		if ctx.Err() == context.DeadlineExceeded {
+			slog.Error("breakdown agent loop timed out", "plan", p.ID, "timeout", breakdownTimeout)
+			s.failBreakdown(p, fmt.Sprintf("breakdown timed out after %s — try locking the plan again", breakdownTimeout))
+		} else {
+			slog.Error("breakdown agent loop error", "plan", p.ID, "err", err)
+			s.failBreakdown(p, "breakdown agent loop failed")
+		}
 		return
 	}
 
@@ -501,6 +508,13 @@ func (s *Server) runBreakdown(p *plan.Plan) {
 
 	slog.Info("parsed breakdown tasks", "plan", p.ID, "count", len(taskDefs))
 
+	// Detect circular dependencies before creating any task records.
+	if breakdownHasCycle(taskDefs) {
+		slog.Error("circular dependency detected in breakdown", "plan", p.ID)
+		s.failBreakdown(p, "circular dependency detected in task breakdown — the AI-generated task graph contains a cycle and cannot be executed")
+		return
+	}
+
 	// Create task records.
 	// Pre-allocate all task IDs so dependency index resolution uses stable IDs
 	// even when a task creation fails (which would shift slice indices).
@@ -518,6 +532,9 @@ func (s *Server) runBreakdown(p *plan.Plan) {
 		for _, depIdx := range td.Dependencies {
 			if depIdx >= 0 && depIdx < len(taskIDs) {
 				deps = append(deps, taskIDs[depIdx])
+			} else {
+				slog.Warn("breakdown: dependency index out of range, skipping",
+					"plan", p.ID, "task", td.Title, "depIdx", depIdx, "totalTasks", len(taskIDs))
 			}
 		}
 		if deps == nil {
@@ -561,26 +578,64 @@ func (s *Server) runBreakdown(p *plan.Plan) {
 		s.failBreakdown(p, fmt.Sprintf("%d task(s) failed to create", failures))
 		return
 	}
+
+	warningMsg := ""
+	if failures > 0 {
+		warningMsg = fmt.Sprintf("%d of %d task(s) failed to create and were skipped", failures, len(taskDefs))
+		slog.Warn("breakdown completed with partial failures", "plan", p.ID, "created", len(createdTasks), "failures", failures)
+	}
+
 	p.BreakdownStatus = plan.BreakdownCompleted
+	p.BreakdownWarnings = warningMsg
 	p.UpdatedAt = plan.Now()
 	if err := s.planStore.Update(p); err != nil {
 		slog.Error("update plan breakdown completed", "plan", p.ID, "err", err)
 	}
 
 	eventProps := map[string]any{
-		"planId": p.ID,
-		"count":  len(createdTasks),
-	}
-	if failures > 0 {
-		eventProps["warnings"] = fmt.Sprintf("%d task(s) failed to create", failures)
+		"planId":   p.ID,
+		"count":    len(createdTasks),
+		"warnings": warningMsg,
 	}
 	s.bus.Publish("plan.breakdown.completed", eventProps)
 	slog.Info("breakdown completed", "plan", p.ID, "tasks", len(createdTasks), "failures", failures)
 }
 
+// breakdownHasCycle returns true if the dependency graph described by taskDefs contains a cycle.
+// Dependencies are expressed as 0-based indices into the taskDefs slice.
+func breakdownHasCycle(taskDefs []agent.TaskDefinition) bool {
+	n := len(taskDefs)
+	// 0 = unvisited, 1 = in current DFS stack, 2 = fully processed
+	state := make([]int, n)
+	var dfs func(i int) bool
+	dfs = func(i int) bool {
+		state[i] = 1
+		for _, dep := range taskDefs[i].Dependencies {
+			if dep < 0 || dep >= n {
+				continue
+			}
+			if state[dep] == 1 {
+				return true // back-edge → cycle
+			}
+			if state[dep] == 0 && dfs(dep) {
+				return true
+			}
+		}
+		state[i] = 2
+		return false
+	}
+	for i := range taskDefs {
+		if state[i] == 0 && dfs(i) {
+			return true
+		}
+	}
+	return false
+}
+
 // failBreakdown sets the plan's breakdown status to failed and publishes an event.
 func (s *Server) failBreakdown(p *plan.Plan, reason string) {
 	p.BreakdownStatus = plan.BreakdownFailed
+	p.BreakdownWarnings = ""
 	p.UpdatedAt = plan.Now()
 	if err := s.planStore.Update(p); err != nil {
 		slog.Error("update plan breakdown failed status", "plan", p.ID, "err", err)

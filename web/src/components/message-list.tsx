@@ -1,4 +1,4 @@
-import { For, Show, createEffect, on, onMount, onCleanup, createSignal } from 'solid-js';
+import { Index, Show, createEffect, on, onMount, onCleanup, createSignal } from 'solid-js';
 import { useSession } from '../context/session';
 import MessageItem from './message-item';
 import { saveScroll, getScroll } from '../lib/scroll-memory';
@@ -129,22 +129,6 @@ export default function MessageList() {
     },
   ));
 
-  // Also re-check stickiness when streaming is active: periodically
-  // re-scroll to bottom if we're still stuck. This catches cases where
-  // the content height changes between the effect trigger and the DOM update.
-  createEffect(on(
-    () => session.loading() || session.hasRunningTools(),
-    (isStreaming) => {
-      if (!isStreaming || !stickToBottom()) return;
-      // During streaming, scroll to bottom every 500ms if stuck
-      const id = setInterval(() => {
-        if (stickToBottom() && bottomAnchor) {
-          bottomAnchor.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 500);
-      onCleanup(() => clearInterval(id));
-    },
-  ));
 
   const scrollToBottom = () => {
     if (bottomAnchor) {
@@ -170,9 +154,9 @@ export default function MessageList() {
             </div>
           </Show>
 
-          <For each={visibleMessages()}>
-            {(msg) => <MessageItem msg={msg} />}
-          </For>
+          <Index each={visibleMessages()}>
+            {(msg) => <MessageItem msg={msg()} />}
+          </Index>
 
           {/* Thinking indicator */}
           <Show when={session.loading() || session.hasRunningTools()}>
