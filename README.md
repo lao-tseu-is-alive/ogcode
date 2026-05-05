@@ -6,7 +6,7 @@
 
 An agentic coding assistant with a web UI, written in Go.
 
-Ogcode acts as a pair programmer that actually codes with you. It doesn't just suggest snippets; it understands your entire codebase, plans complex features, and executes them by creating branches and PRs automatically. Whether you're hunting a bug or building a zero-to-one feature, Ogcode handles the heavy lifting so you can focus on the architecture.
+Ogcode acts as a pair programmer that actually codes with you. It doesn't just suggest snippets; it understands your entire codebase, plans complex features, and executes them by creating branches and PRs automatically. It can even run multiple tasks in parallel across different branches, allowing you to ship entire features in a fraction of the time. Whether you're hunting a bug or building a zero-to-one feature, Ogcode handles the heavy lifting so you can focus on the architecture.
 
 Ogcode gives you two ways to work with AI on your codebase:
 
