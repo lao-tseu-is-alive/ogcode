@@ -47,9 +47,11 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           BRANCH="prasenjeet-symon-ogcode-${VERSION}"
           REPO="https://github.com/prasenjeet-symon/winget-pkgs"
-          UPSTREAM="https://github.com/microsoft/winget-pkgs"
 
-          # Clone the fork
+          # Make gh CLI available and configure git to use it for auth
+          gh auth setup-git
+
+          # Clone the fork (authenticated via gh auth)
           git clone --depth 1 "${REPO}" winget-pkgs-work
           cd winget-pkgs-work
 
@@ -66,7 +68,7 @@ jobs:
           cp -r ogcode-src/manifests/p/prasenjeet-symon/ogcode/* "manifests/p/prasenjeet-symon/ogcode/"
           rm -rf ogcode-src
 
-          # Commit and push
+          # Commit and push (authenticated via gh credential helper)
           git add .
           git commit -m "Update prasenjeet-symon.ogcode to ${VERSION}" || exit 0
           git push origin "${BRANCH}" --force
