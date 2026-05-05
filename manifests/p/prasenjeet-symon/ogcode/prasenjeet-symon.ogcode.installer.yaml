@@ -12,7 +12,7 @@ Installers:
       - RelativeFilePath: ogcode.exe
         PortableCommandAlias: ogcode
     InstallerUrl: https://github.com/prasenjeet-symon/ogcode/releases/download/v0.1.5/ogcode_0.1.5_windows_arm64.zip
-    InstallerSha256: ab7edef891cd6dfa95ae9f24fbf811557df630177c28b686eeb841254bb7d5d5
+    InstallerSha256: 7232fafba22c605a1dd9d74e404699e2b375cc8b9de9d22cca1b28dfa12202b0
     UpgradeBehavior: uninstallPrevious
   - Architecture: x64
     NestedInstallerType: portable
@@ -20,7 +20,7 @@ Installers:
       - RelativeFilePath: ogcode.exe
         PortableCommandAlias: ogcode
     InstallerUrl: https://github.com/prasenjeet-symon/ogcode/releases/download/v0.1.5/ogcode_0.1.5_windows_x86_64.zip
-    InstallerSha256: b87448722059fb21f9fe377b2ab0d497186d770daf6d6c05b3564e28ad802e59
+    InstallerSha256: 201efe4fe4489b5b0ac2cd05ad97d0a864308e21525f1c42be2ddfd0aa7ca513
     UpgradeBehavior: uninstallPrevious
 ManifestType: installer
 ManifestVersion: 1.12.0
