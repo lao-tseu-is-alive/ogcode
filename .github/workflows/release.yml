@@ -62,6 +62,7 @@ jobs:
 
           # Copy updated manifests from the source repo (GoReleaser committed them to main)
           git clone --depth 1 "https://github.com/prasenjeet-symon/ogcode" ogcode-src
+          mkdir -p "manifests/p/prasenjeet-symon/ogcode/"
           cp -r ogcode-src/manifests/p/prasenjeet-symon/ogcode/* "manifests/p/prasenjeet-symon/ogcode/"
           rm -rf ogcode-src
 
@@ -74,7 +75,6 @@ jobs:
           gh pr create \
             --repo microsoft/winget-pkgs \
             --title "New version: prasenjeet-symon.ogcode version ${VERSION}" \
-            --body "Automated PR created by GoReleaser." \
+            --body "Automated PR created by GoReleaser for ogcode v${VERSION}." \
             --head "prasenjeet-symon:${BRANCH}" \
-            --base master \
-            --label "New-Package-Version"
+            --base master
