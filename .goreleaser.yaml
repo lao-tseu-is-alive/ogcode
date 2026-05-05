@@ -57,8 +57,11 @@ winget:
   - name: ogcode
     publisher: prasenjeet-symon
     license: MIT
+    license_url: "https://github.com/prasenjeet-symon/ogcode/blob/main/LICENSE"
     short_description: "Agentic coding assistant with web UI"
+    description: "ogcode is an agentic coding assistant with a web UI that helps you write, review, and manage code."
     homepage: "https://github.com/prasenjeet-symon/ogcode"
+    publisher_url: "https://github.com/prasenjeet-symon"
     repository:
       owner: prasenjeet-symon
       name: ogcode
