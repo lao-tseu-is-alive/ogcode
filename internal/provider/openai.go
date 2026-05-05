@@ -100,7 +100,7 @@ func isCloudURL(baseURL string) bool {
 	if strings.Contains(u, "localhost") || strings.Contains(u, "127.0.0.1") || strings.Contains(u, "0.0.0.0") {
 		return false
 	}
-	if strings.Contains(u, "://10.") || strings.Contains(u, "://192.168.") || strings.Contains(u, "://172.16.") || strings.Contains(u, "://172.17.") || strings.Contains(u, "://172.18.") || strings.Contains(u, "://172.19.") || strings.Contains(u, "://172.2") || strings.Contains(u, "://172.30.") || strings.Contains(u, "://172.31.") {
+	if strings.Contains(u, "://10.") || strings.Contains(u, "://192.168.") || strings.Contains(u, "://172.16.") || strings.Contains(u, "://172.17.") || strings.Contains(u, "://172.18.") || strings.Contains(u, "://172.19.") || strings.Contains(u, "://172.20.") || strings.Contains(u, "://172.21.") || strings.Contains(u, "://172.22.") || strings.Contains(u, "://172.23.") || strings.Contains(u, "://172.24.") || strings.Contains(u, "://172.25.") || strings.Contains(u, "://172.26.") || strings.Contains(u, "://172.27.") || strings.Contains(u, "://172.28.") || strings.Contains(u, "://172.29.") || strings.Contains(u, "://172.30.") || strings.Contains(u, "://172.31.") {
 		return false
 	}
 	return true
