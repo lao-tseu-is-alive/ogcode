@@ -1,6 +1,6 @@
 import { For } from 'solid-js';
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.1.5';
 
 interface Highlight {
   title: string;
