@@ -70,9 +70,11 @@ func NewOllamaProvider() *OpenAIProvider {
 	apiKey := os.Getenv("OLLAMA_API_KEY")
 	model := os.Getenv("OLLAMA_MODEL")
 	if model == "" {
-		// Use a model that exists on both local and cloud Ollama.
-		// "qwen3" only exists locally; "qwen3-coder-next" exists on cloud too.
-		model = "qwen3-coder-next"
+		if isCloudURL(baseURL) {
+			model = "qwen3-coder-next"
+		} else {
+			model = "qwen3"
+		}
 	}
 	return &OpenAIProvider{
 		id:      "ollama",
@@ -86,6 +88,7 @@ func (p *OpenAIProvider) ID() string { return p.id }
 
 // RefreshModels clears the cached model list so the next call to Models()
 // will re-fetch from the endpoint (for cloud providers).
+// Not safe to call concurrently with Models().
 func (p *OpenAIProvider) RefreshModels() {
 	p.modelsMu.Lock()
 	p.cachedModels = nil
@@ -120,10 +123,10 @@ type oaiModelEntry struct {
 // fetchDynamicModels fetches the model list from /v1/models for cloud providers.
 // Returns nil if fetching fails (use static fallback). Returns an empty non-nil
 // slice if the endpoint returns an empty list (cached to avoid re-fetching).
-func (p *OpenAIProvider) fetchDynamicModels() []ModelInfo {
+func (p *OpenAIProvider) fetchDynamicModels(ctx context.Context) []ModelInfo {
 	url := strings.TrimRight(p.baseURL, "/") + "/models"
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		slog.Warn("failed to create models request", "provider", p.id, "err", err)
 		return nil
@@ -135,9 +138,6 @@ func (p *OpenAIProvider) fetchDynamicModels() []ModelInfo {
 			token = "Bearer " + token
 		}
 		req.Header.Set("Authorization", token)
-		if p.id == "ollama" {
-			req.Header.Set("X-Ollama-Key", p.apiKey)
-		}
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -191,23 +191,14 @@ func (p *OpenAIProvider) Models() []ModelInfo {
 	} else if p.id == "ollama" {
 		// For cloud Ollama endpoints, fetch models dynamically from /v1/models
 		if isCloudURL(p.baseURL) {
-			p.modelsMu.Lock()
-			cached := p.cachedModels
-			p.modelsMu.Unlock()
-			if cached != nil {
-				// Already fetched (may be empty slice for no models)
-				list = cached
-			} else {
-				// Try fetching from the endpoint; fall back to static cloud list
-				fetched := p.fetchDynamicModels()
+			p.modelsOnce.Do(func() {
+				fetched := p.fetchDynamicModels(context.Background())
+				p.modelsMu.Lock()
 				if fetched != nil {
-					list = fetched
-					p.modelsMu.Lock()
 					p.cachedModels = fetched
-					p.modelsMu.Unlock()
 				} else {
 					// Fallback: static list of known ollama.com cloud models
-					list = []ModelInfo{
+					p.cachedModels = []ModelInfo{
 						{ID: "glm-5.1", Name: "GLM-5.1", ProviderID: "ollama"},
 						{ID: "glm-5", Name: "GLM-5", ProviderID: "ollama"},
 						{ID: "kimi-k2.6", Name: "Kimi K2.6", ProviderID: "ollama"},
@@ -221,7 +212,11 @@ func (p *OpenAIProvider) Models() []ModelInfo {
 						{ID: "mistral-large-3", Name: "Mistral Large 3", ProviderID: "ollama"},
 					}
 				}
-			}
+				p.modelsMu.Unlock()
+			})
+			p.modelsMu.Lock()
+			list = p.cachedModels
+			p.modelsMu.Unlock()
 		} else {
 			// Local Ollama: use static list (covers both local and cloud model names)
 			list = []ModelInfo{
@@ -240,9 +235,12 @@ func (p *OpenAIProvider) Models() []ModelInfo {
 		}
 	} else {
 		list = []ModelInfo{
-			{ID: "gpt-5.2-chat", Name: "GPT-5.2 Chat", ProviderID: "openai"},
-			{ID: "gpt-5.1", Name: "GPT-5.1", ProviderID: "openai"},
-			{ID: "gpt-5-mini", Name: "GPT-5 Mini", ProviderID: "openai"},
+			{ID: "gpt-4o", Name: "GPT-4o", ProviderID: "openai"},
+			{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ProviderID: "openai"},
+			{ID: "o1", Name: "o1", ProviderID: "openai"},
+			{ID: "o1-mini", Name: "o1 Mini", ProviderID: "openai"},
+			{ID: "o3", Name: "o3", ProviderID: "openai"},
+			{ID: "o3-mini", Name: "o3 Mini", ProviderID: "openai"},
 			{ID: "o4-mini", Name: "o4 Mini", ProviderID: "openai"},
 		}
 	}
@@ -323,10 +321,8 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 		MaxTokens:   req.MaxTokens,
 	}
 	// stream_options.include_usage is supported by OpenAI, OpenRouter, and Ollama (v0.5+).
-	// We disable it for custom Ollama cloud endpoints as many proxies don't yet support it.
-	if p.id == "openai" || p.id == "openrouter" || (p.id == "ollama" && !isCloudURL(p.baseURL)) {
-		body.StreamOptions = &oaiStreamOptions{IncludeUsage: true}
-	}
+	// The final chunk will contain a usage object alongside an empty choices array.
+	body.StreamOptions = &oaiStreamOptions{IncludeUsage: true}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -347,9 +343,6 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 			token = "Bearer " + token
 		}
 		httpReq.Header.Set("Authorization", token)
-		if p.id == "ollama" {
-			httpReq.Header.Set("X-Ollama-Key", p.apiKey)
-		}
 	}
 	if p.id == "openrouter" {
 		httpReq.Header.Set("HTTP-Referer", "https://ogcode.xyz")

@@ -24,7 +24,7 @@ func NewAnthropicProvider() *AnthropicProvider {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	model := os.Getenv("ANTHROPIC_MODEL")
 	if model == "" {
-		model = "claude-sonnet-4-20250514"
+		model = "claude-sonnet-4-6"
 	}
 	return &AnthropicProvider{apiKey: apiKey, model: model}
 }
@@ -33,9 +33,11 @@ func (p *AnthropicProvider) ID() string { return "anthropic" }
 
 func (p *AnthropicProvider) Models() []ModelInfo {
 	all := []ModelInfo{
+		{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6", ProviderID: "anthropic"},
+		{ID: "claude-opus-4-7", Name: "Claude Opus 4.7", ProviderID: "anthropic"},
+		{ID: "claude-haiku-4-5-20251001", Name: "Claude Haiku 4.5", ProviderID: "anthropic"},
 		{ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", ProviderID: "anthropic"},
 		{ID: "claude-opus-4-20250514", Name: "Claude Opus 4", ProviderID: "anthropic"},
-		{ID: "claude-haiku-4-5-20251001", Name: "Claude Haiku 4.5", ProviderID: "anthropic"},
 	}
 	for i := range all {
 		if all[i].ID == p.model {
