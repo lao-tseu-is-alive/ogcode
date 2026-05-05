@@ -102,6 +102,14 @@ function TaskRow(props: { task: Task; onSelect: (t: Task) => void }) {
               PR #{t().prNumber}
             </a>
           </Show>
+          <Show when={t().status === 'completed' && !t().prUrl && t().prError}>
+            <span
+              title={t().prError}
+              class="text-[10px] text-amber-500 cursor-help"
+            >
+              No PR
+            </span>
+          </Show>
           <svg class="w-3 h-3 text-zinc-700 group-hover:text-zinc-500 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
           </svg>
@@ -280,6 +288,30 @@ export default function TaskBoard() {
               <div>
                 <p class="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-1">Branch</p>
                 <code class="text-[11px] font-mono text-zinc-400 bg-[color:var(--bg-elevated)] px-2 py-1 rounded border border-[color:var(--border-subtle)] block">{selectedTask()!.branchName}</code>
+              </div>
+            </Show>
+            <Show when={selectedTask()!.prUrl}>
+              <div>
+                <p class="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-1">Pull Request</p>
+                <a
+                  href={selectedTask()!.prUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-[12px] text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  PR #{selectedTask()!.prNumber} ↗
+                </a>
+              </div>
+            </Show>
+            <Show when={!selectedTask()!.prUrl && selectedTask()!.prError}>
+              <div>
+                <p class="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-1">Pull Request</p>
+                <div class="flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                  <span class="text-[11px] text-amber-300 break-words">{selectedTask()!.prError}</span>
+                </div>
               </div>
             </Show>
             {/* Dependencies */}

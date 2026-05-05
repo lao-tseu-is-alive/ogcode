@@ -32,6 +32,8 @@ interface PlanContextValue {
   loading: () => boolean;
   models: () => any[];
   selectedModel: () => string;
+  archivePath: () => string;
+  dismissArchiveNotification: () => void;
   selectModel: (modelId: string) => void;
   selectPlan: (id: string) => Promise<void>;
   newPlan: (title?: string, model?: string) => Promise<Plan>;
@@ -75,6 +77,10 @@ export const PlanProvider: ParentComponent = (props) => {
 
   const [loadingPlanId, setLoadingPlanId] = createSignal<string>('');
   const loading = () => loadingPlanId() === activePlan()?.id && loadingPlanId() !== '';
+
+  // Archive notification: set by the plan.archived SSE event, cleared on plan switch or dismiss.
+  const [archivePath, setArchivePath] = createSignal<string>('');
+  const dismissArchiveNotification = () => setArchivePath('');
 
   const [models, setModels] = createSignal<any[]>([]);
   const [pendingModel, setPendingModel] = createSignal<string>('');
@@ -237,6 +243,7 @@ export const PlanProvider: ParentComponent = (props) => {
     if (plan) setActivePlan(plan);
 
     setPendingModel('');
+    setArchivePath('');
     stopPolling();
     setMessages([]);
 
@@ -543,6 +550,18 @@ export const PlanProvider: ParentComponent = (props) => {
       return;
     }
 
+    // Handle plan archived event
+    if (last.type === 'plan.archived') {
+      const evtPlanId = last.properties?.planId;
+      const path: string = last.properties?.path || '';
+      if (evtPlanId === plan.id) {
+        setActivePlan((prev) => prev ? { ...prev, allTasksCompleted: true } : prev);
+        setPlans((prev) => prev.map((p) => (p.id === evtPlanId ? { ...p, allTasksCompleted: true } : p)));
+        if (path) setArchivePath(path);
+      }
+      return;
+    }
+
     // Handle task events
     if (last.type === 'task.updated' || last.type === 'task.started' || last.type === 'task.completed' || last.type === 'task.failed') {
       const updated = last.properties as Task | undefined;
@@ -597,6 +616,18 @@ export const PlanProvider: ParentComponent = (props) => {
     }).catch(() => {});
   }));
 
+  // Reactively flip allTasksCompleted on the active plan the moment the live
+  // tasks signal shows every task is done — no poll cycle needed.
+  createEffect(on(tasks, (currentTasks) => {
+    const p = activePlan();
+    if (!p || p.status !== 'locked' || p.allTasksCompleted) return;
+    if (currentTasks.length === 0) return;
+    if (currentTasks.every((t) => t.status === 'completed')) {
+      setActivePlan((prev) => prev ? { ...prev, allTasksCompleted: true } : prev);
+      setPlans((prev) => prev.map((q) => (q.id === p.id ? { ...q, allTasksCompleted: true } : q)));
+    }
+  }));
+
   // Handle plan.created events
   createEffect(on(server.eventTick, () => {
     const last = server.lastEvent();
@@ -636,6 +667,8 @@ export const PlanProvider: ParentComponent = (props) => {
     loading,
     models,
     selectedModel,
+    archivePath,
+    dismissArchiveNotification,
     selectModel,
     selectPlan,
     newPlan,

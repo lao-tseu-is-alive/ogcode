@@ -103,6 +103,14 @@ export default function TaskCard(props: TaskCardProps) {
             PR #{props.task.prNumber}
           </a>
         </Show>
+        <Show when={!props.task.prUrl && props.task.prError}>
+          <span
+            title={props.task.prError}
+            class="text-[10px] text-amber-500 cursor-help"
+          >
+            No PR
+          </span>
+        </Show>
       </div>
     </div>
   );

@@ -791,17 +791,31 @@ func (s *Server) handleGetPlanMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, messages)
 }
 
-// generatePlanMarkdown renders a plan archive: title, the final assistant summary
-// message (written just before lock), and the completed task list.
+// generatePlanMarkdown renders a plan archive: title, dates, the final plan
+// summary, and a rich task list with branch, PR, and description per task.
 func (s *Server) generatePlanMarkdown(p *plan.Plan) string {
 	messages, _ := s.store.GetMessages(session.SessionID(p.SessionID), "", 1000)
 	tasks, _ := s.taskStore.ListByPlan(p.ID)
 
 	var md strings.Builder
-	md.WriteString(fmt.Sprintf("# %s\n\n", p.Title))
-	md.WriteString(fmt.Sprintf("**Created**: %s\n\n", time.UnixMilli(p.CreatedAt).Format("2006-01-02 15:04")))
 
-	// Find the last assistant message — the comprehensive summary generated on lock.
+	// Header
+	md.WriteString(fmt.Sprintf("# %s\n\n", p.Title))
+	md.WriteString(fmt.Sprintf("**Created**: %s", time.UnixMilli(p.CreatedAt).Format("2006-01-02 15:04")))
+
+	// Use the latest task UpdatedAt as the completion timestamp.
+	var completedAt int64
+	for _, t := range tasks {
+		if t.UpdatedAt > completedAt {
+			completedAt = t.UpdatedAt
+		}
+	}
+	if completedAt > 0 {
+		md.WriteString(fmt.Sprintf("  \n**Completed**: %s", time.UnixMilli(completedAt).Format("2006-01-02 15:04")))
+	}
+	md.WriteString("\n\n")
+
+	// Plan summary — the last assistant message written at lock time.
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
 		if msg.Info.Role != session.RoleAssistant {
@@ -821,6 +835,7 @@ func (s *Server) generatePlanMarkdown(p *plan.Plan) string {
 		break
 	}
 
+	// Task outcomes
 	if len(tasks) > 0 {
 		md.WriteString("## Tasks\n\n")
 		statusIcons := map[string]string{
@@ -834,15 +849,35 @@ func (s *Server) generatePlanMarkdown(p *plan.Plan) string {
 			if icon == "" {
 				icon = "⬜"
 			}
-			md.WriteString(fmt.Sprintf("- %s **%s** [%s/%s]\n", icon, t.Title, t.Effort, t.Complexity))
-			if t.Description != "" {
-				for _, line := range strings.Split(t.Description, "\n") {
-					md.WriteString("  ")
-					md.WriteString(line)
-					md.WriteString("\n")
-				}
+
+			// Title line
+			md.WriteString(fmt.Sprintf("### %s %s\n\n", icon, t.Title))
+
+			// Metadata line: effort, complexity, branch
+			md.WriteString(fmt.Sprintf("**Effort**: %s · **Complexity**: %s", t.Effort, t.Complexity))
+			if t.BranchName != "" {
+				md.WriteString(fmt.Sprintf("  \n**Branch**: `%s`", t.BranchName))
 			}
-			md.WriteString("\n")
+
+			// PR outcome
+			if t.PRURL != "" {
+				prLabel := t.PRURL
+				if t.PRNumber != nil && *t.PRNumber > 0 {
+					prLabel = fmt.Sprintf("#%d", *t.PRNumber)
+				}
+				md.WriteString(fmt.Sprintf("  \n**PR**: [%s](%s)", prLabel, t.PRURL))
+			} else if t.PRError != "" {
+				md.WriteString(fmt.Sprintf("  \n**PR**: _%s_", t.PRError))
+			}
+			md.WriteString("\n\n")
+
+			// Description (implementation summary from breakdown)
+			if t.Description != "" {
+				md.WriteString(t.Description)
+				md.WriteString("\n\n")
+			}
+
+			md.WriteString("---\n\n")
 		}
 	}
 
@@ -952,15 +987,31 @@ func (s *Server) autoNamePlan(p *plan.Plan, userMessage string) {
 
 	// Resolve the provider from the plan's model
 	var pr provider.Provider
-	if p.Model != "" {
-		pr = s.registry.ResolveProvider(p.Model)
+	modelID := p.Model
+	if modelID != "" {
+		pr = s.registry.ResolveProvider(modelID)
 	}
 	if pr == nil {
 		pr = s.defaultProvider
 	}
+	// If modelID is still empty, resolve the provider's default model so we
+	// never send an empty model ID to the API.
+	if modelID == "" && pr != nil {
+		for _, m := range pr.Models() {
+			if m.Default {
+				modelID = m.ID
+				break
+			}
+		}
+		if modelID == "" {
+			if models := pr.Models(); len(models) > 0 {
+				modelID = models[0].ID
+			}
+		}
+	}
 
 	systemPrompt := "Generate a short, concise title (maximum 7 words) that captures the goal of the request below. Return ONLY the title, no quotes, no extra text, no markdown."
-	text, err := collectStreamText(ctx, pr, p.Model, systemPrompt, userMessage)
+	text, err := collectStreamText(ctx, pr, modelID, systemPrompt, userMessage)
 	if err != nil {
 		slog.Warn("auto-name plan: stream failed", "plan", p.ID, "err", err)
 		return

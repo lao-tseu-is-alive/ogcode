@@ -272,6 +272,7 @@ export interface Task {
   worktreePath?: string;
   prUrl?: string;
   prNumber?: number;
+  prError?: string;
   orderIndex: number;
   createdAt: number;
   updatedAt: number;

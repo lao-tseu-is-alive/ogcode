@@ -26,7 +26,7 @@ The installer auto-detects your platform, downloads the latest release, and inst
 ### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/prasenjeet-symon/ogcode/main/install.ps1 | iex
+irm https://ogcode.xyz/install.ps1 | iex
 ```
 
 This downloads the latest release, extracts it to `%LOCALAPPDATA%\ogcode`, and adds it to your PATH automatically.

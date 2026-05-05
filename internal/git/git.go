@@ -1,7 +1,10 @@
 package git
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -140,75 +143,121 @@ func CommitAllChanges(worktreeDir, commitMsg string) error {
 	return nil
 }
 
-// PushBranch pushes branchName to origin. Returns false (with nil error) when
-// no remote is configured, so callers can skip PR creation gracefully.
-func PushBranch(repoDir, branchName string) (bool, error) {
+// PushBranch pushes branchName to origin using ctx for timeout/cancellation.
+// Returns false (with nil error) when no remote is configured.
+func PushBranch(ctx context.Context, repoDir, branchName string) (bool, error) {
 	remote, err := runGitOutput(repoDir, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(remote) == "" {
 		return false, nil
 	}
-	out, err := exec.Command("git", "-C", repoDir, "push", "origin", branchName).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "git", "-C", repoDir, "push", "origin", branchName).CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("push %s: %s: %w", branchName, string(out), err)
 	}
 	return true, nil
 }
 
-// CreatePR creates a pull request via the gh CLI. The branch must already be
-// pushed. baseBranch is the PR target; when empty the repo's default branch is
-// used. For dependent tasks pass the dependency's branch so PRs stack correctly.
-func CreatePR(repoDir, branchName, title, body, baseBranch string) (*PullRequest, error) {
+// CreatePR creates a pull request via the gh CLI using ctx for timeout/cancellation.
+// It is idempotent: if an open PR already exists for branchName it is returned as-is.
+// If baseBranch no longer exists on the remote (e.g. stacked PR was merged and branch
+// deleted), it falls back to the repo's default branch automatically.
+func CreatePR(ctx context.Context, repoDir, branchName, title, body, baseBranch string) (*PullRequest, error) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return nil, fmt.Errorf("gh CLI not found; install from https://cli.github.com to enable automatic PR creation")
 	}
-	if baseBranch == "" {
-		baseBranch = detectDefaultBranch(repoDir)
+
+	// Return the existing PR instead of failing when one is already open.
+	if existing, err := findExistingPR(ctx, repoDir, branchName); err == nil && existing != nil {
+		slog.Info("PR already exists for branch, reusing", "branch", branchName, "pr", existing.URL)
+		return existing, nil
 	}
-	args := []string{"pr", "create", "--title", title, "--body", body, "--head", branchName}
+
+	// Verify the requested base branch still exists on the remote before using it.
+	// A stacked PR's base is the dependency's branch; if that was merged and deleted
+	// we fall back to the repo default so the PR is still created correctly.
+	if baseBranch != "" && !remoteRefExists(ctx, repoDir, baseBranch) {
+		slog.Warn("stacked PR base branch not found on remote, falling back to default",
+			"base", baseBranch)
+		baseBranch = ""
+	}
+	if baseBranch == "" {
+		baseBranch = detectDefaultBranch(ctx, repoDir)
+	}
+
+	args := []string{
+		"pr", "create",
+		"--title", title,
+		"--body", body,
+		"--head", branchName,
+		"--json", "url,number", // structured output — not affected by warning lines
+	}
 	if baseBranch != "" {
 		args = append(args, "--base", baseBranch)
 	}
-	cmd := exec.Command("gh", args...)
+	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = repoDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("gh pr create: %s: %w", string(out), err)
+		return nil, fmt.Errorf("gh pr create: %s: %w", strings.TrimSpace(string(out)), err)
 	}
-	output := strings.TrimSpace(string(out))
-	lines := strings.Split(output, "\n")
-	prURL := strings.TrimSpace(lines[len(lines)-1])
-	prNumber := 0
-	parts := strings.Split(prURL, "/")
-	for i := len(parts) - 1; i >= 0; i-- {
-		if n, err := fmt.Sscanf(parts[i], "%d", &prNumber); err == nil && n == 1 {
-			break
-		}
+
+	var result struct {
+		URL    string `json:"url"`
+		Number int    `json:"number"`
 	}
-	return &PullRequest{URL: prURL, Number: prNumber}, nil
+	if err := json.Unmarshal(out, &result); err != nil {
+		return nil, fmt.Errorf("parse gh output: %w (raw: %s)", err, strings.TrimSpace(string(out)))
+	}
+	return &PullRequest{URL: result.URL, Number: result.Number}, nil
 }
 
-// detectDefaultBranch returns the default branch name of the remote repository.
-// It tries the origin/HEAD symbolic ref first, then falls back to common names.
-func detectDefaultBranch(repoDir string) string {
-	// Try resolving origin/HEAD symbolic ref
+// findExistingPR returns an open PR for the given head branch, or nil if none exists.
+func findExistingPR(ctx context.Context, repoDir, branchName string) (*PullRequest, error) {
+	cmd := exec.CommandContext(ctx, "gh", "pr", "list",
+		"--head", branchName,
+		"--state", "open",
+		"--json", "url,number",
+		"--limit", "1",
+	)
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var results []struct {
+		URL    string `json:"url"`
+		Number int    `json:"number"`
+	}
+	if err := json.Unmarshal(out, &results); err != nil || len(results) == 0 {
+		return nil, fmt.Errorf("no existing PR")
+	}
+	return &PullRequest{URL: results[0].URL, Number: results[0].Number}, nil
+}
+
+// remoteRefExists reports whether branchName exists as a branch on origin.
+func remoteRefExists(ctx context.Context, repoDir, branchName string) bool {
+	out, err := exec.CommandContext(ctx, "git", "-C", repoDir,
+		"ls-remote", "--heads", "origin", branchName).Output()
+	return err == nil && strings.TrimSpace(string(out)) != ""
+}
+
+// detectDefaultBranch returns the default branch of the remote repository.
+// It checks the local origin/HEAD symref first (fast, no network), then
+// falls back to probing origin for "main" and "master".
+func detectDefaultBranch(ctx context.Context, repoDir string) string {
 	out, err := runGitOutput(repoDir, "symbolic-ref", "refs/remotes/origin/HEAD")
 	if err == nil {
 		ref := strings.TrimSpace(out)
-		// refs/remotes/origin/main → main
 		const prefix = "refs/remotes/origin/"
 		if strings.HasPrefix(ref, prefix) {
 			return ref[len(prefix):]
 		}
 	}
-
-	// Fallback: check which branches exist on the remote
 	for _, name := range []string{"main", "master"} {
-		out, err := runGitOutput(repoDir, "ls-remote", "--heads", "origin", name)
-		if err == nil && strings.TrimSpace(out) != "" {
+		if remoteRefExists(ctx, repoDir, name) {
 			return name
 		}
 	}
-
 	return ""
 }
 

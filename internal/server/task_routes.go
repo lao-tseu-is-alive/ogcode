@@ -433,6 +433,7 @@ func (s *Server) executeTask(t *task.Task, p *plan.Plan) error {
 // completeTaskWithPR handles the post-completion steps shared by autoCompleteTask
 // and handleCompleteTask: auto-commit any leftover changes, push the branch,
 // open a PR via gh, and clean up the worktree.
+// Any reason a PR was not created is stored in t.PRError so the UI can surface it.
 func (s *Server) completeTaskWithPR(t *task.Task) {
 	// Auto-commit any changes the agent left uncommitted.
 	if t.WorktreePath != "" {
@@ -442,38 +443,55 @@ func (s *Server) completeTaskWithPR(t *task.Task) {
 		}
 	}
 
-	// Push branch to origin (no-op when no remote is configured).
-	pushed := false
-	if t.BranchName != "" {
-		var pushErr error
-		pushed, pushErr = git.PushBranch(s.dir, t.BranchName)
-		if pushErr != nil {
-			slog.Error("push branch", "task", t.ID, "branch", t.BranchName, "err", pushErr)
-		}
+	// Bound all network operations (push + PR creation) to 3 minutes total.
+	// Without a deadline, a slow or unresponsive GitHub can stall this goroutine
+	// indefinitely and block dependent task auto-start.
+	const prNetworkTimeout = 3 * time.Minute
+	prCtx, prCancel := context.WithTimeout(context.Background(), prNetworkTimeout)
+	defer prCancel()
 
-		// Create PR via gh CLI only when the push succeeded.
-		if pushed {
-			// For dependent tasks, target the dependency's branch so the PR stacks.
-			prBase := ""
-			if len(t.Dependencies) > 0 {
-				if dep, depErr := s.taskStore.Get(t.Dependencies[0]); depErr == nil && dep != nil {
-					prBase = dep.BranchName
-				}
-			}
-			prTitle := t.Title
-			prBody := fmt.Sprintf("## Description\n\n%s\n\n---\n\nCo-authored-by: ogcode <ogcode@local>", t.Description)
-			pr, err := git.CreatePR(s.dir, t.BranchName, prTitle, prBody, prBase)
-			if err != nil {
-				slog.Warn("create PR skipped", "task", t.ID, "err", err)
-			} else if pr != nil {
-				t.PRURL = pr.URL
-				t.PRNumber = &pr.Number
-				t.UpdatedAt = task.Now()
-				if err := s.taskStore.Update(t); err != nil {
-					slog.Error("save PR info", "task", t.ID, "err", err)
-				}
+	prErr := ""
+	pushed := false
+	if t.BranchName == "" {
+		prErr = "no branch name assigned to task"
+	} else {
+		var pushErr error
+		pushed, pushErr = git.PushBranch(prCtx, s.dir, t.BranchName)
+		switch {
+		case pushErr != nil:
+			prErr = fmt.Sprintf("push failed: %s", pushErr.Error())
+			slog.Error("push branch", "task", t.ID, "branch", t.BranchName, "err", pushErr)
+		case !pushed:
+			prErr = "no remote configured — add a GitHub remote (git remote add origin <url>) to enable automatic PR creation"
+			slog.Warn("push skipped: no remote configured", "task", t.ID, "branch", t.BranchName)
+		}
+	}
+
+	if pushed {
+		// For dependent tasks, target the dependency's branch so the PR stacks.
+		prBase := ""
+		if len(t.Dependencies) > 0 {
+			if dep, depErr := s.taskStore.Get(t.Dependencies[0]); depErr == nil && dep != nil {
+				prBase = dep.BranchName
 			}
 		}
+		prTitle := t.Title
+		prBody := fmt.Sprintf("## Description\n\n%s\n\n---\n\nCo-authored-by: ogcode <ogcode@local>", t.Description)
+		pr, err := git.CreatePR(prCtx, s.dir, t.BranchName, prTitle, prBody, prBase)
+		if err != nil {
+			prErr = fmt.Sprintf("PR creation failed: %s", err.Error())
+			slog.Warn("create PR failed", "task", t.ID, "err", err)
+		} else if pr != nil {
+			t.PRURL = pr.URL
+			t.PRNumber = &pr.Number
+		}
+	}
+
+	// Persist PR outcome (URL on success, error reason on failure).
+	t.PRError = prErr
+	t.UpdatedAt = task.Now()
+	if err := s.taskStore.Update(t); err != nil {
+		slog.Error("save PR info", "task", t.ID, "err", err)
 	}
 
 	// Remove worktree. Keep the branch if not pushed (work stays accessible locally).
