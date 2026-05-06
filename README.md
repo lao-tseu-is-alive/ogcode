@@ -15,6 +15,15 @@ Ogcode gives you two ways to work with AI on your codebase:
 
 ---
 
+## Roadmap
+
+- [ ] **Advanced Task Planning & Parallel Execution**: Enhanced plan decomposition, allowing users to manually or automatically assign coding agents to tasks, with full parallel execution support.
+- [ ] **AI Daily Standups**: Voice-enabled daily meetings where all agents assigned to a project can report progress and discuss their work. This includes natural voice interactions, project-specific memory, and the ability to take and remember human feedback.
+- [ ] **Ogland Integration**: A dedicated space within Ogcode to connect external services like Slack, Email, Jira, and more, enabling their use during the planning phase.
+- [ ] **Agentic Deployment**: Full end-to-end agentic deployment support for all major cloud providers, starting with AWS.
+
+---
+
 ## Installation
 
 ### macOS / Linux
@@ -192,13 +201,6 @@ ogcode version
 Plans are archived as markdown files in `.ogcode/archives/` once all tasks are completed.
 
 ---
-
-## Roadmap
-
-- [ ] **Advanced Task Planning & Parallel Execution**: Enhanced plan decomposition, allowing users to manually or automatically assign coding agents to tasks, with full parallel execution support.
-- [ ] **AI Daily Standups**: Voice-enabled daily meetings where all agents assigned to a project can report progress and discuss their work. This includes natural voice interactions, project-specific memory, and the ability to take and remember human feedback.
-- [ ] **Ogland Integration**: A dedicated space within Ogcode to connect external services like Slack, Email, Jira, and more, enabling their use during the planning phase.
-- [ ] **Agentic Deployment**: Full end-to-end agentic deployment support for all major cloud providers, starting with AWS.
 
 ## Community
 
