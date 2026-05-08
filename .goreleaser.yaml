@@ -64,9 +64,9 @@ winget:
     publisher_url: "https://github.com/prasenjeet-symon"
     repository:
       owner: prasenjeet-symon
-      name: ogcode
+      name: winget-pkgs
       branch: main
-      token: "{{ .Env.GITHUB_TOKEN }}"
+      token: "{{ .Env.WINGET_PKGS_TOKEN }}"
     commit_author:
       name: Prasenjeet Symon
       email: prasenjeet-symon@users.noreply.github.com

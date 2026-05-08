@@ -13,6 +13,9 @@ web/.solid/
 # Environment
 .env
 
+# Winget manifests (managed by GoReleaser in winget-pkgs fork)
+manifests/
+
 # OS files
 .DS_Store
 *.swp

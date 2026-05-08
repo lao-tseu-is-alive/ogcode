@@ -51,26 +51,20 @@ jobs:
           # Make gh CLI available and configure git to use it for auth
           gh auth setup-git
 
-          # Clone the fork (authenticated via gh auth)
+          # Clone the fork (GoReleaser already committed manifests into it)
           git clone --depth 1 "${REPO}" winget-pkgs-work
           cd winget-pkgs-work
 
           # Configure git
-          git config user.name "goreleaserbot"
-          git config user.email "bot@goreleaser.com"
+          git config user.name "prasenjeet-symon"
+          git config user.email "prasenjeet-symon@users.noreply.github.com"
 
-          # Create a new branch with the manifest changes
+          # Create a new branch from the updated main (GoReleaser pushed manifests here)
           git checkout -b "${BRANCH}"
-
-          # Copy updated manifests from the source repo (GoReleaser committed them to main)
-          git clone --depth 1 "https://github.com/prasenjeet-symon/ogcode" ogcode-src
-          mkdir -p "manifests/p/prasenjeet-symon/ogcode/"
-          cp -r ogcode-src/manifests/p/prasenjeet-symon/ogcode/* "manifests/p/prasenjeet-symon/ogcode/"
-          rm -rf ogcode-src
 
           # Commit and push (authenticated via gh credential helper)
           git add .
-          git commit -m "Update prasenjeet-symon.ogcode to ${VERSION}" || exit 0
+          git diff --cached --quiet || git commit -m "Update prasenjeet-symon.ogcode to ${VERSION}"
           git push origin "${BRANCH}" --force
 
           # Create PR via GitHub CLI
