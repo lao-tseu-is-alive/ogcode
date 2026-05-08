@@ -211,7 +211,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		if lr.MCP != nil {
 			mcpTools = lr.MCP.Tools()
 		}
-		system := buildSystemPrompt(agent, lr.Dir, lr.Memory != nil && lr.Memory.Enabled(), agentMDContent, mcpTools)
+		system := buildSystemPrompt(agent, workDir, lr.Memory != nil && lr.Memory.Enabled(), agentMDContent, mcpTools)
 
 		// Convert messages to provider format (with memory context filtering)
 		modelMessages := toProviderMessages(messages, memoryText)
@@ -653,7 +653,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 					"partId":    string(part.ID),
 				})
 			}
-			result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent)
+			result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent, workDir)
 
 			// Update tool part with result
 			part, perr := lr.Store.GetPart(tc.PartID)
@@ -870,7 +870,7 @@ func buildTurnResponse(messages []*session.MessageWithParts, userMsgIdx int) str
 	return b.String()
 }
 
-func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.SessionID, messageID session.MessageID, tc pendingToolCall, a Agent) (tool.Result, error) {
+func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.SessionID, messageID session.MessageID, tc pendingToolCall, a Agent, workDir string) (tool.Result, error) {
 	// Try built-in tools first
 	t := lr.Tools.Get(tc.Name)
 	if t != nil {
@@ -881,7 +881,7 @@ func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.Session
 			Agent:      a.ID,
 			CallID:     tc.CallID,
 			Ctx:        ctx,
-			SessionDir: lr.Dir,
+			SessionDir: workDir,
 		}
 		return t.Execute(ctx, tc.Input, tctx)
 	}
