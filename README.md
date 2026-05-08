@@ -1,6 +1,6 @@
 # Ogcode
 
-[![Discord](https://img.shields.io/discord/1373677337985056828?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/TVHsWuJe)
+[![Discord](https://img.shields.io/discord/1373677337985056828?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/JQP9t8y2Zv)
 
 ![Ogcode Demo](assets/ogcode_intro.gif)
 
@@ -206,7 +206,7 @@ Plans are archived as markdown files in `.ogcode/archives/` once all tasks are c
 
 Join the Ogcode community on Discord for discussions, support, and updates:
 
-[![Join us on Discord](https://img.shields.io/discord/1373677337985056828?label=Join%20Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge)](https://discord.gg/TVHsWuJe)
+[![Join us on Discord](https://img.shields.io/discord/1373677337985056828?label=Join%20Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge)](https://discord.gg/JQP9t8y2Zv)
 
 - Ask questions and get help
 - Share feedback and feature ideas
