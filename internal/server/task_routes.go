@@ -685,8 +685,12 @@ func (s *Server) handleRetryTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Remove the stale branch so the next execution starts from a clean slate.
+	// Serialize through gitMu to prevent races with concurrent git operations.
 	if t.BranchName != "" {
-		if err := git.DeleteBranch(s.dir, t.BranchName); err != nil {
+		s.gitMu.Lock()
+		err := git.DeleteBranch(s.dir, t.BranchName)
+		s.gitMu.Unlock()
+		if err != nil {
 			slog.Warn("retry: delete stale branch", "task", t.ID, "branch", t.BranchName, "err", err)
 		}
 	}

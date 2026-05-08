@@ -180,7 +180,7 @@ func (s *Store) Claim(taskID, sessionID, branchName, worktreePath string) (bool,
 func (s *Store) ResetFailed(id string) error {
 	_, err := s.db.Exec(
 		`UPDATE task SET status = ?, session_id = NULL, branch_name = '', worktree_path = '',
-		  pr_url = '', pr_number = NULL, time_updated = ?
+		  pr_url = '', pr_number = NULL, pr_error = '', time_updated = ?
 		 WHERE id = ? AND status = ?`,
 		StatusPending, Now(), id, StatusFailed,
 	)
@@ -190,14 +190,48 @@ func (s *Store) ResetFailed(id string) error {
 // FailStuckTasks marks every in_progress task as failed.
 // Called on server startup to recover tasks that were running when the
 // server was last shut down or crashed.
-func (s *Store) FailStuckTasks() (int, error) {
-	result, err := s.db.Exec(
+// Returns the tasks that were marked as failed (including their branch_name
+// and worktree_path) so cleanup can be performed.
+func (s *Store) FailStuckTasks() ([]*Task, error) {
+	// First get the tasks that will be updated
+	rows, err := s.db.Query(
+		`SELECT id, branch_name, worktree_path, status FROM task WHERE status = ?`,
+		StatusInProgress,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fail stuck tasks: %w", err)
+	}
+	defer rows.Close()
+
+	var tasks []*Task
+	for rows.Next() {
+		var t Task
+		var branchName, worktreePath sql.NullString
+		var status string
+		if err := rows.Scan(&t.ID, &branchName, &worktreePath, &status); err != nil {
+			return nil, err
+		}
+		if branchName.Valid {
+			t.BranchName = branchName.String
+		}
+		if worktreePath.Valid {
+			t.WorktreePath = worktreePath.String
+		}
+		t.Status = status
+		tasks = append(tasks, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Now update them to failed status
+	_, err = s.db.Exec(
 		`UPDATE task SET status = ?, time_updated = ? WHERE status = ?`,
 		StatusFailed, Now(), StatusInProgress,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("fail stuck tasks: %w", err)
+		return nil, fmt.Errorf("fail stuck tasks: %w", err)
 	}
-	n, _ := result.RowsAffected()
-	return int(n), nil
+
+	return tasks, nil
 }

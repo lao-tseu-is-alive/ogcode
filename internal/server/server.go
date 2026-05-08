@@ -18,6 +18,7 @@ import (
 	"github.com/prasenjeet-symon/ogcode/internal/agent"
 	"github.com/prasenjeet-symon/ogcode/internal/bus"
 	"github.com/prasenjeet-symon/ogcode/internal/db"
+	"github.com/prasenjeet-symon/ogcode/internal/git"
 	"github.com/prasenjeet-symon/ogcode/internal/mcp"
 	"github.com/prasenjeet-symon/ogcode/internal/memory"
 	"github.com/prasenjeet-symon/ogcode/internal/plan"
@@ -83,10 +84,21 @@ func (s *Server) Start() error {
 	s.taskStore = task.NewStore(database)
 
 	// Recover tasks that were in_progress when the server last stopped.
-	if n, err := s.taskStore.FailStuckTasks(); err != nil {
+	failedTasks, err := s.taskStore.FailStuckTasks()
+	if err != nil {
 		slog.Warn("recover stuck tasks", "err", err)
-	} else if n > 0 {
-		slog.Info("marked stuck tasks as failed", "count", n)
+	} else if len(failedTasks) > 0 {
+		slog.Info("marked stuck tasks as failed", "count", len(failedTasks))
+		// Clean up orphaned worktrees from crashed tasks
+		for _, t := range failedTasks {
+			if t.BranchName != "" {
+				s.gitMu.Lock()
+				if err := git.RemoveTaskWorktree(s.dir, t.BranchName); err != nil {
+					slog.Warn("cleanup orphaned worktree", "task", t.ID, "branch", t.BranchName, "err", err)
+				}
+				s.gitMu.Unlock()
+			}
+		}
 	}
 
 	// Initialize provider
