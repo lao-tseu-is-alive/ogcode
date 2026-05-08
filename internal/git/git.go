@@ -2,7 +2,6 @@ package git
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -189,7 +188,6 @@ func CreatePR(ctx context.Context, repoDir, branchName, title, body, baseBranch 
 		"--title", title,
 		"--body", body,
 		"--head", branchName,
-		"--json", "url,number", // structured output — not affected by warning lines
 	}
 	if baseBranch != "" {
 		args = append(args, "--base", baseBranch)
@@ -201,37 +199,82 @@ func CreatePR(ctx context.Context, repoDir, branchName, title, body, baseBranch 
 		return nil, fmt.Errorf("gh pr create: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
-	var result struct {
-		URL    string `json:"url"`
-		Number int    `json:"number"`
+	// Try to parse the output as the PR URL (old gh versions output just the URL)
+	prURL := strings.TrimSpace(string(out))
+	if prURL == "" {
+		// Fallback: use gh pr view to get the URL (no --json flag for older gh versions)
+		viewOut, _ := runGhOutput(ctx, repoDir, "pr", "view", branchName)
+		prURL = extractPRURLFromViewOutput(viewOut)
 	}
-	if err := json.Unmarshal(out, &result); err != nil {
-		return nil, fmt.Errorf("parse gh output: %w (raw: %s)", err, strings.TrimSpace(string(out)))
+
+	// Try to extract PR number from URL
+	prNumber := 0
+	if prURL != "" {
+		parts := strings.Split(prURL, "/")
+		for i, part := range parts {
+			if part == "pull" && i+1 < len(parts) {
+				if n, err := fmt.Sscanf(parts[i+1], "%d", &prNumber); n == 1 && err == nil {
+					break
+				}
+			}
+		}
 	}
-	return &PullRequest{URL: result.URL, Number: result.Number}, nil
+
+	return &PullRequest{URL: prURL, Number: prNumber}, nil
+}
+
+// extractPRURLFromViewOutput extracts the PR URL from gh pr view output.
+// Older gh versions output plain text URLs, newer versions output JSON.
+func extractPRURLFromViewOutput(output string) string {
+	// Look for a line that looks like a PR URL
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	for _, line := range lines {
+		// Trim whitespace and look for URL pattern
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "https://github.com/") {
+			// Remove any query parameters
+			if idx := strings.Index(line, "?"); idx != -1 {
+				line = line[:idx]
+			}
+			return line
+		}
+	}
+	// If it's just a single line URL, use it
+	if strings.HasPrefix(output, "https://github.com/") {
+		return strings.TrimSpace(output)
+	}
+	return ""
 }
 
 // findExistingPR returns an open PR for the given head branch, or nil if none exists.
 func findExistingPR(ctx context.Context, repoDir, branchName string) (*PullRequest, error) {
-	cmd := exec.CommandContext(ctx, "gh", "pr", "list",
-		"--head", branchName,
-		"--state", "open",
-		"--json", "url,number",
-		"--limit", "1",
-	)
-	cmd.Dir = repoDir
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
+	// Try gh pr view first - works if PR already exists for this branch
+	viewOut, _ := runGhOutput(ctx, repoDir, "pr", "view", branchName)
+	if viewOut != "" {
+		url := extractPRURLFromViewOutput(viewOut)
+		if url != "" {
+			return parsePRFromURL(url), nil
+		}
 	}
-	var results []struct {
-		URL    string `json:"url"`
-		Number int    `json:"number"`
+	return nil, fmt.Errorf("no existing PR")
+}
+
+// parsePRFromURL creates a PullRequest from a GitHub PR URL.
+func parsePRFromURL(url string) *PullRequest {
+	pr := &PullRequest{URL: url}
+	if url == "" {
+		return pr
 	}
-	if err := json.Unmarshal(out, &results); err != nil || len(results) == 0 {
-		return nil, fmt.Errorf("no existing PR")
+	parts := strings.Split(url, "/")
+	for i, part := range parts {
+		if part == "pull" && i+1 < len(parts) {
+			if n, err := fmt.Sscanf(parts[i+1], "%d", &pr.Number); n != 1 || err != nil {
+				pr.Number = 0
+			}
+			break
+		}
 	}
-	return &PullRequest{URL: results[0].URL, Number: results[0].Number}, nil
+	return pr
 }
 
 // remoteRefExists reports whether branchName exists as a branch on origin.
@@ -332,6 +375,13 @@ func runGit(dir string, args ...string) error {
 func runGitOutput(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	out, err := cmd.Output()
+	return string(out), err
+}
+
+func runGhOutput(ctx context.Context, repoDir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	return string(out), err
 }
