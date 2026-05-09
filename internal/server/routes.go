@@ -76,6 +76,8 @@ func (s *Server) routes() http.Handler {
 		})
 
 		r.Get("/vcs", s.handleVCS)
+		r.Get("/version", s.handleVersion)
+		r.Post("/version/check", s.handleVersionCheck)
 	})
 
 	// Serve embedded web UI (or placeholder for dev)

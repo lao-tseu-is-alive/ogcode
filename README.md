@@ -28,6 +28,15 @@ Ogcode gives you two ways to work with AI on your codebase:
 
 ### macOS / Linux
 
+**Via Homebrew:**
+
+```bash
+brew tap prasenjeet-symon/ogcode
+brew install ogcode
+```
+
+**Via curl:**
+
 ```bash
 curl -fsSL http://ogcode.xyz/install.sh | sh
 ```

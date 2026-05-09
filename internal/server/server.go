@@ -26,6 +26,7 @@ import (
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 	"github.com/prasenjeet-symon/ogcode/internal/task"
 	"github.com/prasenjeet-symon/ogcode/internal/tool"
+	"github.com/prasenjeet-symon/ogcode/internal/version"
 )
 
 // ServerMode determines the operational mode of the server.
@@ -51,6 +52,9 @@ type Server struct {
 	mcpClient  *mcp.Client
 	mcpCfg     mcp.ServerConfig
 	mem        *memory.Memory
+
+	// Version check manager
+	versionManager *version.Manager
 
 	// Track running agent loops so they can be cancelled on abort
 	mu           sync.Mutex
@@ -191,6 +195,9 @@ func (s *Server) Start() error {
 		Memory:          mem,
 		MCP:             s.mcpClient,
 	}
+
+	// Initialize version manager
+	s.versionManager = version.New()
 
 	r := s.routes()
 

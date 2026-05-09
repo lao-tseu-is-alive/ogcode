@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [solidPlugin(), tailwindcss()],
+  build: {
+    outDir: 'dist',
+  },
   server: {
     port: 5173,
     proxy: {
