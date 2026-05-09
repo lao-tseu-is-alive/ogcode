@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -273,9 +275,14 @@ func isHomebrew() bool {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		return false
 	}
+	// Get the executable path to verify it's actually in Homebrew
+	execPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	execPath = filepath.Clean(execPath)
 	// Check if binary is in /opt/homebrew or /usr/local (typical Homebrew locations)
-	// This is a heuristic
-	return true
+	return strings.HasPrefix(execPath, "/opt/homebrew/") || strings.HasPrefix(execPath, "/usr/local/")
 }
 
 func isScoop() bool {
