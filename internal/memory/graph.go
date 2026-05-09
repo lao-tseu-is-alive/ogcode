@@ -566,7 +566,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 
 	for round < opts.MaxRounds && !convergence {
 		round++
-		prompt := buildRecallPrompt(opts.Question, skeletonTree, allFacts, semanticTree, topFacts, history)
+		prompt := buildRecallPrompt(opts.Question, skeletonTree, semanticTree, topFacts, history)
 
 		resp, err := g.Chat.Chat(ctx, "", prompt)
 		if err != nil {
@@ -708,7 +708,7 @@ func parseConfidence(s string) (float32, bool) {
 	return f, n == 1 && err == nil && f >= 0 && f <= 1
 }
 
-func buildRecallPrompt(question string, fullTree map[string]TopicTree, allFacts []Node, semanticTree map[string]TopicTree, topFacts []Node, history []string) string {
+func buildRecallPrompt(question string, skeletonTree map[string]TopicTree, semanticTree map[string]TopicTree, topFacts []Node, history []string) string {
 	var sb strings.Builder
 	sb.WriteString("You have access to a lightweight memory graph for this session.\n")
 	sb.WriteString("Answer the user's question using the facts provided.\n")
@@ -722,9 +722,9 @@ func buildRecallPrompt(question string, fullTree map[string]TopicTree, allFacts 
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("=== BIRD'S-EYE VIEW (All Topics & Concepts in this session) ===\n")
+	sb.WriteString("=== BIRD'S-EYE VIEW (Topics & Concepts, no fact content) ===\n")
 	sb.WriteString("Use this map to request FOLLOWUPs if the relevant facts below are insufficient.\n")
-	sb.WriteString(fullTreeText(fullTree, allFacts))
+	sb.WriteString(skeletonTreeText(skeletonTree))
 
 	sb.WriteString("\n=== MOST RELEVANT FACTS (Semantic matches + Context Window, marked with ★) ===\n")
 	sb.WriteString(semanticTreeText(semanticTree, topFacts))
@@ -859,6 +859,21 @@ func semanticTreeText(semanticTree map[string]TopicTree, topFacts []Node) string
 		relevantKeys[f.Key] = 0
 	}
 	return LightweightTreeAsTextWithHighlight(semanticTree, topFacts, relevantKeys)
+}
+
+func skeletonTreeText(tree map[string]TopicTree) string {
+	var sb strings.Builder
+	for topic, tt := range tree {
+		sb.WriteString("Topic: " + topic + "\n")
+		for _, ct := range tt.Concepts {
+			sb.WriteString("  Concept: " + ct.Name + "\n")
+			if len(ct.RelatedConcepts) > 0 {
+				sb.WriteString("    Related: " + strings.Join(ct.RelatedConcepts, ", ") + "\n")
+			}
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 func truncate(s string, max int) string {
