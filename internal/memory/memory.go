@@ -92,14 +92,11 @@ func (m *Memory) ReadMemory(ctx context.Context, sessionID string) string {
 		slog.Info("memory graph empty", "session", sessionID)
 		return ""
 	}
-	result := LightweightTreeAsText(tree, facts)
+	result := skeletonTreeText(tree)
 	if strings.TrimSpace(result) == "" {
 		return ""
 	}
 	slog.Info("memory graph returned context", "session", sessionID, "len", len(result))
-	if len(result) > 10000 {
-		result = result[:10000]
-	}
 	return result
 }
 
