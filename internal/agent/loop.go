@@ -825,7 +825,7 @@ func (lr *LoopRunner) writeMemory(ctx context.Context, sessionID session.Session
 }
 
 // buildTurnResponse serializes all assistant messages after a given user message
-// into a structured text trace (tool calls, results, reasoning, text).
+// into a structured text trace (tool calls, results, text).
 func buildTurnResponse(messages []*session.MessageWithParts, userMsgIdx int) string {
 	var b strings.Builder
 	for i := userMsgIdx + 1; i < len(messages); i++ {
@@ -859,10 +859,8 @@ func buildTurnResponse(messages []*session.MessageWithParts, userMsgIdx int) str
 						}
 					}
 				case session.PartReasoning:
-					var data session.ReasoningPartData
-					if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
-						fmt.Fprintf(&b, "Reasoning: %s\n", data.Text)
-					}
+					// Skip reasoning parts — not stored in knowledge graph.
+					// Reasoning is ephemeral and should not pollute long-term memory.
 				}
 			}
 		}
