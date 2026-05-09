@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/prasenjeet-symon/ogcode/internal/server"
@@ -41,6 +43,34 @@ func init() {
 	rootCmd.AddCommand(planCmd)
 }
 
+func setupLogging() {
+	level := slog.LevelInfo
+	levelStr := strings.ToLower(strings.TrimSpace(os.Getenv("OGCODE_LOG_LEVEL")))
+	switch levelStr {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+
+	format := strings.ToLower(strings.TrimSpace(os.Getenv("OGCODE_LOG_FORMAT")))
+	var handler slog.Handler
+	opts := &slog.HandlerOptions{Level: level, AddSource: level <= slog.LevelDebug}
+
+	switch format {
+	case "json":
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	default:
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	slog.SetDefault(slog.New(handler))
+
+	slog.Info("logging initialized", "level", level, "format", format)
+}
+
 func serve(cmd *cobra.Command, args []string) error {
 	return serveWithMode(cmd, args, server.ModeBuild)
 }
@@ -56,5 +86,6 @@ func serveWithMode(cmd *cobra.Command, args []string, mode server.ServerMode) er
 
 func Execute() error {
 	_ = godotenv.Load()
+	setupLogging()
 	return rootCmd.Execute()
 }
