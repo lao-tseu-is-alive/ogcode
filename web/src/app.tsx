@@ -4,6 +4,7 @@ import { SessionProvider } from './context/session';
 import { PlanProvider } from './context/plan';
 import { NotificationProvider } from './context/notification';
 import { ThemeProvider } from './context/theme';
+import UpdateNotification from './components/update-notification';
 import Home from './pages/home';
 import Chat from './pages/session';
 import PlanList from './pages/plan-list';
@@ -43,6 +44,7 @@ function AppWrapper(props: { children?: any }) {
             <div class="flex h-screen bg-[color:var(--bg-base)] text-zinc-100 antialiased">
               {props.children}
             </div>
+            <UpdateNotification />
             </NotificationProvider>
           </PlanProvider>
         </SessionProvider>

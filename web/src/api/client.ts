@@ -391,3 +391,41 @@ export function failTask(id: string): Promise<Task> {
 export function retryTask(id: string): Promise<Task> {
   return fetchAPI(`/tasks/${id}/retry`, { method: 'POST' });
 }
+
+// Version API
+export interface VersionInfo {
+  version: string;
+  commit: string;
+  date: string;
+  goVersion: string;
+}
+
+export interface UpdateInfo {
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  publishedAt: string;
+  releaseNotes: string;
+  installCommand: string;
+}
+
+export interface VersionResponse {
+  version: string;
+  commit: string;
+  date: string;
+  goVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  publishedAt: string;
+  releaseNotes: string;
+  installCommand: string;
+}
+
+export function getVersion(): Promise<VersionResponse> {
+  return fetchAPI('/version');
+}
+
+export function checkForUpdate(): Promise<UpdateInfo> {
+  return fetchAPI('/version/check', { method: 'POST' });
+}
