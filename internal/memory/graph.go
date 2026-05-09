@@ -590,18 +590,57 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 			break
 		}
 
-		if parsed.Critique != "" {
-			history = append(history, fmt.Sprintf("Round %d Critique of your draft: %s", round, parsed.Critique))
-			history = append(history, "Instruction for next round: Fix the issues identified in your critique.")
+		if parsed.Critique != "" || parsed.DraftContext != "" || parsed.FinalContext != "" {
+			if parsed.DraftContext != "" {
+				history = append(history, fmt.Sprintf("Round %d DRAFT_CONTEXT: %s", round, parsed.DraftContext))
+			}
+			if parsed.FinalContext != "" && parsed.FinalContext != "EMPTY_CONTEXT" {
+				history = append(history, fmt.Sprintf("Round %d FINAL_CONTEXT: %s", round, parsed.FinalContext))
+			}
+			if parsed.Critique != "" {
+				history = append(history, fmt.Sprintf("Round %d CRITIQUE: %s", round, parsed.Critique))
+			}
+			history = append(history, "Instruction for next round: Rewrite FINAL_CONTEXT by fixing all issues identified in the CRITIQUE. Preserve facts that were correct.")
 		}
 
 		if parsed.FollowUp != "" {
-			subTree, subFacts, err := g.BuildLightweightTree(ctx, opts.SessionID, filter, nil, 20)
-			if err == nil && len(subFacts) > 0 {
-				enriched := enrichTreeWithFollowUp(fullTree, subTree)
-				history = append(history, fmt.Sprintf("Round %d — Follow-up explored: %s", round, parsed.FollowUp))
-				fullTree = enriched
+			followupVec, err := g.Embed.Embed(ctx, []string{parsed.FollowUp})
+			var followupTree map[string]TopicTree
+			var followupFacts []Node
+			if err == nil && len(followupVec) > 0 {
+				followupTree, followupFacts, err = g.BuildLightweightTree(ctx, opts.SessionID, filter, followupVec[0], opts.Limit)
 			}
+			if err != nil || len(followupFacts) == 0 {
+				// Fallback: fetch recent facts without semantic filter
+				followupTree, followupFacts, err = g.BuildLightweightTree(ctx, opts.SessionID, filter, nil, 20)
+			}
+			if err == nil && len(followupFacts) > 0 {
+				// Merge followup facts into the main semantic set so they appear in Round N+1
+				mergedTree := enrichTreeWithFollowUp(semanticTree, followupTree)
+				semanticTree = mergedTree
+				// Deduplicate merged facts by key
+				seen := make(map[string]bool)
+				for _, f := range topFacts {
+					seen[f.Key] = true
+				}
+				for _, f := range followupFacts {
+					if !seen[f.Key] {
+						topFacts = append(topFacts, f)
+						seen[f.Key] = true
+					}
+				}
+				// Also enrich the bird's-eye skeleton so new topics are navigable
+				fullTree = enrichTreeWithFollowUp(fullTree, followupTree)
+				skeletonTree = make(map[string]TopicTree)
+				for k, tt := range fullTree {
+					skeleton := TopicTree{Name: tt.Name, Concepts: make([]ConceptTree, len(tt.Concepts))}
+					for i, ct := range tt.Concepts {
+						skeleton.Concepts[i] = ConceptTree{Name: ct.Name, RelatedConcepts: ct.RelatedConcepts, Facts: nil}
+					}
+					skeletonTree[k] = skeleton
+				}
+			}
+			history = append(history, fmt.Sprintf("Round %d — Follow-up searched: %s", round, parsed.FollowUp))
 		}
 	}
 
@@ -614,6 +653,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 }
 
 type recallResponse struct {
+	DraftContext     string
 	FinalContext     string
 	ContextFound     bool
 	Confidence       float32
@@ -642,6 +682,9 @@ func parseRecallResponse(text string) recallResponse {
 		} else if strings.HasPrefix(line, "CONTEXT_FOUND:") {
 			v := strings.TrimSpace(strings.TrimPrefix(line, "CONTEXT_FOUND:"))
 			r.ContextFound = strings.HasPrefix(strings.ToUpper(v), "YES")
+		} else if strings.HasPrefix(line, "DRAFT_CONTEXT:") {
+			r.DraftContext = strings.TrimPrefix(line, "DRAFT_CONTEXT:")
+			r.DraftContext = strings.TrimSpace(r.DraftContext)
 		} else if strings.HasPrefix(line, "FINAL_CONTEXT:") {
 			r.FinalContext = strings.TrimPrefix(line, "FINAL_CONTEXT:")
 			r.FinalContext = strings.TrimSpace(r.FinalContext)
