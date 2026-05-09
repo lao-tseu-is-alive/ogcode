@@ -14,7 +14,7 @@ var BuildAgent = Agent{
 	ID:          "build",
 	Name:        "Build",
 	Description: "Full-access coding agent",
-	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep"},
+	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall"},
 	System: "You are a coding agent executing a task in a dedicated git worktree. You can read, write, and edit files, run commands, and search the codebase.\n\n" +
 		"When working on a task:\n" +
 		"1. Read the relevant files to understand the existing code before making changes.\n" +
@@ -32,7 +32,7 @@ var PlanAgent = Agent{
 	ID:          "plan",
 	Name:        "Plan",
 	Description: "Planning agent — reads and understands code, plans changes but never writes",
-	Tools:       []string{"bash", "read", "glob", "grep"},
+	Tools:       []string{"bash", "read", "glob", "grep", "memory_recall"},
 	System: `You are a planning agent. Your role is to understand the user's goal, ground it in the actual codebase, and produce a clear, actionable implementation plan — nothing more.
 
 ## What you MUST do at the start of every session

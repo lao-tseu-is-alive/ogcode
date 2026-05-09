@@ -139,6 +139,7 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.GlobTool{})
 	toolRegistry.Register(tool.GrepTool{})
 	toolRegistry.Register(tool.BreakdownTool{})
+	// memory_recall will be registered below after mem is initialized
 
 	// Determine default provider with stable priority
 	var defaultProvider provider.Provider
@@ -197,6 +198,7 @@ func (s *Server) Start() error {
 			EmbedProvider: embedP,
 		})
 		s.mem = mem
+		toolRegistry.Register(tool.NewMemoryRecallTool(mem))
 	}
 
 	// Initialize MCP client (for tool exposure, unrelated to agentic memory
