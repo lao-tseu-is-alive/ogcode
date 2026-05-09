@@ -24,6 +24,38 @@ Ogcode gives you two ways to work with AI on your codebase:
 
 ---
 
+## Agentic Session Memory 🧠
+
+![Agentic Memory Demo](assets/agentic_memory.gif)
+
+Ogcode's **Agentic Session Memory** revolutionizes how AI coding assistants handle context in long-running sessions. Instead of sending the entire conversation history to the LLM (which quickly becomes expensive and hits token limits), Ogcode intelligently extracts, stores, and retrieves only the relevant context needed for each query.
+
+### Key Benefits
+
+| Feature | Impact |
+|---------|--------|
+| **~70% Token Savings** | Drastically reduced API costs on long sessions |
+| **Infinite Context** | No practical limit on session length or codebase size |
+| **Higher Accuracy** | Only relevant memories are retrieved per query |
+
+### Enable Agentic Memory
+
+```bash
+export OGCODE_AGENTIC_MEMORY_MODE=true
+```
+
+### Token Savings Example
+
+| Session Length | Traditional | With Agentic Memory | Savings |
+|----------------|-------------|---------------------|---------|
+| 50 messages | ~25K tokens | ~8K tokens | **68%** |
+| 200 messages | ~100K tokens | ~28K tokens | **72%** |
+| 1000 messages | ~500K tokens | ~120K tokens | **76%** |
+
+*Actual savings vary based on codebase complexity and conversation patterns.*
+
+---
+
 ## Installation
 
 ### macOS / Linux
@@ -208,62 +240,6 @@ ogcode version
 6. **Retry** — If a task fails, retry it. The stale branch is removed and the task starts fresh.
 
 Plans are archived as markdown files in `.ogcode/archives/` once all tasks are completed.
-
----
-
-## Agentic Session Memory 🧠
-
-![Agentic Memory Demo](assets/agentic_memory.gif)
-
-Ogcode's **Agentic Session Memory** revolutionizes how AI coding assistants handle context in long-running sessions. Instead of sending the entire conversation history to the LLM (which quickly becomes expensive and hits token limits), Ogcode intelligently extracts, stores, and retrieves only the relevant context needed for each query.
-
-### Key Benefits
-
-| Feature | Impact |
-|---------|--------|
-| **~70% Token Savings** | Drastically reduced API costs on long sessions |
-| **Infinite Context** | No practical limit on session length or codebase size |
-| **Higher Accuracy** | Only relevant memories are retrieved per query |
-| **Cross-Session Memory** | Memories persist between sessions via MCP server |
-
-### How It Works
-
-```
-User Query → Memory Graph Search → Retrieve Relevant Context → Send to LLM
-     ↓                                                      ↓
-  New Info ←─────────────────────────────────────────← Stream Response
-     ↓
-Update Memory Graph
-```
-
-When you ask a question, Ogcode:
-1. **Searches** the memory graph for semantically similar past interactions
-2. **Retrieves** only the most relevant memories (not everything)
-3. **Executes** the task with focused context
-4. **Updates** the memory graph with new learnings
-
-### Enable Agentic Memory
-
-```bash
-export OGCODE_AGENTIC_MEMORY_MODE=true
-```
-
-For cross-session persistence, configure an MCP-compatible memory server:
-
-```bash
-export MCP_SERVER_URL=your-mcp-server-url
-export MCP_SERVER_API_KEY=your-api-key
-```
-
-### Token Savings Example
-
-| Session Length | Traditional | With Agentic Memory | Savings |
-|----------------|-------------|---------------------|---------|
-| 50 messages | ~25K tokens | ~8K tokens | **68%** |
-| 200 messages | ~100K tokens | ~28K tokens | **72%** |
-| 1000 messages | ~500K tokens | ~120K tokens | **76%** |
-
-*Actual savings vary based on codebase complexity and conversation patterns.*
 
 ---
 
