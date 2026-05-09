@@ -81,7 +81,7 @@ brews:
       owner: prasenjeet-symon
       name: homebrew-tap
       branch: main
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      token: "{{ .Env.WINGET_PKGS_TOKEN }}"
     commit_author:
       name: Prasenjeet Symon
       email: prasenjeet-symon@users.noreply.github.com
