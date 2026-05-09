@@ -95,14 +95,21 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) configPayload() map[string]any {
 	memoryEnabled := s.mem != nil && s.mem.Enabled()
 	memoryProvider := ""
-	if s.mcpClient != nil {
-		memoryProvider = s.mcpCfg.Command
+	if s.mem != nil && s.mem.Graph != nil && s.mem.Graph.Embed != nil {
+		memoryProvider = "ogcode-embedded"
+	}
+	mcpEnabled := s.mcpClient != nil
+	mcpProvider := ""
+	if mcpEnabled {
+		mcpProvider = s.mcpCfg.Command
 	}
 	return map[string]any{
 		"directory":      s.dir,
 		"port":           s.port,
 		"memoryEnabled":  memoryEnabled,
 		"memoryProvider": memoryProvider,
+		"mcpEnabled":     mcpEnabled,
+		"mcpProvider":    mcpProvider,
 	}
 }
 

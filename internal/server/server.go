@@ -170,18 +170,45 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Initialize agentic memory via MCP
 	var mem *memory.Memory
 	if strings.EqualFold(os.Getenv("OGCODE_AGENTIC_MEMORY_MODE"), "true") {
+		embedProviderID := os.Getenv("OGCODE_EMBED_PROVIDER")
+		if embedProviderID == "" {
+			return fmt.Errorf("OGCODE_AGENTIC_MEMORY_MODE is enabled but OGCODE_EMBED_PROVIDER is not set; set it to openai, openrouter, or ollama")
+		}
+		embedP := registry.Get(embedProviderID)
+		if embedP == nil {
+			return fmt.Errorf("unknown embed provider %q; ensure corresponding API key is set", embedProviderID)
+		}
+		if _, ok := embedP.(provider.Embedder); !ok {
+			return fmt.Errorf("provider %q does not support embeddings; choose openai, openrouter, or ollama", embedProviderID)
+		}
+		if os.Getenv("OGCODE_EMBED_MODEL") == "" {
+			return fmt.Errorf("OGCODE_AGENTIC_MEMORY_MODE is enabled but OGCODE_EMBED_MODEL is not set; set it to e.g. text-embedding-3-small (openai) or nomic-embed-text (ollama)")
+		}
+
+		memStore, err := memory.Open(memory.DefaultDBPath())
+		if err != nil {
+			return fmt.Errorf("memory db: %w", err)
+		}
+
+		mem = memory.New(memStore, &memory.GraphOpts{
+			ChatProvider:  defaultProvider,
+			EmbedProvider: embedP,
+		})
+		s.mem = mem
+	}
+
+	// Initialize MCP client (for tool exposure, unrelated to agentic memory
+	// database, which is now local SQLite with its own embed provider)
+	if strings.EqualFold(os.Getenv("OGCODE_MCP_ENABLED"), "true") {
 		cfg := mcp.ConfigFromEnv()
 		s.mcpCfg = cfg
 		mcpClient, err := mcp.NewClient(context.Background(), cfg)
 		if err != nil {
-			slog.Warn("failed to connect to MCP memory server, memory disabled", "err", err)
+			slog.Warn("failed to connect to MCP server, MCP tools unavailable", "err", err)
 		} else {
 			s.mcpClient = mcpClient
-			mem = memory.New(mcpClient)
-			s.mem = mem
 		}
 	}
 
@@ -266,6 +293,13 @@ func (s *Server) Start() error {
 	if s.mcpClient != nil {
 		if err := s.mcpClient.Close(); err != nil {
 			slog.Warn("close mcp client", "err", err)
+		}
+	}
+
+	// Close memory store
+	if s.mem != nil {
+		if err := s.mem.Store.Close(); err != nil {
+			slog.Warn("close memory store", "err", err)
 		}
 	}
 

@@ -27,7 +27,96 @@ type OpenAIProvider struct {
 	// Nil means not yet fetched; empty slice means fetched but none found.
 	cachedModels []ModelInfo
 	modelsOnce   sync.Once
-	modelsMu      sync.Mutex
+	modelsMu     sync.Mutex
+}
+
+func (p *OpenAIProvider) Embed(ctx context.Context, inputs []string) ([][]float32, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+	model := p.model
+	// Prefer an embedding model if the current model is a chat model.
+	// For OpenAI, users typically use text-embedding-3-small/large.
+	// Allow override via OGCODE_EMBED_MODEL env var.
+	if embedModel := os.Getenv("OGCODE_EMBED_MODEL"); embedModel != "" {
+		model = embedModel
+	} else if !isEmbeddingModel(model) {
+		model = "text-embedding-3-small"
+	}
+
+	// OpenAI embeddings endpoint
+	url := strings.TrimRight(p.baseURL, "/") + "/embeddings"
+
+	type embedRequest struct {
+		Model string   `json:"model"`
+		Input []string `json:"input"`
+	}
+	type embedResponse struct {
+		Data []struct {
+			Index     int       `json:"index"`
+			Embedding []float32 `json:"embedding"`
+		} `json:"data"`
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	body, err := json.Marshal(embedRequest{Model: model, Input: inputs})
+	if err != nil {
+		return nil, fmt.Errorf("marshal embed request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create embed request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if p.apiKey != "" {
+		token := p.apiKey
+		if !strings.Contains(token, " ") {
+			token = "Bearer " + token
+		}
+		httpReq.Header.Set("Authorization", token)
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("send embed request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("%s embed API error %d: %s", p.id, resp.StatusCode, string(body))
+	}
+
+	var out embedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode embed response: %w", err)
+	}
+
+	vecs := make([][]float32, len(inputs))
+	for _, d := range out.Data {
+		vecs[d.Index] = d.Embedding
+	}
+	return vecs, nil
+}
+
+func (p *OpenAIProvider) EmbedModel() string {
+	if embedModel := os.Getenv("OGCODE_EMBED_MODEL"); embedModel != "" {
+		return embedModel
+	}
+	if isEmbeddingModel(p.model) {
+		return p.model
+	}
+	return "text-embedding-3-small"
+}
+
+func isEmbeddingModel(model string) bool {
+	m := strings.ToLower(model)
+	return strings.Contains(m, "embedding") || strings.HasPrefix(m, "embed-")
 }
 
 func NewOpenAIProvider() *OpenAIProvider {

@@ -82,6 +82,14 @@ type Provider interface {
 	StreamChat(ctx context.Context, req StreamRequest) (<-chan StreamEvent, error)
 }
 
+// Embedder is an optional interface that providers can implement to support
+// text embeddings (used for agentic memory semantic recall).
+type Embedder interface {
+	// Embed returns embedding vectors for the given input strings.
+	Embed(ctx context.Context, inputs []string) ([][]float32, error)
+	EmbedModel() string
+}
+
 // ModelRefresher is an optional interface that providers can implement
 // to support dynamic model list refreshing.
 type ModelRefresher interface {
