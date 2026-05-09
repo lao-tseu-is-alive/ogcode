@@ -75,6 +75,27 @@ winget:
     ids:
       - ogcode
 
+brews:
+  - name: ogcode
+    repository:
+      owner: prasenjeet-symon
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: Prasenjeet Symon
+      email: prasenjeet-symon@users.noreply.github.com
+    commit_msg_template: "ogcode {{ .Version }}"
+    directory: Formula
+    homepage: "https://github.com/prasenjeet-symon/ogcode"
+    description: "Agentic coding assistant with web UI"
+    license: MIT
+    test: |
+      system "#{bin}/ogcode", "--help"
+    caveats: "ogcode installed! Run `ogcode --help` to get started."
+    install: |
+      bin.install "ogcode"
+
 checksum:
   name_template: "checksums.txt"
 
