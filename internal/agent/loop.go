@@ -1195,9 +1195,7 @@ Current date: %s`, a.System, dir, runtime.GOOS, runtime.GOARCH, now)
 	if memoryEnabled {
 		prompt += `
 
-You have access to agentic memory. Prior conversation context is provided in <prior_context> blocks. This is a lossy summary of everything discussed so far — treat it as authoritative for past events. It does NOT contain verbatim code or exact search results.
-
-If you need to probe deeper into past context, use the memory_recall tool with a specific question. Do not rely on <prior_context> for exact details — use it for orientation, then recall for specifics.`
+You have access to agentic memory. Prior conversation context is provided in <prior_context> blocks. This is a lossy summary of everything discussed so far — treat it as authoritative for past events. It does NOT contain verbatim code or exact search results.`
 	}
 
 	return prompt
