@@ -475,16 +475,17 @@ func buildTreeFromNodes(nodes []Node, edges []Edge) map[string]TopicTree {
 // ──── Recall ────
 
 type RecallOptions struct {
-	SessionID string
-	Question  string
-	MaxRounds int     // max refinement rounds, default 3
-	Threshold float32 // confidence threshold to stop early, default 0.7
-	Limit     int     // max facts in lightweight tree, default 50
-	MinScore  float32 // minimum cosine similarity to include fact
-	Since     int64
-	Until     int64
-	FromOrder int
-	ToOrder   int
+	SessionID      string
+	Question       string
+	RecentMessages []string // last N raw conversation turns for reference resolution
+	MaxRounds      int      // max refinement rounds, default 3
+	Threshold      float32  // confidence threshold to stop early, default 0.7
+	Limit          int      // max facts in lightweight tree, default 50
+	MinScore       float32  // minimum cosine similarity to include fact
+	Since          int64
+	Until          int64
+	FromOrder      int
+	ToOrder        int
 }
 
 type RecallResult struct {
@@ -515,7 +516,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 		ToOrder:   opts.ToOrder,
 	}
 
-	searchQuery := g.rewriteQuery(ctx, opts.SessionID, opts.Question)
+	searchQuery := g.rewriteQuery(ctx, opts.SessionID, opts.Question, opts.RecentMessages)
 
 	var queryVec []float32
 	vecs, err := g.Embed.Embed(ctx, []string{searchQuery})
@@ -710,36 +711,34 @@ func parseConfidence(s string) (float32, bool) {
 
 func buildRecallPrompt(question string, skeletonTree map[string]TopicTree, semanticTree map[string]TopicTree, topFacts []Node, history []string) string {
 	var sb strings.Builder
-	sb.WriteString("You have access to a lightweight memory graph for this session.\n")
-	sb.WriteString("Answer the user's question using the facts provided.\n")
-	sb.WriteString("If the memory doesn't cover the question, say so.\n\n")
+	sb.WriteString("You are a Memory Context Retriever. Your ONLY job is to surface relevant background\n")
+	sb.WriteString("from past conversations so that a downstream LLM can use it to answer the user's query.\n")
+	sb.WriteString("Do NOT answer the query yourself. Return context, not answers.\n\n")
 
 	if len(history) > 0 {
-		sb.WriteString("Previous exploration:\n")
+		sb.WriteString("Previous retrieval rounds:\n")
 		for _, h := range history {
 			sb.WriteString("  " + h + "\n")
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("=== BIRD'S-EYE VIEW (Topics & Concepts, no fact content) ===\n")
+	sb.WriteString("=== BIRD'S-EYE VIEW (Topics & Concepts) ===\n")
 	sb.WriteString("Use this map to request FOLLOWUPs if the relevant facts below are insufficient.\n")
 	sb.WriteString(skeletonTreeText(skeletonTree))
 
-	sb.WriteString("\n=== MOST RELEVANT FACTS (Semantic matches + Context Window, marked with ★) ===\n")
+	sb.WriteString("\n=== MOST RELEVANT FACTS (Semantic matches marked with ★) ===\n")
 	sb.WriteString(semanticTreeText(semanticTree, topFacts))
 	sb.WriteString("\nUser Query: " + question + "\n\n")
-	sb.WriteString(`You are a Context Routing Agent. Your job is to extract relevant past knowledge to help a downstream LLM respond to the User Query. If the query is generic (e.g. "Hello", "Write code") or the memory contains no relevant facts, you MUST return empty context.
-
-Respond strictly in the following format:
-THOUGHT_PROCESS: <Analyze if the query actually relies on past context, and if the provided memory maps contain relevant facts.>
-CONTEXT_FOUND: <YES or NO. Say NO if the query is generic or memory is irrelevant.>
-DRAFT_CONTEXT: <If YES, draft a dense, factual summary of the relevant memories. If NO, leave blank.>
-CRITIQUE: <If YES, grade your draft. Are you hallucinating? Did you include irrelevant info?>
-REFINEMENT_NEEDED: <YES or NO. Say YES if the critique found issues or you need a FOLLOWUP.>
-CONFIDENCE: <0.0-1.0 self-rated confidence in your extraction>
-FOLLOWUP: <If REFINEMENT_NEEDED is YES, what specific query should we search the database for?>
-FINAL_CONTEXT: <Your polished context brief. If CONTEXT_FOUND is NO, write exactly: EMPTY_CONTEXT>`)
+	sb.WriteString(`Respond strictly in the following format:
+THOUGHT_PROCESS: <Does this query need past context to be answered well? Which stored facts are relevant?>
+CONTEXT_FOUND: <YES or NO. Say NO if the query is generic or the memory contains nothing relevant.>
+DRAFT_CONTEXT: <If YES, write a concise factual summary of ONLY the relevant past context — what was discussed, decided, or built that is directly needed to answer this query. Do NOT answer the query. If NO, leave blank.>
+CRITIQUE: <Review your draft. Did you accidentally answer the query instead of providing context? Did you include irrelevant facts or hallucinate?>
+REFINEMENT_NEEDED: <YES or NO. Say YES if the critique found issues or a FOLLOWUP search would help.>
+CONFIDENCE: <0.0-1.0 confidence that the context you retrieved is sufficient for the downstream LLM.>
+FOLLOWUP: <If REFINEMENT_NEEDED is YES, what specific topic or fact should we search for next?>
+FINAL_CONTEXT: <Your polished background context brief for the downstream LLM. If CONTEXT_FOUND is NO, write exactly: EMPTY_CONTEXT>`)
 	return sb.String()
 }
 
@@ -946,28 +945,81 @@ func cosine(a, b []float32) float32 {
 	return dot / (sqrt(magA) * sqrt(magB))
 }
 
-func (g *Graph) rewriteQuery(ctx context.Context, sessionID, rawQuery string) string {
+// needsRewrite returns true when the query contains words or phrases that
+// suggest it references something from prior context and should be rewritten.
+func needsRewrite(query string) bool {
+	lower := strings.ToLower(query)
+
+	// Multi-word phrases checked first (more specific).
+	phrases := []string{
+		"keep going", "do it", "do that", "do the same",
+		"the previous", "the last", "go on", "continue from",
+		"same thing", "that approach", "that method", "that function",
+		"the one", "the other", "like before", "as before",
+	}
+	for _, p := range phrases {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+
+	// Single-word references — check as whole words.
+	words := strings.FieldsFunc(lower, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z')
+	})
+	wordSet := make(map[string]bool, len(words))
+	for _, w := range words {
+		wordSet[w] = true
+	}
+	refWords := []string{
+		"it", "its", "this", "that", "these", "those",
+		"they", "them", "their", "he", "she", "him", "her",
+		"previous", "last", "above", "there", "same",
+		"continue", "again", "another", "other",
+	}
+	for _, ref := range refWords {
+		if wordSet[ref] {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Graph) rewriteQuery(ctx context.Context, _ string, rawQuery string, recentMessages []string) string {
 	if g.Chat == nil {
 		return rawQuery
 	}
-
-	f := NodeFilter{Type: TypeFact}
-	nodes, _ := g.Store.ListNodesFiltered(sessionID, f)
-
-	var recent string
-	start := len(nodes) - 3
-	if start < 0 {
-		start = 0
+	// Skip the LLM call entirely when the query appears self-contained.
+	if !needsRewrite(rawQuery) {
+		return rawQuery
 	}
-	for _, n := range nodes[start:] {
-		recent += fmt.Sprintf("Q: %s\nA: %s\n", n.Question, n.Response)
+	// Pronouns and references almost always point to the immediately preceding
+	// exchanges — recent conversation is sufficient. Memory facts belong in the
+	// recall step that follows, not here.
+	if len(recentMessages) == 0 {
+		return rawQuery
 	}
 
-	prompt := fmt.Sprintf(`Given the recent conversation history, rewrite the user's latest query so it is fully self-contained. Resolve any pronouns (it, that, he, etc.) to their actual nouns.
-History:
+	var rawContext strings.Builder
+	for _, line := range recentMessages {
+		rawContext.WriteString(line + "\n")
+	}
+
+	prompt := fmt.Sprintf(`You are resolving references in a user query to make it fully self-contained.
+
+RECENT CONVERSATION:
 %s
-Latest Query: %s
-Respond ONLY with the rewritten query, nothing else.`, recent, rawQuery)
+LATEST QUERY: %s
+
+Resolve ALL of the following reference types found in the query:
+- Pronouns: it, its, this, that, these, those, they, them, he, she
+- Temporal/ordinal: "the previous", "the last", "the earlier", "the above", "the one before"
+- Action continuations: "continue", "keep going", "do the same", "do it again", "go on"
+- Implicit entities: "the API", "the function", "the approach", "the method" when clearly referring to something specific from the conversation above
+
+If the query is already self-contained or the reference cannot be resolved from the conversation above, return it unchanged.
+Respond ONLY with the rewritten query, nothing else.`,
+		rawContext.String(), rawQuery)
 
 	resp, err := g.Chat.Chat(ctx, "", prompt)
 	if err != nil || strings.TrimSpace(resp) == "" {
@@ -979,11 +1031,16 @@ Respond ONLY with the rewritten query, nothing else.`, recent, rawQuery)
 // chatClient adapts an ogcode streaming Provider into a blocking ChatClient.
 type chatClient struct {
 	provider provider.Provider
+	model    string
 }
 
 func (c *chatClient) Chat(ctx context.Context, system, prompt string) (string, error) {
+	model := c.model
+	if model == "" {
+		model = c.provider.Models()[0].ID
+	}
 	req := provider.StreamRequest{
-		Model: c.provider.Models()[0].ID,
+		Model: model,
 		System: []string{system},
 		Messages: []provider.ModelMessage{
 			{Role: "user", Content: json.RawMessage(fmt.Sprintf("%q", prompt))},
@@ -1006,8 +1063,9 @@ func (c *chatClient) Chat(ctx context.Context, system, prompt string) (string, e
 }
 
 // NewChatClient creates a blocking ChatClient from an ogcode Provider.
-func NewChatClient(p provider.Provider) ChatClient {
-	return &chatClient{provider: p}
+// model is the specific model ID to use; if empty the provider's default (Models()[0]) is used.
+func NewChatClient(p provider.Provider, model string) ChatClient {
+	return &chatClient{provider: p, model: model}
 }
 
 // embedClient wraps an ogcode provider.Embedder as an EmbedClient.

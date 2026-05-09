@@ -23,6 +23,7 @@ export interface Session {
   model?: string;
   permission?: string;
   compactionSummary?: string;
+  memoryTokensSaved?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -147,6 +148,59 @@ export interface ConfigInfo {
 
 export function getConfig(): Promise<ConfigInfo> {
   return fetchAPI('/config');
+}
+
+// Memory config API
+export interface MemoryConfig {
+  enabled: boolean;
+  embedProviderId: string;
+  embedModel: string;
+  embedApiKey: string;
+  chatProviderId: string;
+  chatModel: string;
+  chatApiKey: string;
+  updatedAt: number;
+}
+
+export function getMemoryConfig(): Promise<MemoryConfig> {
+  return fetchAPI('/memory/config');
+}
+
+export function setMemoryConfig(cfg: Omit<MemoryConfig, 'updatedAt'>): Promise<MemoryConfig> {
+  return fetchAPI('/memory/config', {
+    method: 'POST',
+    body: JSON.stringify(cfg),
+  });
+}
+
+export function fetchMemoryModels(provider: string, type: 'embed' | 'chat', apiKey?: string): Promise<string[]> {
+  const params = new URLSearchParams({ provider, type });
+  if (apiKey) params.set('apiKey', apiKey);
+  return fetchAPI(`/memory/models?${params}`);
+}
+
+// Provider config API
+export interface ProviderConfig {
+  providerId: string;
+  apiKey: string;
+  baseUrl: string;
+  updatedAt: number;
+}
+
+export function getProviderConfigs(): Promise<ProviderConfig[]> {
+  return fetchAPI('/providers/config');
+}
+
+export function setProviderConfig(id: string, cfg: Omit<ProviderConfig, 'providerId' | 'updatedAt'>): Promise<ProviderConfig> {
+  return fetchAPI(`/providers/config/${id}`, {
+    method: 'POST',
+    body: JSON.stringify(cfg),
+  });
+}
+
+// Pricing API — returns model ID → USD per 1 million input tokens
+export function getProviderPricing(provider: string): Promise<Record<string, number>> {
+  return fetchAPI(`/pricing?provider=${encodeURIComponent(provider)}`);
 }
 
 // Path API

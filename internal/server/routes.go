@@ -32,6 +32,15 @@ func (s *Server) routes() http.Handler {
 		r.Post("/theme", s.handleSetTheme)
 		r.Delete("/theme/{directory}", s.handleDeleteTheme)
 
+		r.Get("/memory/config", s.handleGetMemoryConfig)
+		r.Post("/memory/config", s.handleSetMemoryConfig)
+		r.Get("/memory/models", s.handleMemoryModels)
+
+		r.Get("/providers/config", s.handleGetProviderConfigs)
+		r.Post("/providers/config/{id}", s.handleSetProviderConfig)
+
+		r.Get("/pricing", s.handleGetPricing)
+
 		r.Route("/session", func(r chi.Router) {
 			r.Get("/", s.handleListSessions)
 			r.Post("/", s.handleCreateSession)

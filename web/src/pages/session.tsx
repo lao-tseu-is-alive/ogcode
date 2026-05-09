@@ -1,17 +1,50 @@
 import { useParams, useNavigate, useLocation } from '@solidjs/router';
 import { useSession } from '../context/session';
 import { useServer } from '../context/server';
-import { createEffect, on, Show } from 'solid-js';
+import { createEffect, createSignal, on, Show } from 'solid-js';
 import MessageList from '../components/message-list';
 import PromptInput from '../components/prompt-input';
 import SessionSidebar from '../components/session-sidebar';
 import TokenPill from '../components/token-pill';
+import { getProviderPricing } from '../api/client';
 
 function getModelLabel(model: string | undefined): string {
   if (!model) return '';
   const parts = model.split('/');
   const name = parts[parts.length - 1];
   return name.replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-preview$/, '');
+}
+
+// Input token price per 1 million tokens (USD).
+const TOKEN_PRICE_PER_M: Record<string, number> = {
+  'claude-sonnet-4-6':          3.00,
+  'claude-sonnet-4-20250514':   3.00,
+  'claude-opus-4-7':            15.00,
+  'claude-opus-4-20250514':     15.00,
+  'claude-haiku-4-5-20251001':  0.80,
+  'gpt-4o':                     2.50,
+  'gpt-4o-mini':                0.15,
+  'gpt-4-turbo':                10.00,
+  'gpt-3.5-turbo':              0.50,
+  'o1':                         15.00,
+  'o3-mini':                    1.10,
+  'o4-mini':                    1.10,
+};
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function estimateCost(tokens: number, model: string, dynamicPrices: Record<string, number>): string | null {
+  // Dynamic prices (from real-time API) take precedence over static table.
+  const base = model.split('/').pop() ?? model;
+  const price = dynamicPrices[model] ?? dynamicPrices[base] ?? TOKEN_PRICE_PER_M[base] ?? TOKEN_PRICE_PER_M[model];
+  if (!price) return null;
+  const cost = (tokens / 1_000_000) * price;
+  if (cost < 0.0001) return null;
+  return cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(3)}`;
 }
 
 function shortenPath(path: string): string {
@@ -33,6 +66,24 @@ function ChatContent() {
   const params = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Real-time pricing for OpenRouter and Ollama providers.
+  const [dynamicPrices, setDynamicPrices] = createSignal<Record<string, number>>({});
+
+  createEffect(on(
+    () => {
+      const model = session.activeSession()?.model;
+      const info = model ? session.models().find(m => m.id === model) : undefined;
+      return info?.providerId ?? '';
+    },
+    (provider) => {
+      if (provider === 'openrouter' || provider === 'ollama') {
+        getProviderPricing(provider)
+          .then(setDynamicPrices)
+          .catch(() => {});
+      }
+    }
+  ));
 
   createEffect(on(() => params.id, (id) => {
     if (id) {
@@ -81,13 +132,35 @@ function ChatContent() {
             </Show>
             <Show when={server.memoryEnabled()}>
               <span
-                title="Agentic memory active"
-                class="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-md border border-emerald-400/20 font-medium"
+                title={(() => {
+                  const t = session.memorySavedTokens();
+                  if (t > 0) return `Memory is saving ~${formatTokens(t)} tokens vs. sending full history`;
+                  if (t < 0) return `Memory is adding ~${formatTokens(-t)} tokens of overhead — savings kick in as history grows`;
+                  return 'Agentic memory active';
+                })()}
+                class={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border font-medium
+                  ${session.memorySavedTokens() < 0
+                    ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                    : 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
+                  }`}
               >
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.847.813a4.5 4.5 0 00-3.09 3.091z" />
                 </svg>
                 Memory
+                <Show when={session.memorySavedTokens() > 0}>
+                  <span class="text-emerald-500/70">·</span>
+                  <span class="text-emerald-300">~{formatTokens(session.memorySavedTokens())} saved</span>
+                  <Show when={estimateCost(session.memorySavedTokens(), session.activeSession()?.model ?? '', dynamicPrices())}>
+                    <span class="text-emerald-500/70 font-normal">
+                      ({estimateCost(session.memorySavedTokens(), session.activeSession()?.model ?? '', dynamicPrices())})
+                    </span>
+                  </Show>
+                </Show>
+                <Show when={session.memorySavedTokens() < 0}>
+                  <span class="text-amber-500/70">·</span>
+                  <span class="text-amber-300">~{formatTokens(-session.memorySavedTokens())} overhead</span>
+                </Show>
               </span>
             </Show>
             <button

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 )
 
@@ -168,6 +169,69 @@ func (r *Registry) ResolveProvider(modelID string) Provider {
 		return p
 	}
 	return nil
+}
+
+// NewProviderWithConfig creates a Provider with explicit credentials, used when
+// credentials come from the DB rather than environment variables.
+// providerID must be "anthropic", "openai", "openrouter", or "ollama".
+// Env-var values are used as the base; apiKey and baseURL override them when non-empty.
+func NewProviderWithConfig(providerID, apiKey, baseURL string) (Provider, error) {
+	switch providerID {
+	case "anthropic":
+		p := NewAnthropicProvider()
+		if apiKey != "" {
+			p.apiKey = apiKey
+		}
+		return p, nil
+	case "openai":
+		p := NewOpenAIProvider()
+		if apiKey != "" {
+			p.apiKey = apiKey
+		}
+		if baseURL != "" {
+			p.baseURL = baseURL
+		}
+		return p, nil
+	case "openrouter":
+		p := NewOpenRouterProvider()
+		if apiKey != "" {
+			p.apiKey = apiKey
+		}
+		return p, nil
+	case "ollama":
+		p := NewOllamaProvider()
+		if apiKey != "" {
+			p.apiKey = apiKey
+		}
+		if baseURL != "" {
+			p.baseURL = baseURL
+		}
+		return p, nil
+	default:
+		return nil, fmt.Errorf("unknown provider %q; must be anthropic, openai, openrouter, or ollama", providerID)
+	}
+}
+
+// NewChatProvider creates a Provider configured for LLM inference (chat/summarization).
+// providerID must be "anthropic", "openai", "openrouter", or "ollama".
+// If apiKey is non-empty it overrides the env-var key.
+// If model is non-empty it is used as the model ID for inference.
+func NewChatProvider(providerID, apiKey, model string) (Provider, error) {
+	switch providerID {
+	case "anthropic":
+		p := NewAnthropicProvider()
+		if apiKey != "" {
+			p.apiKey = apiKey
+		}
+		if model != "" {
+			p.model = model
+		}
+		return p, nil
+	case "openai", "openrouter", "ollama":
+		return NewEmbedProvider(providerID, apiKey, model)
+	default:
+		return nil, fmt.Errorf("unknown chat provider %q; must be anthropic, openai, openrouter, or ollama", providerID)
+	}
 }
 
 // RefreshModels clears cached model lists for all providers that support it,

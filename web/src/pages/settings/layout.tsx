@@ -47,7 +47,7 @@ function SettingsShell(props: { children?: any }) {
   const server = useServer();
 
   // Read the route we came from (passed as router state by each navigate('/settings') call site).
-  const from = location.state?.from;
+  const from = (location.state as Record<string, unknown> | null)?.from;
   if (typeof from === 'string' && !from.startsWith('/settings')) {
     storedPreviousRoute = from;
   }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
@@ -115,6 +116,42 @@ func (s *Server) configPayload() map[string]any {
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.configPayload())
+}
+
+func (s *Server) handleGetMemoryConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := session.GetMemoryConfig(s.db)
+	if err != nil {
+		http.Error(w, "failed to read memory config", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, session.MaskedMemoryConfig(cfg))
+}
+
+func (s *Server) handleSetMemoryConfig(w http.ResponseWriter, r *http.Request) {
+	var incoming session.MemoryConfig
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Preserve existing API keys when the sentinel "__SET__" is sent.
+	existing, err := session.GetMemoryConfig(s.db)
+	if err != nil {
+		http.Error(w, "failed to read memory config", http.StatusInternalServerError)
+		return
+	}
+	if incoming.EmbedAPIKey == "__SET__" {
+		incoming.EmbedAPIKey = existing.EmbedAPIKey
+	}
+	if incoming.ChatAPIKey == "__SET__" {
+		incoming.ChatAPIKey = existing.ChatAPIKey
+	}
+
+	if err := session.SetMemoryConfig(s.db, &incoming); err != nil {
+		http.Error(w, "failed to save memory config", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, session.MaskedMemoryConfig(&incoming))
 }
 
 func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {

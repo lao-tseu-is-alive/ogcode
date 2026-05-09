@@ -110,7 +110,8 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 						}
 					}
 					if userText != "" {
-						recallText := lr.Memory.RecallMemory(ctx, string(sessionID), userText)
+						recentExchanges := extractRecentExchanges(messages[:i], 2)
+						recallText := lr.Memory.RecallMemory(ctx, string(sessionID), userText, recentExchanges)
 						if recallText != "" {
 							if memoryText != "" {
 								memoryText += "\n\n### Relevant Context\n" + recallText
@@ -120,6 +121,43 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 						}
 					}
 					break
+				}
+			}
+		}
+
+		// Calculate net token savings: without memory the full history is sent every turn,
+		// so savings = all skipped history tokens minus the memory context injected.
+		// Negative means memory adds overhead (normal on short sessions); positive means savings.
+		if memoryText != "" && len(messages) > 1 {
+			lastUserIdx := -1
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].Info.Role == session.RoleUser {
+					for _, p := range messages[i].Parts {
+						if p.Type == session.PartText {
+							lastUserIdx = i
+							break
+						}
+					}
+					if lastUserIdx >= 0 {
+						break
+					}
+				}
+			}
+			if lastUserIdx > 0 {
+				var skippedChars int
+				for _, msg := range messages[:lastUserIdx] {
+					for _, p := range msg.Parts {
+						skippedChars += len(p.Data)
+					}
+				}
+				// 1 token ≈ 4 chars. Net = history avoided − memory injected.
+				netSaved := (skippedChars - len(memoryText)) / 4
+				lr.Bus.Publish("memory.savings", map[string]any{
+					"sessionId":   string(sessionID),
+					"savedTokens": netSaved,
+				})
+				if err := lr.Store.UpdateMemoryTokensSaved(sessionID, netSaved); err != nil {
+					slog.Warn("persist memory tokens saved", "err", err)
 				}
 			}
 		}
@@ -918,6 +956,42 @@ type pendingToolCall struct {
 	PartID session.PartID
 }
 
+// extractRecentExchanges returns up to maxExchanges user+assistant turns from
+// the tail of messages as "Role: text" strings, truncated to 500 chars each.
+// These are passed to memory recall to help resolve references like
+// "the previous API", "continue", "that approach", etc.
+func extractRecentExchanges(messages []*session.MessageWithParts, maxExchanges int) []string {
+	var lines []string
+	exchanges := 0
+	for i := len(messages) - 1; i >= 0 && exchanges < maxExchanges; i-- {
+		msg := messages[i]
+		var role string
+		switch msg.Info.Role {
+		case session.RoleUser:
+			role = "User"
+		case session.RoleAssistant:
+			role = "Assistant"
+			exchanges++ // count each assistant turn as one full exchange
+		default:
+			continue
+		}
+		for _, p := range msg.Parts {
+			if p.Type == session.PartText {
+				var data session.TextPartData
+				if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
+					text := data.Text
+					if len(text) > 500 {
+						text = text[:500] + "…"
+					}
+					lines = append([]string{role + ": " + text}, lines...)
+					break
+				}
+			}
+		}
+	}
+	return lines
+}
+
 func shouldBreak(messages []*session.MessageWithParts) bool {
 	if len(messages) == 0 {
 		return false
@@ -990,43 +1064,8 @@ func toProviderMessages(messages []*session.MessageWithParts, memoryText string)
 		}
 	}
 
-	// No memory: truncate to last N messages to stay within context limits.
-	// Keep the original user ask and the most recent conversation tail.
-	const maxContextMessages = 50
-	if len(messages) > maxContextMessages {
-		var originalAsk string
-		for _, m := range messages {
-			if m.Info.Role == session.RoleUser {
-				for _, p := range m.Parts {
-					if p.Type == session.PartText {
-						var data session.TextPartData
-						if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
-							originalAsk = data.Text
-							break
-						}
-					}
-				}
-				if originalAsk != "" {
-					break
-				}
-			}
-		}
-		recent := messages[len(messages)-maxContextMessages:]
-		result := convertMessages(recent)
-		// Prepend the original ask so the LLM doesn't lose context
-		if originalAsk != "" && len(result) > 0 {
-			prefix := "[Earlier conversation truncated. Original request: " + originalAsk + "]\n\n"
-			var firstContent string
-			if result[0].Content != nil {
-				json.Unmarshal(result[0].Content, &firstContent)
-			}
-			if firstContent != "" {
-				result[0].Content, _ = json.Marshal(prefix + firstContent)
-			}
-		}
-		slog.Info("truncated message context", "total", len(messages), "sent", maxContextMessages)
-		return result
-	}
+	// No memory: send the full conversation history and let the model's context
+	// window be the limit. Memory mode is the right solution for long sessions.
 	return convertMessages(messages)
 }
 

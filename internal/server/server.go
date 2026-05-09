@@ -105,28 +105,62 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// Load DB-stored provider credentials (env vars take precedence).
+	dbProviderCfgs, err := session.GetAllProviderConfigs(database)
+	if err != nil {
+		slog.Warn("failed to load provider configs from DB", "err", err)
+	}
+	dbProviderMap := make(map[string]*session.ProviderConfig)
+	for _, c := range dbProviderCfgs {
+		dbProviderMap[c.ProviderID] = c
+	}
+	resolveKey := func(envKey, providerID string) string {
+		if envKey != "" {
+			return envKey
+		}
+		if c, ok := dbProviderMap[providerID]; ok {
+			return c.APIKey
+		}
+		return ""
+	}
+	resolveBaseURL := func(envURL, providerID string) string {
+		if envURL != "" {
+			return envURL
+		}
+		if c, ok := dbProviderMap[providerID]; ok {
+			return c.BaseURL
+		}
+		return ""
+	}
+
 	// Initialize provider
 	registry := provider.NewRegistry()
-	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
-		registry.Register(provider.NewAnthropicProvider())
+	if key := resolveKey(os.Getenv("ANTHROPIC_API_KEY"), "anthropic"); key != "" {
+		p, _ := provider.NewProviderWithConfig("anthropic", key, "")
+		registry.Register(p)
 		slog.Info("registered anthropic provider")
 	}
-	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
-		registry.Register(provider.NewOpenAIProvider())
+	if key := resolveKey(os.Getenv("OPENAI_API_KEY"), "openai"); key != "" {
+		baseURL := resolveBaseURL(os.Getenv("OPENAI_BASE_URL"), "openai")
+		p, _ := provider.NewProviderWithConfig("openai", key, baseURL)
+		registry.Register(p)
 		slog.Info("registered openai provider")
 	}
-	if apiKey := os.Getenv("OPENROUTER_API_KEY"); apiKey != "" {
-		registry.Register(provider.NewOpenRouterProvider())
+	if key := resolveKey(os.Getenv("OPENROUTER_API_KEY"), "openrouter"); key != "" {
+		p, _ := provider.NewProviderWithConfig("openrouter", key, "")
+		registry.Register(p)
 		slog.Info("registered openrouter provider")
 	}
-	ollamaBaseURL := os.Getenv("OLLAMA_BASE_URL")
-	ollamaAPIKey := os.Getenv("OLLAMA_API_KEY")
-	if ollamaBaseURL != "" || ollamaAPIKey != "" || fileExists("/usr/local/bin/ollama") || fileExists("/opt/homebrew/bin/ollama") {
-		if ollamaAPIKey != "" && ollamaBaseURL == "" {
-			// API key set but no URL — default to localhost but warn that cloud needs a URL
-			slog.Warn("OLLAMA_API_KEY is set but OLLAMA_BASE_URL is not; using http://localhost:11434/v1. Set OLLAMA_BASE_URL for cloud Ollama.")
+	ollamaEnvURL := os.Getenv("OLLAMA_BASE_URL")
+	ollamaEnvKey := os.Getenv("OLLAMA_API_KEY")
+	ollamaKey := resolveKey(ollamaEnvKey, "ollama")
+	ollamaBaseURL := resolveBaseURL(ollamaEnvURL, "ollama")
+	if ollamaKey != "" || ollamaBaseURL != "" || fileExists("/usr/local/bin/ollama") || fileExists("/opt/homebrew/bin/ollama") {
+		if ollamaKey != "" && ollamaBaseURL == "" {
+			slog.Warn("Ollama API key is set but no base URL configured; using http://localhost:11434/v1")
 		}
-		registry.Register(provider.NewOllamaProvider())
+		p, _ := provider.NewProviderWithConfig("ollama", ollamaKey, ollamaBaseURL)
+		registry.Register(p)
 		slog.Info("registered ollama provider")
 	}
 
@@ -173,6 +207,7 @@ func (s *Server) Start() error {
 
 	var mem *memory.Memory
 	if strings.EqualFold(os.Getenv("OGCODE_AGENTIC_MEMORY_MODE"), "true") {
+		// Legacy env-var path (takes precedence over DB config).
 		embedProviderID := os.Getenv("OGCODE_EMBED_PROVIDER")
 		if embedProviderID == "" {
 			return fmt.Errorf("OGCODE_AGENTIC_MEMORY_MODE is enabled but OGCODE_EMBED_PROVIDER is not set; set it to openai, openrouter, or ollama")
@@ -199,6 +234,46 @@ func (s *Server) Start() error {
 		})
 		s.mem = mem
 		toolRegistry.Register(tool.NewMemoryRecallTool(mem))
+	} else {
+		// DB-config path: user enabled memory from the settings UI.
+		dbMemCfg, err := session.GetMemoryConfig(database)
+		if err != nil {
+			slog.Warn("failed to read memory config from DB", "err", err)
+		} else if dbMemCfg.Enabled && dbMemCfg.EmbedProviderID != "" {
+			embedP, err := provider.NewEmbedProvider(dbMemCfg.EmbedProviderID, dbMemCfg.EmbedAPIKey, dbMemCfg.EmbedModel)
+			if err != nil {
+				slog.Warn("memory config has unsupported embed provider; memory disabled", "err", err)
+			} else {
+				// Resolve chat provider: use DB config if set, otherwise fall back to defaultProvider.
+				chatP := defaultProvider
+				chatModel := ""
+				if dbMemCfg.ChatProviderID != "" {
+					cp, err := provider.NewChatProvider(dbMemCfg.ChatProviderID, dbMemCfg.ChatAPIKey, dbMemCfg.ChatModel)
+					if err != nil {
+						slog.Warn("memory config has unsupported chat provider; using default", "err", err)
+					} else {
+						chatP = cp
+						chatModel = dbMemCfg.ChatModel
+					}
+				}
+
+				memStore, err := memory.Open(memory.DefaultDBPath())
+				if err != nil {
+					slog.Warn("failed to open memory store; memory disabled", "err", err)
+				} else {
+					mem = memory.New(memStore, &memory.GraphOpts{
+						ChatProvider:  chatP,
+						ChatModel:     chatModel,
+						EmbedProvider: embedP,
+					})
+					s.mem = mem
+					toolRegistry.Register(tool.NewMemoryRecallTool(mem))
+					slog.Info("agentic memory enabled via DB config",
+						"embed_provider", dbMemCfg.EmbedProviderID, "embed_model", dbMemCfg.EmbedModel,
+						"chat_provider", chatP.ID(), "chat_model", chatModel)
+				}
+			}
+		}
 	}
 
 	// Initialize MCP client (for tool exposure, unrelated to agentic memory

@@ -1,8 +1,10 @@
-import { Show, For, createMemo, createSignal } from 'solid-js';
+import { Show, For, createMemo, createSignal, createEffect, onMount } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { useServer } from '../../context/server';
 import { useSession } from '../../context/session';
 import { useTheme } from '../../context/theme';
+import { getMemoryConfig, setMemoryConfig, fetchMemoryModels } from '../../api/client';
+import { EMBED_PROVIDERS, CHAT_PROVIDERS } from '../../lib/providers';
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -72,29 +74,10 @@ export default function GeneralSettings() {
 
         {/* Memory card */}
         <Card
-          title="Memory"
-          description="Agentic memory provides persistent context across sessions."
+          title="Agentic Memory"
+          description="Helps ogcode remember your past work and bring back what's relevant when you need it."
         >
-          <Row label="Status">
-            <div class="flex items-center gap-2">
-              <span class={`w-1.5 h-1.5 rounded-full ${server.memoryEnabled() ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-              <span class="text-[12px] text-zinc-200">
-                {server.memoryEnabled() ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-          </Row>
-          <Show when={server.memoryEnabled() && server.memoryProvider()}>
-            <Row label="Source">
-              <span class="text-[12px] text-zinc-200 font-mono">
-                MCP ({server.memoryProvider()})
-              </span>
-            </Row>
-          </Show>
-          <div class="pt-3 mt-3 border-t border-[color:var(--border-subtle)]">
-            <p class="text-[11px] text-zinc-500 leading-relaxed">
-              Configure via <code class="px-1 py-0.5 rounded bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] text-zinc-400 font-mono">OGCODE_AGENTIC_MEMORY_MODE</code> environment variable.
-            </p>
-          </div>
+          <MemoryConfigForm />
         </Card>
 
         {/* Theme card */}
@@ -208,6 +191,377 @@ function Shortcut(props: { keys: string[]; description: string }) {
             </span>
           )}
         </For>
+      </div>
+    </div>
+  );
+}
+
+
+const EMBED_MODEL_HINTS: Record<string, string> = {
+  openai: 'text-embedding-3-small',
+  openrouter: 'text-embedding-3-small',
+  ollama: 'nomic-embed-text',
+};
+
+const CHAT_MODEL_HINTS: Record<string, string> = {
+  anthropic: 'claude-sonnet-4-6',
+  openai: 'gpt-4o',
+  openrouter: 'anthropic/claude-sonnet-4.6',
+  ollama: 'qwen3',
+};
+
+function MemoryConfigForm() {
+  const [enabled, setEnabled] = createSignal(false);
+  const [embedProvider, setEmbedProvider] = createSignal('openai');
+  const [embedModel, setEmbedModel] = createSignal('');
+  const [embedApiKey, setEmbedApiKey] = createSignal('');
+  const [chatProvider, setChatProvider] = createSignal('');
+  const [chatModel, setChatModel] = createSignal('');
+  const [chatApiKey, setChatApiKey] = createSignal('');
+  const [loading, setLoading] = createSignal(true);
+  const [saving, setSaving] = createSignal(false);
+  const [error, setError] = createSignal('');
+  const [saved, setSaved] = createSignal(false);
+
+  onMount(async () => {
+    try {
+      const cfg = await getMemoryConfig();
+      setEnabled(cfg.enabled);
+      setEmbedProvider(cfg.embedProviderId || 'openai');
+      setEmbedModel(cfg.embedModel || '');
+      setEmbedApiKey(cfg.embedApiKey || '');
+      setChatProvider(cfg.chatProviderId || '');
+      setChatModel(cfg.chatModel || '');
+      setChatApiKey(cfg.chatApiKey || '');
+    } catch {
+      setError('Failed to load memory config');
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  const handleSave = async () => {
+    setError('');
+    setSaved(false);
+    if (enabled() && !embedProvider()) {
+      setError('Select a memory provider');
+      return;
+    }
+    setSaving(true);
+    try {
+      await setMemoryConfig({
+        enabled: enabled(),
+        embedProviderId: embedProvider(),
+        embedModel: embedModel(),
+        embedApiKey: embedApiKey(),
+        chatProviderId: chatProvider(),
+        chatModel: chatModel(),
+        chatApiKey: chatApiKey(),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError('Failed to save memory config');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputClass = 'w-full h-8 px-2.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 font-mono focus:outline-none focus:border-[color:var(--accent)] transition disabled:opacity-40';
+  const selectClass = 'w-full h-8 pl-2.5 pr-7 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 focus:outline-none focus:border-[color:var(--accent)] transition appearance-none cursor-pointer';
+
+  return (
+    <Show when={!loading()} fallback={
+      <p class="text-[12px] text-zinc-500 py-2">Loading…</p>
+    }>
+      <div class="space-y-4">
+        {/* Enable toggle */}
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[13px] text-zinc-200 font-medium">Enable memory</div>
+            <div class="text-[11px] text-zinc-500 mt-0.5">
+              ogcode recalls relevant work from past sessions to give better answers.
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled()}
+            onClick={() => setEnabled(v => !v)}
+            class={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+              transition-colors duration-200 focus:outline-none
+              ${enabled() ? 'bg-[color:var(--accent)]' : 'bg-zinc-700'}`}
+          >
+            <span
+              class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
+                transition duration-200 ${enabled() ? 'translate-x-4' : 'translate-x-0'}`}
+            />
+          </button>
+        </div>
+
+        <Show when={enabled()}>
+          <div class="space-y-3 pt-1">
+            {/* Embed provider */}
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1.5">Memory provider</label>
+              <div class="relative">
+                <select
+                  value={embedProvider()}
+                  onChange={e => {
+                    const p = e.currentTarget.value;
+                    setEmbedProvider(p);
+                    if (!embedModel()) setEmbedModel(EMBED_MODEL_HINTS[p] || '');
+                  }}
+                  class={selectClass}
+                >
+                  <For each={EMBED_PROVIDERS}>
+                    {(p) => <option value={p.id}>{p.label}</option>}
+                  </For>
+                </select>
+                <svg
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Embed model */}
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1.5">Memory model</label>
+              <input
+                type="text"
+                value={embedModel()}
+                onInput={e => setEmbedModel(e.currentTarget.value)}
+                placeholder={EMBED_MODEL_HINTS[embedProvider()] || 'e.g. text-embedding-3-small'}
+                class={inputClass}
+              />
+            </div>
+
+            {/* Embed API key */}
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1.5">
+                API key
+                <Show when={embedApiKey() === '__SET__'}>
+                  <span class="ml-1.5 text-emerald-500">● already set</span>
+                </Show>
+              </label>
+              <input
+                type="password"
+                value={embedApiKey() === '__SET__' ? '' : embedApiKey()}
+                onInput={e => setEmbedApiKey(e.currentTarget.value)}
+                placeholder={embedApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
+                class={inputClass}
+              />
+            </div>
+
+            {/* Section divider */}
+            <div class="pt-1 pb-0.5 border-t border-[color:var(--border-subtle)]">
+              <p class="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">
+                AI for understanding your history
+              </p>
+            </div>
+
+            {/* Chat provider */}
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1.5">AI provider</label>
+              <div class="relative">
+                <select
+                  value={chatProvider()}
+                  onChange={e => {
+                    const p = e.currentTarget.value;
+                    setChatProvider(p);
+                    if (p && !chatModel()) setChatModel(CHAT_MODEL_HINTS[p] || '');
+                    if (!p) setChatModel('');
+                  }}
+                  class={selectClass}
+                >
+                  <For each={CHAT_PROVIDERS}>
+                    {(p) => <option value={p.id}>{p.label}</option>}
+                  </For>
+                </select>
+                <svg
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Chat model — only when a specific provider is chosen */}
+            <Show when={chatProvider()}>
+              <div>
+                <label class="block text-[11px] text-zinc-500 mb-1.5">AI model</label>
+                <ModelPicker
+                  provider={chatProvider()}
+                  apiKey={chatApiKey()}
+                  type="chat"
+                  value={chatModel()}
+                  onSelect={setChatModel}
+                  placeholder={CHAT_MODEL_HINTS[chatProvider()] || 'e.g. claude-sonnet-4-6'}
+                  inputClass={inputClass}
+                  selectClass={selectClass}
+                />
+              </div>
+
+              {/* Chat API key */}
+              <div>
+                <label class="block text-[11px] text-zinc-500 mb-1.5">
+                  API key
+                  <Show when={chatApiKey() === '__SET__'}>
+                    <span class="ml-1.5 text-emerald-500">● already set</span>
+                  </Show>
+                </label>
+                <input
+                  type="password"
+                  value={chatApiKey() === '__SET__' ? '' : chatApiKey()}
+                  onInput={e => setChatApiKey(e.currentTarget.value)}
+                  placeholder={chatApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
+                  class={inputClass}
+                />
+              </div>
+            </Show>
+          </div>
+        </Show>
+
+        {/* Footer */}
+        <div class="pt-3 border-t border-[color:var(--border-subtle)] flex items-center justify-between gap-3">
+          <Show when={error()}>
+            <p class="text-[11px] text-red-400">{error()}</p>
+          </Show>
+          <Show when={saved() && !error()}>
+            <p class="text-[11px] text-emerald-400">Saved — restart ogcode to apply changes.</p>
+          </Show>
+          <Show when={!error() && !saved()}>
+            <p class="text-[11px] text-zinc-600">Changes apply after restarting ogcode.</p>
+          </Show>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving()}
+            class="shrink-0 h-8 px-4 text-[12px] font-medium rounded-lg transition
+              bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent-hover)]
+              disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            <Show when={saving()}>
+              <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
+              </svg>
+            </Show>
+            {saving() ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </Show>
+  );
+}
+
+interface ModelPickerProps {
+  provider: string;
+  apiKey: string;
+  type: 'embed' | 'chat';
+  value: string;
+  onSelect: (v: string) => void;
+  placeholder: string;
+  inputClass: string;
+  selectClass: string;
+}
+
+function ModelPicker(props: ModelPickerProps) {
+  const [models, setModels] = createSignal<string[]>([]);
+  const [fetching, setFetching] = createSignal(false);
+  const [fetchError, setFetchError] = createSignal('');
+
+  const doFetch = async (provider: string, apiKey: string) => {
+    if (!provider) { setModels([]); return; }
+    setFetching(true);
+    setFetchError('');
+    try {
+      // Don't forward the sentinel — backend uses the stored key.
+      const key = (apiKey && apiKey !== '__SET__') ? apiKey : undefined;
+      const list = await fetchMemoryModels(provider, props.type, key);
+      setModels(list ?? []);
+      // Auto-select first model if nothing is selected yet.
+      if (list?.length && !props.value) props.onSelect(list[0]);
+    } catch (e: any) {
+      setFetchError(e?.message ?? 'Failed to fetch models');
+      setModels([]);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  // Re-fetch whenever provider changes.
+  createEffect(() => {
+    const p = props.provider;
+    const k = props.apiKey;
+    doFetch(p, k);
+  });
+
+  const chevron = (
+    <svg class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
+      fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  );
+
+  return (
+    <div class="space-y-1">
+      <Show when={fetching()}>
+        <div class="flex items-center gap-2 h-8 px-2.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)]">
+          <svg class="w-3 h-3 animate-spin text-zinc-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
+          </svg>
+          <span class="text-[12px] text-zinc-500">Fetching models…</span>
+        </div>
+      </Show>
+
+      <Show when={!fetching()}>
+        <Show when={models().length > 0}
+          fallback={
+            <input
+              type="text"
+              value={props.value}
+              onInput={e => props.onSelect(e.currentTarget.value)}
+              placeholder={props.placeholder}
+              class={props.inputClass}
+            />
+          }
+        >
+          <div class="relative">
+            <select
+              value={props.value}
+              onChange={e => props.onSelect(e.currentTarget.value)}
+              class={props.selectClass}
+            >
+              <option value="">— select model —</option>
+              <For each={models()}>
+                {(m) => <option value={m}>{m}</option>}
+              </For>
+            </select>
+            {chevron}
+          </div>
+        </Show>
+      </Show>
+
+      <div class="flex items-center justify-between">
+        <Show when={fetchError()}>
+          <p class="text-[10.5px] text-amber-500">{fetchError()} — type a model name above.</p>
+        </Show>
+        <Show when={!fetching() && props.provider}>
+          <button
+            type="button"
+            onClick={() => doFetch(props.provider, props.apiKey)}
+            class="ml-auto text-[10.5px] text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1"
+          >
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+        </Show>
       </div>
     </div>
   );

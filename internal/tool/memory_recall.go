@@ -50,7 +50,7 @@ func (t MemoryRecallTool) Execute(ctx context.Context, args json.RawMessage, tct
 
 	slog.Info("memory_recall tool invoked", "question", params.Question, "session", tctx.SessionID)
 
-	recall := t.Memory.RecallMemory(ctx, string(tctx.SessionID), params.Question)
+	recall := t.Memory.RecallMemory(ctx, string(tctx.SessionID), params.Question, nil)
 	if recall == "" {
 		return Result{Title: "Memory Recall", Output: "No relevant past context found in memory."}, nil
 	}

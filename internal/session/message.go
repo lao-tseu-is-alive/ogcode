@@ -13,9 +13,10 @@ type Session struct {
 	Model             string    `json:"model,omitempty"`
 	SessionType       string    `json:"sessionType,omitempty"`
 	Permission        string    `json:"permission,omitempty"`
-	CompactionSummary string    `json:"compactionSummary,omitempty"`
-	CreatedAt         int64     `json:"createdAt"`
-	UpdatedAt         int64     `json:"updatedAt"`
+	CompactionSummary  string    `json:"compactionSummary,omitempty"`
+	MemoryTokensSaved  int       `json:"memoryTokensSaved,omitempty"`
+	CreatedAt          int64     `json:"createdAt"`
+	UpdatedAt          int64     `json:"updatedAt"`
 }
 
 type MessageRole string

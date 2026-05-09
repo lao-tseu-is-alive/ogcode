@@ -59,6 +59,7 @@ interface SessionContextValue {
   addCustomModel: (id: string, providerId: string, displayName: string) => Promise<void>;
   removeCustomModel: (id: string) => Promise<void>;
   refresh: () => void;
+  memorySavedTokens: () => number;
 }
 
 const SessionContext = createContext<SessionContextValue>();
@@ -67,6 +68,7 @@ export const SessionProvider: ParentComponent = (props) => {
   const server = useServer();
   const [sessions, setSessions] = createSignal<Session[]>([]);
   const [activeSession, setActiveSession] = createSignal<Session | null>(null);
+  const [memorySavedTokens, setMemorySavedTokens] = createSignal(0);
   const [messagesRaw, setMessagesRaw] = createSignal<MessageWithParts[]>([]);
   const messages = messagesRaw;
 
@@ -316,6 +318,7 @@ export const SessionProvider: ParentComponent = (props) => {
     // Clear pendingModel when switching sessions so the destination session's
     // own persisted model is used, not whatever was selected in the previous session.
     if (!sameSession) {
+      setMemorySavedTokens(session.memoryTokensSaved ?? 0);
       setPendingModel('');
     }
 
@@ -641,6 +644,15 @@ export const SessionProvider: ParentComponent = (props) => {
     }
   }));
 
+  createEffect(on(server.eventTick, () => {
+    const last = server.lastEvent();
+    if (!last || last.type !== 'memory.savings') return;
+    const evtSessionId = (last.properties as any)?.sessionId;
+    if (!evtSessionId || evtSessionId !== activeSession()?.id) return;
+    const saved = Number((last.properties as any)?.savedTokens ?? 0);
+    setMemorySavedTokens((prev) => prev + saved);
+  }));
+
   const value: SessionContextValue = {
     sessions,
     activeSession,
@@ -660,6 +672,7 @@ export const SessionProvider: ParentComponent = (props) => {
     addCustomModel,
     removeCustomModel,
     refresh,
+    memorySavedTokens,
   };
 
   return (

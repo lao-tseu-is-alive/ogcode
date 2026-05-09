@@ -1,6 +1,8 @@
-import { For, Show, createSignal, createMemo } from 'solid-js';
+import { For, Show, createSignal, createMemo, onMount } from 'solid-js';
 import { useSession } from '../../context/session';
-import type { ModelInfo } from '../../api/client';
+import type { ModelInfo, ProviderConfig } from '../../api/client';
+import { getProviderConfigs, setProviderConfig } from '../../api/client';
+import { PROVIDER_DEFS } from '../../lib/providers';
 
 interface ProviderMeta {
   label: string;
@@ -116,7 +118,7 @@ export default function ModelsSettings() {
           type="button"
           onClick={() => {
             setAddOpen(true);
-            setAddProvider(allProviders()[0] || '');
+            setAddProvider('');
             setAddError('');
           }}
           class="h-9 px-3.5 bg-[color:var(--accent)] hover:bg-[color:var(--accent-hover)]
@@ -128,6 +130,9 @@ export default function ModelsSettings() {
           Add custom model
         </button>
       </header>
+
+      {/* Provider credentials */}
+      <ProviderCredsPanel />
 
       {/* Stats strip */}
       <div class="grid grid-cols-3 gap-px rounded-xl overflow-hidden bg-[color:var(--border-subtle)] mb-6">
@@ -183,8 +188,8 @@ export default function ModelsSettings() {
                          text-[12.5px] text-zinc-100 focus:outline-none focus:border-[color:var(--border-strong)] transition"
                 >
                   <option value="">Select…</option>
-                  <For each={allProviders()}>
-                    {(pid) => <option value={pid}>{providerMeta(pid).label}</option>}
+                  <For each={PROVIDER_DEFS}>
+                    {(def) => <option value={def.id}>{def.label}</option>}
                   </For>
                 </select>
               </FormField>
@@ -422,6 +427,191 @@ function FilterPill(props: { active: boolean; onClick: () => void; children: any
     >
       {props.children}
     </button>
+  );
+}
+
+// ---------- Provider credentials panel ----------
+
+function ProviderCredsPanel() {
+  const [configs, setConfigs] = createSignal<Record<string, ProviderConfig>>({});
+  const [expanded, setExpanded] = createSignal<string | null>(null);
+  const [loading, setLoading] = createSignal(true);
+
+  onMount(async () => {
+    try {
+      const list = await getProviderConfigs();
+      const map: Record<string, ProviderConfig> = {};
+      for (const c of list) map[c.providerId] = c;
+      setConfigs(map);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  const toggle = (id: string) => setExpanded(expanded() === id ? null : id);
+
+  return (
+    <div class="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden mb-6">
+      <div class="px-5 py-3.5 border-b border-[color:var(--border-subtle)]">
+        <div class="text-[14px] font-semibold text-zinc-100">API Keys</div>
+        <div class="text-[12px] text-zinc-500 mt-0.5">
+          Add credentials for each provider. Restart ogcode to activate changes.
+        </div>
+      </div>
+
+      <Show when={!loading()} fallback={
+        <div class="px-5 py-4 text-[12px] text-zinc-500">Loading…</div>
+      }>
+        <div class="divide-y divide-[color:var(--border-subtle)]">
+          <For each={PROVIDER_DEFS}>
+            {(def) => (
+              <ProviderCredRow
+                def={def}
+                config={configs()[def.id]}
+                expanded={expanded() === def.id}
+                onToggle={() => toggle(def.id)}
+                onSaved={(c) => setConfigs({ ...configs(), [def.id]: c })}
+              />
+            )}
+          </For>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+function ProviderCredRow(props: {
+  def: typeof PROVIDER_DEFS[number];
+  config: ProviderConfig | undefined;
+  expanded: boolean;
+  onToggle: () => void;
+  onSaved: (c: ProviderConfig) => void;
+}) {
+  const [apiKey, setApiKey] = createSignal('');
+  const [baseURL, setBaseURL] = createSignal('');
+  const [saving, setSaving] = createSignal(false);
+  const [error, setError] = createSignal('');
+  const [saved, setSaved] = createSignal(false);
+
+  // Populate form when row expands.
+  const handleToggle = () => {
+    if (!props.expanded) {
+      setApiKey(props.config?.apiKey || '');
+      setBaseURL(props.config?.baseUrl || '');
+      setError('');
+      setSaved(false);
+    }
+    props.onToggle();
+  };
+
+  const handleSave = async () => {
+    setError('');
+    setSaved(false);
+    setSaving(true);
+    try {
+      const saved = await setProviderConfig(props.def.id, {
+        apiKey: apiKey(),
+        baseUrl: baseURL(),
+      });
+      props.onSaved(saved);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError('Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isSet = () => !!(props.config?.apiKey);
+
+  const inputCls = 'w-full h-8 px-2.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 font-mono focus:outline-none focus:border-[color:var(--accent)] transition';
+
+  return (
+    <div>
+      {/* Row header — always visible */}
+      <button
+        type="button"
+        onClick={handleToggle}
+        class="w-full px-5 py-3 flex items-center gap-3 hover:bg-[color:var(--bg-hover)]/40 transition text-left"
+      >
+        <div class={`w-7 h-7 rounded-lg ${props.def.bg} flex items-center justify-center ring-1 ${props.def.ring} shrink-0`}>
+          <span class={`w-2 h-2 rounded-full ${props.def.dot}`} />
+        </div>
+        <span class="flex-1 text-[13px] font-medium text-zinc-200">{props.def.label}</span>
+        <span class={`text-[11px] flex items-center gap-1.5 ${isSet() ? 'text-emerald-400' : 'text-zinc-600'}`}>
+          <span class={`w-1.5 h-1.5 rounded-full ${isSet() ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+          {isSet() ? 'Key set' : 'Not configured'}
+        </span>
+        <svg
+          class={`w-4 h-4 text-zinc-500 transition-transform shrink-0 ${props.expanded ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Expandable form */}
+      <Show when={props.expanded}>
+        <div class="px-5 pb-4 pt-1 space-y-3 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/30">
+          <div>
+            <label class="block text-[11px] text-zinc-500 mb-1.5">
+              API key
+              <Show when={apiKey() === '__SET__'}>
+                <span class="ml-1.5 text-emerald-500">● already set</span>
+              </Show>
+            </label>
+            <input
+              type="password"
+              value={apiKey() === '__SET__' ? '' : apiKey()}
+              onInput={e => setApiKey(e.currentTarget.value)}
+              placeholder={apiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
+              class={inputCls}
+            />
+          </div>
+
+          <Show when={props.def.hasBaseURL}>
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1.5">Base URL <span class="text-zinc-600">(optional)</span></label>
+              <input
+                type="text"
+                value={baseURL()}
+                onInput={e => setBaseURL(e.currentTarget.value)}
+                placeholder={props.def.id === 'ollama' ? 'http://localhost:11434/v1' : 'https://api.openai.com/v1'}
+                class={inputCls}
+              />
+            </div>
+          </Show>
+
+          <div class="flex items-center justify-between gap-3 pt-1">
+            <Show when={error()}>
+              <p class="text-[11px] text-red-400">{error()}</p>
+            </Show>
+            <Show when={saved() && !error()}>
+              <p class="text-[11px] text-emerald-400">Saved — restart ogcode to apply.</p>
+            </Show>
+            <Show when={!error() && !saved()}>
+              <p class="text-[11px] text-zinc-600">Changes apply after restarting ogcode.</p>
+            </Show>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving()}
+              class="shrink-0 h-8 px-4 text-[12px] font-medium rounded-lg transition
+                bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent-hover)]
+                disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              <Show when={saving()}>
+                <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
+                </svg>
+              </Show>
+              {saving() ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </Show>
+    </div>
   );
 }
 

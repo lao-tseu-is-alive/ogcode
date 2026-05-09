@@ -27,11 +27,11 @@ func (s *Store) Create(session *Session) error {
 
 func (s *Store) Get(id SessionID) (*Session, error) {
 	row := s.db.QueryRow(
-		`SELECT id, project_id, directory, title, model, session_type, permission, compaction_summary, time_created, time_updated
+		`SELECT id, project_id, directory, title, model, session_type, permission, compaction_summary, memory_tokens_saved, time_created, time_updated
 		 FROM session WHERE id = ?`, id,
 	)
 	var sess Session
-	err := row.Scan(&sess.ID, &sess.ProjectID, &sess.Directory, &sess.Title, &sess.Model, &sess.SessionType, &sess.Permission, &sess.CompactionSummary, &sess.CreatedAt, &sess.UpdatedAt)
+	err := row.Scan(&sess.ID, &sess.ProjectID, &sess.Directory, &sess.Title, &sess.Model, &sess.SessionType, &sess.Permission, &sess.CompactionSummary, &sess.MemoryTokensSaved, &sess.CreatedAt, &sess.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -43,7 +43,7 @@ func (s *Store) Get(id SessionID) (*Session, error) {
 
 func (s *Store) List(directory string) ([]*Session, error) {
 	rows, err := s.db.Query(
-		`SELECT id, project_id, directory, title, model, session_type, permission, compaction_summary, time_created, time_updated
+		`SELECT id, project_id, directory, title, model, session_type, permission, compaction_summary, memory_tokens_saved, time_created, time_updated
 		 FROM session WHERE directory = ? ORDER BY time_updated DESC`, directory,
 	)
 	if err != nil {
@@ -54,7 +54,7 @@ func (s *Store) List(directory string) ([]*Session, error) {
 	var sessions []*Session
 	for rows.Next() {
 		var sess Session
-		if err := rows.Scan(&sess.ID, &sess.ProjectID, &sess.Directory, &sess.Title, &sess.Model, &sess.SessionType, &sess.Permission, &sess.CompactionSummary, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.ProjectID, &sess.Directory, &sess.Title, &sess.Model, &sess.SessionType, &sess.Permission, &sess.CompactionSummary, &sess.MemoryTokensSaved, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, &sess)
@@ -66,6 +66,15 @@ func (s *Store) Update(session *Session) error {
 	_, err := s.db.Exec(
 		`UPDATE session SET title = ?, model = ?, session_type = ?, permission = ?, compaction_summary = ?, time_updated = ? WHERE id = ?`,
 		session.Title, session.Model, session.SessionType, session.Permission, session.CompactionSummary, session.UpdatedAt, session.ID,
+	)
+	return err
+}
+
+// UpdateMemoryTokensSaved atomically increments memory_tokens_saved by delta (may be negative).
+func (s *Store) UpdateMemoryTokensSaved(id SessionID, delta int) error {
+	_, err := s.db.Exec(
+		`UPDATE session SET memory_tokens_saved = memory_tokens_saved + ?, time_updated = ? WHERE id = ?`,
+		delta, Now(), id,
 	)
 	return err
 }

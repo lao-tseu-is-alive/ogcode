@@ -28,6 +28,9 @@ type GraphOpts struct {
 	// ChatProvider is the provider used for topic/concept inference and recall.
 	// It may be the same as EmbedProvider or different.
 	ChatProvider provider.Provider
+	// ChatModel is the specific model ID to use for inference. If empty, the
+	// provider's first available model is used.
+	ChatModel string
 	// EmbedProvider is the provider used for text embeddings. Must satisfy provider.Embedder.
 	EmbedProvider provider.Provider
 }
@@ -42,7 +45,7 @@ func New(store *Store, opts *GraphOpts) *Memory {
 		m.Graph = &Graph{Store: store}
 		if opts != nil {
 			if opts.ChatProvider != nil {
-				m.Graph.Chat = NewChatClient(opts.ChatProvider)
+				m.Graph.Chat = NewChatClient(opts.ChatProvider, opts.ChatModel)
 			}
 			if opts.EmbedProvider != nil {
 				if e, ok := opts.EmbedProvider.(provider.Embedder); ok {
@@ -101,7 +104,9 @@ func (m *Memory) ReadMemory(ctx context.Context, sessionID string) string {
 }
 
 // RecallMemory performs semantic recall for a specific question.
-func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string) string {
+// recentMessages contains the last N raw conversation turns (role: text) used
+// to resolve references like "the previous API" or "continue" before embedding.
+func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string, recentMessages []string) string {
 	if !m.Enabled() {
 		return ""
 	}
@@ -112,11 +117,12 @@ func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string) s
 	_ = m.Store.EnsureSession(sessionID)
 
 	result, err := m.Graph.Recall(ctx, RecallOptions{
-		SessionID: sessionID,
-		Question:  question,
-		Limit:     50,
-		MaxRounds: 3,
-		Threshold: 0.7,
+		SessionID:      sessionID,
+		Question:       question,
+		RecentMessages: recentMessages,
+		Limit:          50,
+		MaxRounds:      3,
+		Threshold:      0.7,
 	})
 	if err != nil {
 		slog.Warn("memory recall failed", "err", err)

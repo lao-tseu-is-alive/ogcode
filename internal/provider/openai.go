@@ -116,7 +116,32 @@ func (p *OpenAIProvider) EmbedModel() string {
 
 func isEmbeddingModel(model string) bool {
 	m := strings.ToLower(model)
-	return strings.Contains(m, "embedding") || strings.HasPrefix(m, "embed-")
+	return strings.Contains(m, "embed")
+}
+
+// NewEmbedProvider creates an OpenAIProvider configured for embedding.
+// providerID must be "openai", "openrouter", or "ollama".
+// If apiKey is non-empty it overrides the env var key.
+// If model is non-empty it is stored as the provider model (used for embedding).
+func NewEmbedProvider(providerID, apiKey, model string) (*OpenAIProvider, error) {
+	var p *OpenAIProvider
+	switch providerID {
+	case "openai":
+		p = NewOpenAIProvider()
+	case "openrouter":
+		p = NewOpenRouterProvider()
+	case "ollama":
+		p = NewOllamaProvider()
+	default:
+		return nil, fmt.Errorf("unknown embed provider %q; must be openai, openrouter, or ollama", providerID)
+	}
+	if apiKey != "" {
+		p.apiKey = apiKey
+	}
+	if model != "" {
+		p.model = model
+	}
+	return p, nil
 }
 
 func NewOpenAIProvider() *OpenAIProvider {
