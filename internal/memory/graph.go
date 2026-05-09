@@ -551,7 +551,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 	for k, tt := range fullTree {
 		skeleton := TopicTree{Name: tt.Name, Concepts: make([]ConceptTree, len(tt.Concepts))}
 		for i, ct := range tt.Concepts {
-			skeleton.Concepts[i] = ConceptTree{Name: ct.Name, RelatedConcepts: ct.RelatedConcepts, Facts: nil}
+			skeleton.Concepts[i] = ConceptTree{Name: ct.Name, RelatedConcepts: ct.RelatedConcepts, Facts: ct.Facts}
 		}
 		skeletonTree[k] = skeleton
 	}
@@ -635,7 +635,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 				for k, tt := range fullTree {
 					skeleton := TopicTree{Name: tt.Name, Concepts: make([]ConceptTree, len(tt.Concepts))}
 					for i, ct := range tt.Concepts {
-						skeleton.Concepts[i] = ConceptTree{Name: ct.Name, RelatedConcepts: ct.RelatedConcepts, Facts: nil}
+						skeleton.Concepts[i] = ConceptTree{Name: ct.Name, RelatedConcepts: ct.RelatedConcepts, Facts: ct.Facts}
 					}
 					skeletonTree[k] = skeleton
 				}
@@ -867,6 +867,21 @@ func skeletonTreeText(tree map[string]TopicTree) string {
 		sb.WriteString("Topic: " + topic + "\n")
 		for _, ct := range tt.Concepts {
 			sb.WriteString("  Concept: " + ct.Name + "\n")
+			for _, f := range ct.Facts {
+				line := "    └── [order:" + fmt.Sprintf("%d", f.Order) + "]"
+				if f.CreatedAt > 0 {
+					line += " | " + time.UnixMilli(f.CreatedAt).Format("2006-01-02 15:04")
+				}
+				if len(f.Labels) > 0 {
+					line += " [labels:" + strings.Join(f.Labels, ",") + "]"
+				}
+				line += " "
+				text := f.Summary
+				if text == "" {
+					text = truncate(f.Content, 100)
+				}
+				sb.WriteString(line + text + "\n")
+			}
 			if len(ct.RelatedConcepts) > 0 {
 				sb.WriteString("    Related: " + strings.Join(ct.RelatedConcepts, ", ") + "\n")
 			}
