@@ -1,58 +1,81 @@
-# Release Notes - v0.1.11
+# 🚀 Ogcode v0.1.11 Release
 
-## Overview
-This release includes critical bug fixes for task retry and crash recovery, along with minor improvements to GitHub CLI compatibility and winget publishing.
-
----
-
-## 🐛 Bug Fixes
-
-### Task Retry & Crash Recovery Issues
-Fixed three critical bugs affecting task reliability and system stability:
-
-- **Bug #2 - pr_error persistence on retry**: Fixed `ResetFailed()` function to properly clear the `pr_error` field when retrying failed tasks, preventing stale error messages from persisting
-- **Bug #3 - Race condition in DeleteBranch**: Fixed race condition by wrapping `git.DeleteBranch()` in `handleRetryTask()` with proper mutex locking (`s.gitMu.Lock()/Unlock()`)
-- **Bug #4 - Orphaned worktree cleanup**: Added worktree cleanup after server crash recovery - `FailStuckTasks()` now returns failed tasks so orphaned worktree directories can be removed on startup
-
-**Files Changed:**
-- `internal/server/server.go` (+18 lines)
-- `internal/server/task_routes.go` (+6 lines)
-- `internal/task/store.go` (+46 lines)
+## 📋 Executive Summary
+This patch release focuses on **critical reliability improvements** for the task execution engine, fixing race conditions and crash recovery issues that could leave tasks in inconsistent states.
 
 ---
 
-## 🔧 Improvements
+## 🐛 Critical Bug Fixes
 
-### GitHub CLI Compatibility
-- **PR #XX**: Removed `--json` flag from `gh pr create` command for compatibility with older GitHub CLI versions
-- **GoReleaser**: Fixed configuration to prevent committing winget manifests back to main branch
+### Task Retry & Crash Recovery System
+
+**Bug #2 - Stale Error Messages on Retry**  
+`ResetFailed()` now properly clears the `pr_error` field when retrying tasks. Previously, old error messages would persist across retries, causing confusion.
+
+**Bug #3 - Race Condition in DeleteBranch**  
+Fixed concurrent access issue by wrapping `git.DeleteBranch()` calls with `s.gitMu.Lock()/Unlock()`. This prevents corruption when multiple task retries happen simultaneously.
+
+**Bug #4 - Orphaned Worktree Cleanup**  
+Implemented automatic cleanup of orphaned worktree directories after server crashes. The `FailStuckTasks()` function now returns failed tasks, allowing the server to remove abandoned `.ogcode/worktrees/` directories on startup.
+
+**Impact:** Tasks are now significantly more reliable when retrying failed operations and recovering from unexpected shutdowns.
 
 ---
 
-## 📝 Documentation
+## 🔧 Improvements & Compatibility
 
-### Community
-- Updated Discord invite link in README to active community server
+### GitHub CLI Support
+- Removed `--json` flag from `gh pr create` for backward compatibility with older GitHub CLI versions
+
+### Build Pipeline
+- Fixed GoReleaser configuration to prevent automatic commits of winget manifests to the main branch
 
 ---
 
-## 📁 Files Changed
+## 📝 Documentation Updates
+
+- Updated Discord community invite link in README
+
+---
+
+## 📊 Changes Summary
 
 ```
-internal/server/server.go      | 18 ++++++++++++++---
-internal/server/task_routes.go |  6 +++++-
-internal/task/store.go         | 46 ++++++++++++++++++++++++++++++++++++------
+3 files changed, 60 insertions(+), 10 deletions(-)
+
+internal/task/store.go         | 46 +++++++++++++++++++++++++++--------
+internal/server/server.go      | 18 +++++++++++---
+internal/server/task_routes.go |  6 ++++-
 README.md                      |  4 ++--
 .goreleaser.yaml              |  2 +-
 ```
 
 ---
 
-## 🎯 Focus Areas
-- **Reliability**: Tasks now properly reset state on retry and clean up resources after crashes
-- **Compatibility**: Better support for various GitHub CLI versions
-- **Stability**: Eliminated race conditions in concurrent git operations
+## 🎯 Upgrade Priority: HIGH
+
+**Recommended for all users**, especially those:
+- Using task retry functionality frequently
+- Running Ogcode in production environments
+- Experiencing "stuck" tasks after server restarts
+
+## 📥 Installation
+
+**macOS/Linux:**
+```bash
+curl -fsSL http://ogcode.xyz/install.sh | sh
+```
+
+**Windows:**
+```powershell
+irm http://ogcode.xyz/install.ps1 | iex
+```
+
+**Go Install:**
+```bash
+go install github.com/prasenjeet-symon/ogcode@latest
+```
 
 ---
 
-*This release builds on v0.1.10 and is recommended for all users experiencing task retry or crash recovery issues.*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/releases/tag/v0.1.11*
