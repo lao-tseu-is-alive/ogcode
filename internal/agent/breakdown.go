@@ -82,6 +82,11 @@ func BreakdownPrompt(messages []*session.MessageWithParts, archivePaths []string
 		"Design strictly linear chains (A→B→C). " +
 		"Fan-in graphs (A,B→C) are not allowed. " +
 		"If a task logically requires work from multiple predecessors, consolidate those predecessors into a single task first.\n\n")
+	b.WriteString("FILE OWNERSHIP RULE: Parallel tasks (tasks with no dependency between them) " +
+		"MUST NOT edit the same files. Each file should be owned by exactly one parallel workstream. " +
+		"If two tasks need to touch the same file, add a dependency between them so they run sequentially. " +
+		"For each task, mentally list the files it will modify — if any file appears in two parallel tasks, " +
+		"make one depend on the other. This prevents merge conflicts when the branches are combined.\n\n")
 	b.WriteString("Now call the submit_task_breakdown tool with the complete task breakdown array. Do NOT output raw JSON — use the tool.")
 
 	return b.String()

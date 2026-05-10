@@ -572,6 +572,17 @@ func (s *Server) runBreakdown(p *plan.Plan) {
 		createdTasks = append(createdTasks, newTask)
 	}
 
+	// Assign shared chain branches to tasks that form dependency chains.
+	// Tasks in the same linear chain share one branch; parallel tasks get none.
+	assignChainBranches(createdTasks, p.ID)
+	for _, t := range createdTasks {
+		if t.ChainBranch != "" {
+			if err := s.taskStore.Update(t); err != nil {
+				slog.Warn("save chain branch", "task", t.ID, "err", err)
+			}
+		}
+	}
+
 	// Update plan breakdown status
 	if failures > 0 && len(createdTasks) == 0 {
 		// All tasks failed to create — treat as full failure
@@ -630,6 +641,36 @@ func breakdownHasCycle(taskDefs []agent.TaskDefinition) bool {
 		}
 	}
 	return false
+}
+
+// assignChainBranches stamps a shared ChainBranch on every task that is part of
+// a dependency chain. Tasks with no dependencies and no dependents remain
+// standalone and get no ChainBranch — they raise their own PRs as before.
+//
+// Algorithm: for each task that has a dependency, propagate the chain branch
+// downward. If the parent already has a chain branch, reuse it; otherwise
+// create a new one named after the parent (the chain root).
+func assignChainBranches(tasks []*task.Task, planID string) {
+	byID := make(map[string]*task.Task, len(tasks))
+	for _, t := range tasks {
+		byID[t.ID] = t
+	}
+	for _, t := range tasks {
+		if len(t.Dependencies) == 0 {
+			continue
+		}
+		dep := byID[t.Dependencies[0]]
+		if dep == nil {
+			continue
+		}
+		chainBranch := dep.ChainBranch
+		if chainBranch == "" {
+			slug := git.Slugify(dep.Title)
+			chainBranch = fmt.Sprintf("chain/%s-%s", planID[:8], slug)
+			dep.ChainBranch = chainBranch
+		}
+		t.ChainBranch = chainBranch
+	}
 }
 
 // failBreakdown sets the plan's breakdown status to failed and publishes an event.

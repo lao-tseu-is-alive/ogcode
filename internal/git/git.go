@@ -91,6 +91,47 @@ func EnsureLocalBranch(repoDir, branchName string) error {
 	return runGit(repoDir, "fetch", "origin", branchName+":"+branchName)
 }
 
+// CreateChainBranch creates the shared branch for a dependency chain, branching
+// from the current HEAD. It is a no-op when the branch already exists.
+func CreateChainBranch(repoDir, chainBranch string) error {
+	err := runGit(repoDir, "branch", chainBranch)
+	if err != nil && strings.Contains(err.Error(), "already exists") {
+		return nil
+	}
+	return err
+}
+
+// MergeTaskBranch merges a completed task branch into the shared chain branch.
+// A temporary worktree is created on the chain branch to perform the merge,
+// then removed. The chain branch itself is kept so subsequent tasks and the
+// final chain PR can use it.
+func MergeTaskBranch(repoDir, chainBranch, taskBranch, taskTitle string) error {
+	tmpDir := filepath.Join(repoDir, ".ogcode", "chain-merges", strings.ReplaceAll(chainBranch, "/", "-"))
+	if err := os.MkdirAll(filepath.Dir(tmpDir), 0o755); err != nil {
+		return fmt.Errorf("prepare chain merge dir: %w", err)
+	}
+
+	if err := runGit(repoDir, "worktree", "add", tmpDir, chainBranch); err != nil {
+		_ = runGit(repoDir, "worktree", "prune")
+		if err2 := runGit(repoDir, "worktree", "add", tmpDir, chainBranch); err2 != nil {
+			return fmt.Errorf("add chain merge worktree: %w", err2)
+		}
+	}
+	defer func() {
+		if err := runGit(repoDir, "worktree", "remove", "--force", tmpDir); err != nil {
+			_ = os.RemoveAll(tmpDir)
+		}
+		_ = runGit(repoDir, "worktree", "prune")
+	}()
+
+	msg := fmt.Sprintf("Merge task: %s", taskTitle)
+	if err := runGit(tmpDir, "merge", "--no-ff", "-m", msg, taskBranch); err != nil {
+		_ = runGit(tmpDir, "merge", "--abort")
+		return fmt.Errorf("merge %s into chain branch: %w", taskBranch, err)
+	}
+	return nil
+}
+
 // RemoveTaskWorktreeKeepBranch removes the worktree directory but keeps the
 // branch intact. Use this when there is no remote to push to, so the work
 // remains accessible via the branch ref.

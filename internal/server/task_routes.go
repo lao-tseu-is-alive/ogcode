@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -251,30 +252,19 @@ func (s *Server) executeTask(t *task.Task, p *plan.Plan) error {
 		return fmt.Errorf("task is not pending (status: %s)", t.Status)
 	}
 
-	// Resolve the base branch: if this task depends on exactly one predecessor,
-	// branch from that task's branch so PRs stack correctly.
-	// Read the dependency branch name from the DB before acquiring gitMu so we
-	// don't hold the lock longer than necessary.
-	baseBranch := ""
-	if len(t.Dependencies) > 0 {
-		dep, depErr := s.taskStore.Get(t.Dependencies[0])
-		if depErr != nil {
-			return fmt.Errorf("get dependency task: %w", depErr)
-		}
-		if dep != nil && dep.BranchName != "" {
-			baseBranch = dep.BranchName
-		}
-	}
+	// Resolve the base branch. Chain tasks branch from the shared chain branch
+	// so each task in a sequence sees all prior work. Standalone tasks branch
+	// from HEAD.
+	baseBranch := t.ChainBranch
 
 	// Serialize repo-level git operations. git worktree add/prune/branch are
 	// not safe under concurrent access — they write to .git/worktrees/ and
 	// .git/config without holding git's own lock for the full sequence.
 	s.gitMu.Lock()
-	// If we have a dependency branch, make sure it exists locally while we
-	// hold the lock (before the prior task's cleanup goroutine can delete it).
 	if baseBranch != "" {
-		if err := git.EnsureLocalBranch(s.dir, baseBranch); err != nil {
-			slog.Warn("could not ensure local dependency branch, falling back to HEAD",
+		// Create chain branch from current HEAD on first use; no-op if it exists.
+		if err := git.CreateChainBranch(s.dir, baseBranch); err != nil {
+			slog.Warn("could not create chain branch, falling back to HEAD",
 				"branch", baseBranch, "err", err)
 			baseBranch = ""
 		}
@@ -468,16 +458,9 @@ func (s *Server) completeTaskWithPR(t *task.Task) {
 	}
 
 	if pushed {
-		// For dependent tasks, target the dependency's branch so the PR stacks.
-		prBase := ""
-		if len(t.Dependencies) > 0 {
-			if dep, depErr := s.taskStore.Get(t.Dependencies[0]); depErr == nil && dep != nil {
-				prBase = dep.BranchName
-			}
-		}
 		prTitle := t.Title
-		prBody := fmt.Sprintf("## Description\n\n%s\n\n---\n\nCo-authored-by: ogcode <ogcode@local>", t.Description)
-		pr, err := git.CreatePR(prCtx, s.dir, t.BranchName, prTitle, prBody, prBase)
+		prBody := standalonePRBody(t)
+		pr, err := git.CreatePR(prCtx, s.dir, t.BranchName, prTitle, prBody, "")
 		if err != nil {
 			prErr = fmt.Sprintf("PR creation failed: %s", err.Error())
 			slog.Warn("create PR failed", "task", t.ID, "err", err)
@@ -549,14 +532,14 @@ func (s *Server) autoCompleteTask(t *task.Task) {
 	t.Status = task.StatusCompleted
 	t.UpdatedAt = task.Now()
 
-	// Start dependent tasks BEFORE removing the worktree. This ensures
-	// that dependent tasks can still find this branch as a local ref when
-	// they call EnsureLocalBranch inside executeTask — even when no remote
-	// is configured. completeTaskWithPR's async removal goroutine will then
-	// block on gitMu until after the dependent's CreateTaskWorktree finishes.
+	// Start dependent tasks BEFORE the worktree is cleaned up. Dependent tasks
+	// that share a chain branch need this task's branch ref to still exist locally
+	// when CreateTaskWorktree runs. The cleanup goroutine inside completeTask will
+	// block on gitMu until after the dependent's worktree is created.
 	s.autoStartDependentTasks(t.PlanID)
 
-	s.completeTaskWithPR(t)
+	p, _ := s.planStore.Get(t.PlanID)
+	s.completeTask(t, p)
 
 	fresh, err := s.taskStore.Get(t.ID)
 	if err == nil && fresh != nil {
@@ -565,6 +548,186 @@ func (s *Server) autoCompleteTask(t *task.Task) {
 	s.bus.Publish("task.completed", t)
 
 	go s.tryArchivePlan(t.PlanID)
+}
+
+// completeTask routes post-completion work based on whether the task belongs to
+// a dependency chain. Chain tasks merge into the shared chain branch and open
+// one PR only when the whole chain is done. Standalone tasks open a PR immediately,
+// preserving the original behaviour.
+func (s *Server) completeTask(t *task.Task, p *plan.Plan) {
+	if t.WorktreePath != "" {
+		msg := fmt.Sprintf("chore: complete task %q", t.Title)
+		if err := git.CommitAllChanges(t.WorktreePath, msg); err != nil {
+			slog.Warn("auto-commit before merge/push", "task", t.ID, "err", err)
+		}
+	}
+
+	if t.ChainBranch == "" {
+		// Standalone task — raise a PR immediately, same as before.
+		s.completeTaskWithPR(t)
+		return
+	}
+
+	// Chain task — merge into the shared branch and clean up the task worktree.
+	s.gitMu.Lock()
+	mergeErr := git.MergeTaskBranch(s.dir, t.ChainBranch, t.BranchName, t.Title)
+	s.gitMu.Unlock()
+
+	if mergeErr != nil {
+		slog.Error("merge task into chain branch", "task", t.ID, "chain", t.ChainBranch, "err", mergeErr)
+		t.PRError = fmt.Sprintf("chain merge failed: %s", mergeErr.Error())
+		t.UpdatedAt = task.Now()
+		_ = s.taskStore.Update(t)
+	}
+
+	if t.WorktreePath != "" {
+		branchName := t.BranchName
+		go func() {
+			s.gitMu.Lock()
+			defer s.gitMu.Unlock()
+			_ = git.RemoveTaskWorktree(s.dir, branchName)
+		}()
+	}
+
+	// Open one PR for the whole chain once every task in it has completed.
+	if p != nil && s.isChainTail(t, p) {
+		go s.openChainPR(t.ChainBranch, p)
+	}
+}
+
+// isChainTail returns true when t is the last incomplete task in its chain,
+// i.e. all other tasks sharing the same ChainBranch are already completed.
+func (s *Server) isChainTail(t *task.Task, p *plan.Plan) bool {
+	allTasks, err := s.taskStore.ListByPlan(p.ID)
+	if err != nil {
+		return false
+	}
+	for _, other := range allTasks {
+		if other.ChainBranch != t.ChainBranch || other.ID == t.ID {
+			continue
+		}
+		if other.Status != task.StatusCompleted {
+			return false
+		}
+	}
+	return true
+}
+
+// openChainPR pushes the shared chain branch and opens a single PR for the
+// entire dependency chain. Called once after the last task in the chain completes.
+func (s *Server) openChainPR(chainBranch string, p *plan.Plan) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	pushed, err := git.PushBranch(ctx, s.dir, chainBranch)
+	if err != nil {
+		slog.Warn("chain PR: push failed", "branch", chainBranch, "plan", p.ID, "err", err)
+		return
+	}
+	if !pushed {
+		slog.Warn("chain PR: no remote configured", "branch", chainBranch, "plan", p.ID)
+		return
+	}
+
+	// Re-fetch the plan so we get the latest title — autoNamePlan may have
+	// updated it asynchronously after the snapshot passed to this function
+	// was taken in autoCompleteTask.
+	if fresh, err := s.planStore.Get(p.ID); err == nil && fresh != nil {
+		p = fresh
+	}
+
+	// Collect tasks in this chain in order so the PR body lists them correctly.
+	allTasks, _ := s.taskStore.ListByPlan(p.ID)
+	var chainTasks []*task.Task
+	for _, t := range allTasks {
+		if t.ChainBranch == chainBranch {
+			chainTasks = append(chainTasks, t)
+		}
+	}
+
+	title := chainPRTitle(p.Title, chainBranch)
+	body := chainPRBody(title, chainTasks)
+
+	pr, err := git.CreatePR(ctx, s.dir, chainBranch, title, body, "")
+	if err != nil {
+		slog.Warn("chain PR: create failed", "branch", chainBranch, "plan", p.ID, "err", err)
+		return
+	}
+	slog.Info("chain PR opened", "plan", p.ID, "branch", chainBranch, "pr", pr.URL)
+}
+
+// standalonePRBody builds a professional PR description for a single standalone task.
+func standalonePRBody(t *task.Task) string {
+	var b strings.Builder
+	b.WriteString("## Summary\n\n")
+	if desc := strings.TrimSpace(t.Description); desc != "" {
+		b.WriteString(desc)
+	} else {
+		b.WriteString(t.Title)
+	}
+	b.WriteString("\n\n---\n\n")
+	b.WriteString("*Generated by [ogcode](https://github.com/prasenjeet-symon/ogcode) — agentic coding assistant*")
+	return b.String()
+}
+
+// chainPRTitle returns a non-empty PR title. It uses the plan title when set;
+// otherwise it derives a human-readable title from the chain branch slug.
+// e.g. "chain/pln_01KR-create-christmas-route-module" → "Create Christmas Route Module"
+func chainPRTitle(planTitle, chainBranch string) string {
+	if t := strings.TrimSpace(planTitle); t != "" {
+		return t
+	}
+	// Strip "chain/" prefix, then strip the "<planID8>-" prefix to get the slug.
+	slug := chainBranch
+	if idx := strings.LastIndex(slug, "/"); idx >= 0 {
+		slug = slug[idx+1:]
+	}
+	if idx := strings.Index(slug, "-"); idx >= 0 {
+		slug = slug[idx+1:]
+	}
+	words := strings.Split(slug, "-")
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	if title := strings.Join(words, " "); title != "" {
+		return title
+	}
+	return "Chained tasks"
+}
+
+// chainPRBody builds a professional PR description listing each task in the chain.
+func chainPRBody(title string, chainTasks []*task.Task) string {
+	var b strings.Builder
+	b.WriteString("## Summary\n\n")
+	if len(chainTasks) == 0 {
+		b.WriteString(title)
+	} else {
+		for _, t := range chainTasks {
+			b.WriteString(fmt.Sprintf("- **%s**", t.Title))
+			if desc := strings.TrimSpace(t.Description); desc != "" {
+				// Use only the first sentence for brevity in the bullet.
+				sentence := desc
+				if idx := strings.IndexAny(desc, ".\n"); idx > 0 {
+					sentence = desc[:idx+1]
+				}
+				b.WriteString(fmt.Sprintf(" — %s", sentence))
+			}
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("\n## Changes\n\n")
+	for _, t := range chainTasks {
+		b.WriteString(fmt.Sprintf("### %s\n\n", t.Title))
+		if desc := strings.TrimSpace(t.Description); desc != "" {
+			b.WriteString(desc)
+			b.WriteString("\n\n")
+		}
+	}
+	b.WriteString("---\n\n")
+	b.WriteString("*Generated by [ogcode](https://github.com/prasenjeet-symon/ogcode) — agentic coding assistant*")
+	return b.String()
 }
 
 func (s *Server) autoFailTask(t *task.Task) {
@@ -613,7 +776,8 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 	t.Status = task.StatusCompleted
 	t.UpdatedAt = task.Now()
 
-	s.completeTaskWithPR(t)
+	p, _ := s.planStore.Get(t.PlanID)
+	s.completeTask(t, p)
 
 	fresh, dbErr := s.taskStore.Get(t.ID)
 	if dbErr == nil && fresh != nil {

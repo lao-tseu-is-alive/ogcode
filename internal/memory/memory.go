@@ -317,6 +317,8 @@ func (m *Memory) SemanticSearch(ctx context.Context, collection, query string, t
 	defer rows.Close()
 
 	var candidates []SearchResult
+	cosineStart := time.Now()
+	docsCompared := 0
 	for rows.Next() {
 		var id int64
 		var content string
@@ -329,6 +331,7 @@ func (m *Memory) SemanticSearch(ctx context.Context, collection, query string, t
 		if dvec == nil || len(dvec) != len(qvec) {
 			continue
 		}
+		docsCompared++
 		score := cosine(qvec, dvec)
 		if score < 0 {
 			score = 0
@@ -338,6 +341,10 @@ func (m *Memory) SemanticSearch(ctx context.Context, collection, query string, t
 			Score: score,
 		})
 	}
+	slog.Info("cosine similarity timing (SemanticSearch)",
+		"docs_compared", docsCompared,
+		"duration", time.Since(cosineStart),
+	)
 	_ = rows.Err()
 
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Score > candidates[j].Score })

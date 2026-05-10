@@ -37,6 +37,7 @@ type Task struct {
 	Status        string   `json:"status"`          // pending, in_progress, completed, failed
 	Dependencies  []string `json:"dependencies"`    // task IDs this task depends on
 	BranchName    string   `json:"branchName"`
+	ChainBranch   string   `json:"chainBranch,omitempty"` // shared branch for a dependency chain; empty for standalone tasks
 	WorktreePath  string   `json:"worktreePath,omitempty"`
 	PRURL         string   `json:"prUrl,omitempty"`
 	PRNumber      *int     `json:"prNumber,omitempty"`

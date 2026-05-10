@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
@@ -372,6 +373,7 @@ func (g *Graph) BuildLightweightTree(ctx context.Context, sessionID string, f No
 		}
 		var scoredFacts []scored
 
+		cosinStart := time.Now()
 		for _, n := range allNodes {
 			if emb, ok := embeddings[n.Key]; ok && len(emb) > 0 {
 				baseScore := cosine(queryVec, emb)
@@ -381,6 +383,10 @@ func (g *Graph) BuildLightweightTree(ctx context.Context, sessionID string, f No
 				}
 			}
 		}
+		slog.Info("cosine similarity timing (BuildLightweightTree)",
+			"facts_compared", len(allNodes),
+			"duration", time.Since(cosinStart),
+		)
 
 		sort.Slice(scoredFacts, func(i, j int) bool { return scoredFacts[i].score > scoredFacts[j].score })
 		if len(scoredFacts) > limit {
