@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
@@ -56,16 +57,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	var result []ModelEntry
 	for _, m := range builtIn {
+		defaultEnabled := m.ActiveByDefault
+		if pref, ok := prefMap[m.ID]; ok {
+			defaultEnabled = pref.Enabled
+		}
 		entry := ModelEntry{
 			ID:         m.ID,
 			Name:       m.Name,
 			ProviderID: m.ProviderID,
 			Default:    m.Default,
-			Enabled:    true,
+			Enabled:    defaultEnabled,
 			IsCustom:   false,
-		}
-		if pref, ok := prefMap[m.ID]; ok {
-			entry.Enabled = pref.Enabled
 		}
 		result = append(result, entry)
 	}
@@ -162,8 +164,14 @@ func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVCS(w http.ResponseWriter, r *http.Request) {
 	branch := getCurrentBranch(s.dir)
-	writeJSON(w, http.StatusOK, map[string]string{
-		"branch": branch,
+	isGitRepo := branch != ""
+	hasRemote := isGitRepo && gitHasRemote(s.dir)
+	ghInstalled := commandExists("gh")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"branch":      branch,
+		"isGitRepo":   isGitRepo,
+		"hasRemote":   hasRemote,
+		"ghInstalled": ghInstalled,
 	})
 }
 
@@ -173,6 +181,16 @@ func getCurrentBranch(dir string) string {
 		return ""
 	}
 	return out
+}
+
+func gitHasRemote(dir string) bool {
+	out, err := execInDir(dir, "git", "remote")
+	return err == nil && len(strings.TrimSpace(out)) > 0
+}
+
+func commandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 func execInDir(dir string, name string, args ...string) (string, error) {

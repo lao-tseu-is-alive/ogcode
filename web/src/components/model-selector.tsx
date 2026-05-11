@@ -51,7 +51,8 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
 
   const selectedModelInfo = (): ModelInfo | undefined => {
     const id = props.selectedModel ? props.selectedModel() : session.selectedModel();
-    return allModels().find((m) => m.id === id);
+    // Only resolve within enabled models so disabled models never appear in the trigger.
+    return enabledModels().find((m) => m.id === id);
   };
 
   const handleSelect = (modelId: string) => {
@@ -100,7 +101,7 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
                 </div>
                 <For each={models}>
                   {(model) => {
-                    const isSelected = () => session.selectedModel() === model.id;
+                    const isSelected = () => (props.selectedModel ? props.selectedModel() : session.selectedModel()) === model.id;
                     return (
                       <button
                         type="button"

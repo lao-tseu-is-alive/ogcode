@@ -762,8 +762,11 @@ func (s *Server) handlePlanPrompt(w http.ResponseWriter, r *http.Request) {
 	s.bus.Publish("message.updated", userMsg)
 
 	// Auto-generate a plan title from the first user message
+	slog.Info("plan prompt: title check", "plan", p.ID, "title", p.Title)
 	if p.Title == "" || p.Title == "Untitled" {
 		go s.autoNamePlan(p, input.Content)
+	} else {
+		slog.Info("plan prompt: skipping auto-name, title already set", "plan", p.ID, "title", p.Title)
 	}
 
 	// Mark any unfinished assistant messages as aborted
@@ -1023,6 +1026,7 @@ func (s *Server) planArchivePaths(directory, excludePlanID string) []string {
 // autoNamePlan generates a short descriptive title for the plan from the user's
 // first message, then updates the plan and publishes an event.
 func (s *Server) autoNamePlan(p *plan.Plan, userMessage string) {
+	slog.Info("auto-name plan: starting", "plan", p.ID, "model", p.Model)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -1034,6 +1038,10 @@ func (s *Server) autoNamePlan(p *plan.Plan, userMessage string) {
 	}
 	if pr == nil {
 		pr = s.defaultProvider
+	}
+	if pr == nil {
+		slog.Warn("auto-name plan: no provider available, skipping", "plan", p.ID)
+		return
 	}
 	// If modelID is still empty, resolve the provider's default model so we
 	// never send an empty model ID to the API.
@@ -1050,6 +1058,7 @@ func (s *Server) autoNamePlan(p *plan.Plan, userMessage string) {
 			}
 		}
 	}
+	slog.Info("auto-name plan: using provider/model", "plan", p.ID, "provider", pr.ID(), "model", modelID)
 
 	systemPrompt := "Generate a short, concise title (maximum 7 words) that captures the goal of the request below. Return ONLY the title, no quotes, no extra text, no markdown."
 	text, err := collectStreamText(ctx, pr, modelID, systemPrompt, userMessage)
@@ -1057,11 +1066,17 @@ func (s *Server) autoNamePlan(p *plan.Plan, userMessage string) {
 		slog.Warn("auto-name plan: stream failed", "plan", p.ID, "err", err)
 		return
 	}
+	slog.Info("auto-name plan: raw response", "plan", p.ID, "text", text, "len", len(text))
 
 	title := strings.TrimSpace(text)
 	// Clean up common artifacts from LLM output
 	title = strings.Trim(title, "\"'`*#- \n")
 	if title == "" {
+		slog.Warn("auto-name plan: title empty after trim, falling back to message excerpt", "plan", p.ID, "raw", text)
+		title = excerptTitle(userMessage, 7)
+	}
+	if title == "" {
+		slog.Warn("auto-name plan: could not derive title", "plan", p.ID)
 		return
 	}
 	// Cap length at 100 chars to keep it display-friendly
@@ -1093,9 +1108,30 @@ func (s *Server) autoNamePlan(p *plan.Plan, userMessage string) {
 	slog.Info("auto-named plan", "plan", p.ID, "title", title)
 }
 
+// excerptTitle returns the first maxWords words of s, capped at 80 chars,
+// used as a fallback title when the LLM returns empty.
+func excerptTitle(s string, maxWords int) string {
+	s = strings.TrimSpace(s)
+	words := strings.Fields(s)
+	if len(words) > maxWords {
+		words = words[:maxWords]
+	}
+	title := strings.Join(words, " ")
+	if len(title) > 80 {
+		title = title[:80]
+	}
+	return title
+}
+
 // collectStreamText sends a simple system+user prompt to the provider and
 // collects all text deltas into a single string. Used for short generations
 // like title naming.
+//
+// MaxTokens is set high enough for thinking/reasoning models (e.g. MiniMax,
+// DeepSeek-R1, Qwen3-thinking) that spend tokens on internal reasoning before
+// producing visible content. If the model produces no content text but does
+// produce reasoning text, we fall back to the reasoning so the title is never
+// empty just because the model is a thinker.
 func collectStreamText(ctx context.Context, pr provider.Provider, modelID, systemPrompt, userMessage string) (string, error) {
 	userParts, _ := json.Marshal([]provider.ContentPart{{Type: "text", Text: userMessage}})
 
@@ -1106,7 +1142,7 @@ func collectStreamText(ctx context.Context, pr provider.Provider, modelID, syste
 			{Role: "user", Content: userParts},
 		},
 		Temperature: 0.3,
-		MaxTokens:   50,
+		MaxTokens:   500, // enough budget for thinking models to reason + answer
 		Abort:       ctx,
 	}
 
@@ -1116,13 +1152,22 @@ func collectStreamText(ctx context.Context, pr provider.Provider, modelID, syste
 	}
 
 	var text strings.Builder
+	var reasoning strings.Builder
 	for ev := range ch {
 		if ev.Type == provider.EventTextDelta {
 			text.WriteString(ev.Text)
 		}
+		if ev.Type == provider.EventReasoning {
+			reasoning.WriteString(ev.Text)
+		}
 		if ev.Type == provider.EventError {
 			return text.String(), fmt.Errorf("stream error: %s", ev.Error)
 		}
+	}
+	// Thinking models emit reasoning but sometimes produce empty content.
+	// Use the reasoning text as a fallback so we always have something to work with.
+	if text.Len() == 0 && reasoning.Len() > 0 {
+		return reasoning.String(), nil
 	}
 	return text.String(), nil
 }

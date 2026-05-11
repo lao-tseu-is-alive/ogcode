@@ -137,11 +137,25 @@ func deriveTheme(primaryHex, directory string) Theme {
 
 	h, s, l := rgbToHSL(r, g, b)
 
+	// Clamp near-black/near-white so accent is always visible on dark surfaces.
+	// Near-black (#000–#1e1e1e, L < 0.06) would be invisible against the app's
+	// dark backgrounds; near-white (L > 0.94) loses hover distinction and causes
+	// hardcoded "text-white" to become invisible on white buttons.
+	displayL := l
+	if l < 0.06 {
+		displayL = 0.35
+	} else if l > 0.94 {
+		displayL = 0.88
+	}
+	if displayL != l {
+		r, g, b = hslToRGB(h, s, displayL)
+	}
+
 	// accent = primary color itself
 	accent := fmt.Sprintf("#%02x%02x%02x", r, g, b)
 
-	// accent-hover: darken slightly, boost saturation
-	darkL := l - 0.08
+	// accent-hover: darken slightly from the display lightness, boost saturation
+	darkL := displayL - 0.08
 	if darkL < 0.15 {
 		darkL = 0.15
 	}

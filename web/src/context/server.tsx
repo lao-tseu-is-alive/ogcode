@@ -6,6 +6,9 @@ import { createSSE, type SSEEvent } from '../api/sse';
 interface ServerContextValue {
   directory: () => string;
   branch: () => string;
+  isGitRepo: () => boolean;
+  hasRemote: () => boolean;
+  ghInstalled: () => boolean;
   mode: () => 'build' | 'plan';
   connected: () => boolean;
   memoryEnabled: () => boolean;
@@ -21,6 +24,9 @@ const ServerContext = createContext<ServerContextValue>();
 export const ServerProvider: ParentComponent = (props) => {
   const [directory, setDirectory] = createSignal('');
   const [branch, setBranch] = createSignal('');
+  const [isGitRepo, setIsGitRepo] = createSignal(true);
+  const [hasRemote, setHasRemote] = createSignal(true);
+  const [ghInstalled, setGhInstalled] = createSignal(true);
   const [mode, setMode] = createSignal<'build' | 'plan'>('build');
   const [connected, setConnected] = createSignal(false);
   const [memoryEnabled, setMemoryEnabled] = createSignal(false);
@@ -33,9 +39,12 @@ export const ServerProvider: ParentComponent = (props) => {
     setDirectory(info.directory);
   }).catch(() => { /* ignore */ });
 
-  // Load VCS branch info
+  // Load VCS info
   getVCS().then((info) => {
     if (info.branch) setBranch(info.branch);
+    setIsGitRepo(info.isGitRepo ?? true);
+    setHasRemote(info.hasRemote ?? true);
+    setGhInstalled(info.ghInstalled ?? true);
   }).catch(() => { /* ignore */ });
 
   // Load server mode
@@ -66,6 +75,9 @@ export const ServerProvider: ParentComponent = (props) => {
   const value: ServerContextValue = {
     directory,
     branch,
+    isGitRepo,
+    hasRemote,
+    ghInstalled,
     mode,
     connected,
     memoryEnabled,

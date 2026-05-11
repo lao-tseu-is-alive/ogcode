@@ -112,6 +112,7 @@ export const PlanProvider: ParentComponent = (props) => {
   let fastPollInterval: ReturnType<typeof setInterval> | null = null;
   let bgPollInterval: ReturnType<typeof setInterval> | null = null;
   let taskPollInterval: ReturnType<typeof setInterval> | null = null;
+  let titlePollInterval: ReturnType<typeof setInterval> | null = null;
   let lastSSEUpdate = 0;
 
   function stopFastPoll() {
@@ -135,10 +136,46 @@ export const PlanProvider: ParentComponent = (props) => {
     }
   }
 
+  function stopTitlePoll() {
+    if (titlePollInterval) {
+      clearInterval(titlePollInterval);
+      titlePollInterval = null;
+    }
+  }
+
   function stopPolling() {
     stopFastPoll();
     stopBgPoll();
     stopTaskPoll();
+    stopTitlePoll();
+  }
+
+  // Poll plan metadata until a title appears (autoNamePlan runs async on the
+  // backend and may finish before or after loop.done — SSE alone is not enough).
+  function startTitlePoll(planId: string) {
+    stopTitlePoll();
+    const deadline = Date.now() + 60_000; // give up after 60 s
+    titlePollInterval = setInterval(async () => {
+      const p = activePlan();
+      if (!p || p.id !== planId || p.title) {
+        stopTitlePoll();
+        return;
+      }
+      if (Date.now() > deadline) {
+        stopTitlePoll();
+        return;
+      }
+      try {
+        const fresh = await getPlan(planId);
+        if (!fresh?.title) return;
+        if (activePlan()?.id !== planId) return;
+        setActivePlan((prev) => prev ? { ...prev, title: fresh.title } : prev);
+        setPlans((prev) => prev.map((q) =>
+          q.id === planId ? { ...q, title: fresh.title } : q
+        ));
+        stopTitlePoll();
+      } catch (_e) { /* ignore */ }
+    }, 3_000);
   }
 
   function startBgPoll(planId: string) {
@@ -245,6 +282,7 @@ export const PlanProvider: ParentComponent = (props) => {
     setPendingModel('');
     setArchivePath('');
     stopPolling();
+    stopTitlePoll();
     setMessages([]);
 
     try {
@@ -486,7 +524,8 @@ export const PlanProvider: ParentComponent = (props) => {
           return { ...prev, ...updated };
         });
       }
-      setPlans((prev) => prev.map((p) => (p.id === updated?.id ? { ...p, ...updated } : p)));
+      // Note: setPlans for plan.updated is handled by the standalone effect below
+      // so it runs even when activePlan is null (e.g. user navigated back to list).
       if (updated?.status === 'locked') {
         startTaskPoll(plan.id);
       }
@@ -611,8 +650,14 @@ export const PlanProvider: ParentComponent = (props) => {
     if (!evtSessionId || evtSessionId !== plan.sessionId) return;
     getPlan(plan.id).then((updatedPlan) => {
       if (activePlan()?.id !== plan.id) return;
-      setActivePlan((prev) => prev ? { ...prev, ...updatedPlan } : prev);
-      setPlans((prev) => prev.map((p) => (p.id === updatedPlan.id ? { ...p, ...updatedPlan } : p)));
+      setActivePlan((prev) => {
+        if (!prev) return prev;
+        return { ...prev, ...updatedPlan, title: updatedPlan.title || prev.title };
+      });
+      setPlans((prev) => prev.map((p) => {
+        if (p.id !== updatedPlan.id) return p;
+        return { ...p, ...updatedPlan, title: updatedPlan.title || p.title };
+      }));
     }).catch(() => {});
   }));
 
@@ -638,6 +683,23 @@ export const PlanProvider: ParentComponent = (props) => {
       if (prev.find((p) => p.id === created.id)) return prev;
       return [created, ...prev];
     });
+  }));
+
+  // Update the plans list on plan.updated regardless of whether there is an
+  // active plan — autoNamePlan finishes asynchronously and the user may have
+  // navigated back to the list page by then, which would make activePlan null
+  // and cause the title update to be dropped by the main SSE effect.
+  createEffect(on(server.eventTick, () => {
+    const last = server.lastEvent();
+    if (!last || (last.type !== 'plan.updated' && last.type !== 'plan.locked')) return;
+    const updated = last.properties as Plan | undefined;
+    if (!updated?.id) return;
+    setPlans((prev) => prev.map((p) => {
+      if (p.id !== updated.id) return p;
+      // Never regress a non-empty title to empty (guards against the loop.done
+      // race where a DB fetch can arrive before autoNamePlan has saved).
+      return { ...p, ...updated, title: updated.title || p.title };
+    }));
   }));
 
   // On SSE reconnect, refresh active plan (messages + plan metadata + tasks)
@@ -704,6 +766,8 @@ export const PlanProvider: ParentComponent = (props) => {
         setMessages(msgs);
         startBgPoll(plan.id);
         startPolling(plan.id);
+        // autoNamePlan runs async on the backend — poll until a title appears.
+        if (!plan.title) startTitlePoll(plan.id);
       } catch (e) {
         console.error('send plan prompt failed:', e);
         setLoadingPlanId('');

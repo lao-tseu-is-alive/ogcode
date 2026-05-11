@@ -230,6 +230,7 @@ type oaiModelsResponse struct {
 
 type oaiModelEntry struct {
 	ID      string `json:"id"`
+	Name    string `json:"name"`    // populated by OpenRouter, empty for Ollama
 	Object  string `json:"object"`
 	OwnedBy string `json:"owned_by"`
 }
@@ -276,9 +277,13 @@ func (p *OpenAIProvider) fetchDynamicModels(ctx context.Context) []ModelInfo {
 
 	var models []ModelInfo
 	for _, m := range listResp.Data {
+		name := m.Name
+		if name == "" {
+			name = m.ID
+		}
 		models = append(models, ModelInfo{
 			ID:         m.ID,
-			Name:       m.ID, // Use ID as display name; cloud models have descriptive IDs
+			Name:       name,
 			ProviderID: p.id,
 		})
 	}
@@ -290,74 +295,115 @@ func (p *OpenAIProvider) fetchDynamicModels(ctx context.Context) []ModelInfo {
 	return models
 }
 
+// openRouterActiveDefaults is the curated subset that starts enabled.
+// All other live-fetched OpenRouter models are fetched but disabled until the user enables them.
+var openRouterActiveDefaults = map[string]bool{
+	"anthropic/claude-sonnet-4.6":      true,
+	"anthropic/claude-opus-4.6":        true,
+	"anthropic/claude-haiku-4.5":       true,
+	"openai/gpt-4o":                    true,
+	"openai/o4-mini":                   true,
+	"google/gemini-2.5-pro":            true,
+	"deepseek/deepseek-r1":             true,
+	"meta-llama/llama-3.3-70b-instruct": true,
+}
+
+// ollamaLocalFallback is used when local Ollama is not running or has no models pulled.
+var ollamaLocalFallback = []ModelInfo{
+	{ID: "qwen3", Name: "Qwen3", ProviderID: "ollama", ActiveByDefault: true},
+	{ID: "llama3.1", Name: "Llama 3.1", ProviderID: "ollama", ActiveByDefault: true},
+	{ID: "deepseek-coder-v2", Name: "DeepSeek Coder V2", ProviderID: "ollama", ActiveByDefault: true},
+	{ID: "mistral", Name: "Mistral", ProviderID: "ollama", ActiveByDefault: false},
+	{ID: "codellama", Name: "Code Llama", ProviderID: "ollama", ActiveByDefault: false},
+	{ID: "qwen3.5", Name: "Qwen3.5", ProviderID: "ollama", ActiveByDefault: false},
+	{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next", ProviderID: "ollama", ActiveByDefault: false},
+	{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", ProviderID: "ollama", ActiveByDefault: false},
+}
+
+// ollamaCloudFallback is used when the cloud Ollama endpoint is unreachable.
+var ollamaCloudFallback = []ModelInfo{
+	{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next", ProviderID: "ollama", ActiveByDefault: true},
+	{ID: "kimi-k2.6", Name: "Kimi K2.6", ProviderID: "ollama", ActiveByDefault: true},
+	{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", ProviderID: "ollama", ActiveByDefault: true},
+	{ID: "glm-5.1", Name: "GLM-5.1", ProviderID: "ollama", ActiveByDefault: false},
+	{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro", ProviderID: "ollama", ActiveByDefault: false},
+	{ID: "mistral-large-3", Name: "Mistral Large 3", ProviderID: "ollama", ActiveByDefault: false},
+}
+
 func (p *OpenAIProvider) Models() []ModelInfo {
 	var list []ModelInfo
-	if p.id == "openrouter" {
-		list = []ModelInfo{
-			{ID: "anthropic/claude-sonnet-4.6", Name: "Claude Sonnet 4.6", ProviderID: "openrouter"},
-			{ID: "anthropic/claude-opus-4.5", Name: "Claude Opus 4.5", ProviderID: "openrouter"},
-			{ID: "anthropic/claude-haiku-4.5", Name: "Claude Haiku 4.5", ProviderID: "openrouter"},
-			{ID: "openai/gpt-5.2-chat", Name: "GPT-5.2 Chat", ProviderID: "openrouter"},
-			{ID: "google/gemini-2.5-pro", Name: "Gemini 2.5 Pro", ProviderID: "openrouter"},
-			{ID: "deepseek/deepseek-r1", Name: "DeepSeek R1", ProviderID: "openrouter"},
-			{ID: "minimax/minimax-m2.5", Name: "MiniMax M2.5", ProviderID: "openrouter"},
-		}
-	} else if p.id == "ollama" {
-		// For cloud Ollama endpoints, fetch models dynamically from /v1/models
-		if isCloudURL(p.baseURL) {
-			p.modelsOnce.Do(func() {
-				fetched := p.fetchDynamicModels(context.Background())
-				p.modelsMu.Lock()
-				if fetched != nil {
-					p.cachedModels = fetched
-				} else {
-					// Fallback: static list of known ollama.com cloud models
-					p.cachedModels = []ModelInfo{
-						{ID: "glm-5.1", Name: "GLM-5.1", ProviderID: "ollama"},
-						{ID: "glm-5", Name: "GLM-5", ProviderID: "ollama"},
-						{ID: "kimi-k2.6", Name: "Kimi K2.6", ProviderID: "ollama"},
-						{ID: "kimi-k2.5", Name: "Kimi K2.5", ProviderID: "ollama"},
-						{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", ProviderID: "ollama"},
-						{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro", ProviderID: "ollama"},
-						{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next", ProviderID: "ollama"},
-						{ID: "qwen3.5", Name: "Qwen3.5", ProviderID: "ollama"},
-						{ID: "minimax-m2.7", Name: "MiniMax M2.7", ProviderID: "ollama"},
-						{ID: "devstral-2", Name: "Devstral 2", ProviderID: "ollama"},
-						{ID: "mistral-large-3", Name: "Mistral Large 3", ProviderID: "ollama"},
+
+	switch p.id {
+	case "openrouter":
+		// Fetch all live models once; mark curated subset as active by default.
+		p.modelsOnce.Do(func() {
+			fetched := p.fetchDynamicModels(context.Background())
+			p.modelsMu.Lock()
+			if len(fetched) > 0 {
+				for i := range fetched {
+					fetched[i].ActiveByDefault = openRouterActiveDefaults[fetched[i].ID]
+				}
+				p.cachedModels = fetched
+			} else {
+				// Fallback: static curated list, all active
+				p.cachedModels = []ModelInfo{
+					{ID: "anthropic/claude-sonnet-4.6", Name: "Anthropic: Claude Sonnet 4.6", ProviderID: "openrouter", ActiveByDefault: true},
+					{ID: "anthropic/claude-opus-4.6", Name: "Anthropic: Claude Opus 4.6", ProviderID: "openrouter", ActiveByDefault: true},
+					{ID: "anthropic/claude-haiku-4.5", Name: "Anthropic: Claude Haiku 4.5", ProviderID: "openrouter", ActiveByDefault: true},
+					{ID: "openai/gpt-4o", Name: "OpenAI: GPT-4o", ProviderID: "openrouter", ActiveByDefault: true},
+					{ID: "openai/o4-mini", Name: "OpenAI: o4 Mini", ProviderID: "openrouter", ActiveByDefault: true},
+					{ID: "google/gemini-2.5-pro", Name: "Google: Gemini 2.5 Pro", ProviderID: "openrouter", ActiveByDefault: true},
+					{ID: "deepseek/deepseek-r1", Name: "DeepSeek: R1", ProviderID: "openrouter", ActiveByDefault: true},
+					{ID: "meta-llama/llama-3.3-70b-instruct", Name: "Meta: Llama 3.3 70B Instruct", ProviderID: "openrouter", ActiveByDefault: false},
+				}
+			}
+			p.modelsMu.Unlock()
+		})
+		p.modelsMu.Lock()
+		list = p.cachedModels
+		p.modelsMu.Unlock()
+
+	case "ollama":
+		// Always fetch live from /v1/models (works for both local and cloud endpoints).
+		// Local: reflects what the user has actually pulled; all enabled.
+		// Cloud: mark curated subset active; rest disabled.
+		p.modelsOnce.Do(func() {
+			fetched := p.fetchDynamicModels(context.Background())
+			p.modelsMu.Lock()
+			if len(fetched) > 0 {
+				for i := range fetched {
+					if isCloudURL(p.baseURL) {
+						// For cloud Ollama keep only a few active by default
+						fetched[i].ActiveByDefault = false
+					} else {
+						// Local: user explicitly pulled these — all active
+						fetched[i].ActiveByDefault = true
 					}
 				}
-				p.modelsMu.Unlock()
-			})
-			p.modelsMu.Lock()
-			list = p.cachedModels
-			p.modelsMu.Unlock()
-		} else {
-			// Local Ollama: use static list (covers both local and cloud model names)
-			list = []ModelInfo{
-				{ID: "glm-5.1", Name: "GLM-5.1", ProviderID: "ollama"},
-				{ID: "kimi-k2.6", Name: "Kimi K2.6", ProviderID: "ollama"},
-				{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", ProviderID: "ollama"},
-				{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro", ProviderID: "ollama"},
-				{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next", ProviderID: "ollama"},
-				{ID: "qwen3.5", Name: "Qwen3.5", ProviderID: "ollama"},
-				{ID: "qwen3", Name: "Qwen3", ProviderID: "ollama"},
-				{ID: "llama3.1", Name: "Llama 3.1", ProviderID: "ollama"},
-				{ID: "codellama", Name: "Code Llama", ProviderID: "ollama"},
-				{ID: "deepseek-coder-v2", Name: "DeepSeek Coder V2", ProviderID: "ollama"},
-				{ID: "mistral", Name: "Mistral", ProviderID: "ollama"},
+				p.cachedModels = fetched
+			} else if isCloudURL(p.baseURL) {
+				p.cachedModels = ollamaCloudFallback
+			} else {
+				p.cachedModels = ollamaLocalFallback
 			}
-		}
-	} else {
-		list = []ModelInfo{
-			{ID: "gpt-4o", Name: "GPT-4o", ProviderID: "openai"},
-			{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ProviderID: "openai"},
-			{ID: "o1", Name: "o1", ProviderID: "openai"},
-			{ID: "o1-mini", Name: "o1 Mini", ProviderID: "openai"},
-			{ID: "o3", Name: "o3", ProviderID: "openai"},
-			{ID: "o3-mini", Name: "o3 Mini", ProviderID: "openai"},
-			{ID: "o4-mini", Name: "o4 Mini", ProviderID: "openai"},
+			p.modelsMu.Unlock()
+		})
+		p.modelsMu.Lock()
+		list = p.cachedModels
+		p.modelsMu.Unlock()
+
+	default: // openai
+		list = make([]ModelInfo, 0, len(OpenAIModels))
+		for _, m := range OpenAIModels {
+			list = append(list, ModelInfo{
+				ID:              m.ID,
+				Name:            m.Name,
+				ProviderID:      "openai",
+				ActiveByDefault: m.ActiveByDefault,
+			})
 		}
 	}
+
 	for i := range list {
 		if list[i].ID == p.model {
 			list[i].Default = true

@@ -182,16 +182,18 @@ export function fetchMemoryModels(provider: string, type: 'embed' | 'chat', apiK
 // Provider config API
 export interface ProviderConfig {
   providerId: string;
-  apiKey: string;
+  apiKey: string;       // "__SET__" if stored in DB, "" otherwise
   baseUrl: string;
   updatedAt: number;
+  envKeySet: boolean;     // env var (e.g. ANTHROPIC_API_KEY) is present
+  envBaseURLSet: boolean; // env var (e.g. OPENAI_BASE_URL) is present
 }
 
 export function getProviderConfigs(): Promise<ProviderConfig[]> {
   return fetchAPI('/providers/config');
 }
 
-export function setProviderConfig(id: string, cfg: Omit<ProviderConfig, 'providerId' | 'updatedAt'>): Promise<ProviderConfig> {
+export function setProviderConfig(id: string, cfg: Omit<ProviderConfig, 'providerId' | 'updatedAt' | 'envKeySet' | 'envBaseURLSet'>): Promise<ProviderConfig> {
   return fetchAPI(`/providers/config/${id}`, {
     method: 'POST',
     body: JSON.stringify(cfg),
@@ -217,6 +219,9 @@ export function getPath(): Promise<PathInfo> {
 // VCS API
 export interface VCSInfo {
   branch: string;
+  isGitRepo: boolean;
+  hasRemote: boolean;
+  ghInstalled: boolean;
 }
 
 export function getVCS(): Promise<VCSInfo> {

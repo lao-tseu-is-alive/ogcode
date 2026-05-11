@@ -224,7 +224,7 @@ export default function ModelsSettings() {
               <button
                 type="button"
                 onClick={handleAdd}
-                class="h-8 px-3.5 bg-[color:var(--accent)] hover:bg-[color:var(--accent-hover)] text-white text-[12px] font-medium rounded-lg transition shadow-sm"
+                class="h-8 px-3.5 bg-[color:var(--accent)] hover:bg-[color:var(--accent-hover)] text-[color:var(--on-primary)] text-[12px] font-medium rounded-lg transition shadow-sm"
               >
                 Add model
               </button>
@@ -523,7 +523,17 @@ function ProviderCredRow(props: {
     }
   };
 
-  const isSet = () => !!(props.config?.apiKey);
+  // Key is "active" when set in DB or in the environment. Env takes priority at runtime.
+  const dbKeySet  = () => props.config?.apiKey === '__SET__';
+  const envKeySet = () => !!(props.config?.envKeySet);
+  const isSet     = () => dbKeySet() || envKeySet();
+
+  const statusLabel = () => {
+    if (envKeySet() && dbKeySet()) return 'Key set (env + app)';
+    if (envKeySet()) return 'Key set via env';
+    if (dbKeySet()) return 'Key set';
+    return 'Not configured';
+  };
 
   const inputCls = 'w-full h-8 px-2.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 font-mono focus:outline-none focus:border-[color:var(--accent)] transition';
 
@@ -541,7 +551,7 @@ function ProviderCredRow(props: {
         <span class="flex-1 text-[13px] font-medium text-zinc-200">{props.def.label}</span>
         <span class={`text-[11px] flex items-center gap-1.5 ${isSet() ? 'text-emerald-400' : 'text-zinc-600'}`}>
           <span class={`w-1.5 h-1.5 rounded-full ${isSet() ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-          {isSet() ? 'Key set' : 'Not configured'}
+          {statusLabel()}
         </span>
         <svg
           class={`w-4 h-4 text-zinc-500 transition-transform shrink-0 ${props.expanded ? 'rotate-180' : ''}`}
@@ -554,25 +564,48 @@ function ProviderCredRow(props: {
       {/* Expandable form */}
       <Show when={props.expanded}>
         <div class="px-5 pb-4 pt-1 space-y-3 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/30">
+
+          {/* Env-var notice */}
+          <Show when={envKeySet()}>
+            <div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-sky-500/8 border border-sky-500/20 text-[11.5px] text-sky-300">
+              <svg class="w-3.5 h-3.5 shrink-0 mt-[1px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>
+                Key is active from the <code class="font-mono text-sky-200 bg-sky-500/15 px-1 rounded text-[10.5px]">{providerEnvVar(props.def.id)}</code> environment variable.
+                Enter a key below only if you want to override it inside the app.
+              </span>
+            </div>
+          </Show>
+
           <div>
             <label class="block text-[11px] text-zinc-500 mb-1.5">
               API key
-              <Show when={apiKey() === '__SET__'}>
-                <span class="ml-1.5 text-emerald-500">● already set</span>
+              <Show when={dbKeySet()}>
+                <span class="ml-1.5 text-emerald-500">● already set in app</span>
               </Show>
             </label>
             <input
               type="password"
               value={apiKey() === '__SET__' ? '' : apiKey()}
               onInput={e => setApiKey(e.currentTarget.value)}
-              placeholder={apiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
+              placeholder={
+                dbKeySet()  ? 'leave blank to keep existing key' :
+                envKeySet() ? 'leave blank to use env var key'   :
+                              'sk-… or leave blank to use env var'
+              }
               class={inputCls}
             />
           </div>
 
           <Show when={props.def.hasBaseURL}>
             <div>
-              <label class="block text-[11px] text-zinc-500 mb-1.5">Base URL <span class="text-zinc-600">(optional)</span></label>
+              <label class="block text-[11px] text-zinc-500 mb-1.5">
+                Base URL <span class="text-zinc-600">(optional)</span>
+                <Show when={props.config?.envBaseURLSet}>
+                  <span class="ml-1.5 text-sky-400">● set via env</span>
+                </Show>
+              </label>
               <input
                 type="text"
                 value={baseURL()}
@@ -598,7 +631,7 @@ function ProviderCredRow(props: {
               onClick={handleSave}
               disabled={saving()}
               class="shrink-0 h-8 px-4 text-[12px] font-medium rounded-lg transition
-                bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent-hover)]
+                bg-[color:var(--accent)] text-[color:var(--on-primary)] hover:bg-[color:var(--accent-hover)]
                 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
               <Show when={saving()}>
@@ -613,6 +646,16 @@ function ProviderCredRow(props: {
       </Show>
     </div>
   );
+}
+
+function providerEnvVar(id: string): string {
+  const map: Record<string, string> = {
+    anthropic:  'ANTHROPIC_API_KEY',
+    openai:     'OPENAI_API_KEY',
+    openrouter: 'OPENROUTER_API_KEY',
+    ollama:     'OLLAMA_API_KEY',
+  };
+  return map[id] ?? `${id.toUpperCase()}_API_KEY`;
 }
 
 function FormField(props: { label: string; required?: boolean; hint?: string; children: any }) {

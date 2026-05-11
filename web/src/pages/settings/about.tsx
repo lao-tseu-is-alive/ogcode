@@ -1,7 +1,6 @@
 import { For, createSignal, createEffect, onMount, Show, createMemo } from 'solid-js';
 import { getVersion, checkForUpdate, type VersionResponse } from '../../api/client';
 
-const APP_VERSION = '0.1.5';
 
 interface Highlight {
   title: string;
@@ -96,13 +95,6 @@ export default function AboutSettings() {
     <div class="max-w-3xl mx-auto px-8 py-12">
       {/* Hero */}
       <header class="relative mb-12">
-        <div
-          class="absolute -inset-x-12 -top-8 h-56 pointer-events-none -z-0"
-          style={{
-            background:
-              'radial-gradient(ellipse 60% 60% at 50% 0%, var(--glow), transparent 70%)',
-          }}
-        />
         <div class="relative flex flex-col items-center text-center">
           <div class="relative mb-5">
             <div class="absolute inset-0 rounded-2xl bg-[color:var(--accent)] blur-xl opacity-40" />
@@ -118,7 +110,7 @@ export default function AboutSettings() {
           </p>
           <div class="mt-5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] text-[11px] font-mono text-zinc-300">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            v{APP_VERSION}
+            {serverVersion() !== 'unknown' ? `v${serverVersion()}` : 'loading…'}
           </div>
         </div>
       </header>

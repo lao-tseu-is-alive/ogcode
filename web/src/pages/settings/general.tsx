@@ -268,19 +268,25 @@ function MemoryConfigForm() {
   };
 
   const inputClass = 'w-full h-8 px-2.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 font-mono focus:outline-none focus:border-[color:var(--accent)] transition disabled:opacity-40';
-  const selectClass = 'w-full h-8 pl-2.5 pr-7 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 focus:outline-none focus:border-[color:var(--accent)] transition appearance-none cursor-pointer';
+  const selectClass = 'w-full h-8 pl-2.5 pr-7 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 focus:outline-none focus:border-[color:var(--accent)] transition appearance-none cursor-pointer disabled:opacity-40';
 
   return (
     <Show when={!loading()} fallback={
-      <p class="text-[12px] text-zinc-500 py-2">Loading…</p>
+      <div class="py-4 flex items-center gap-2 text-[12px] text-zinc-500">
+        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
+        </svg>
+        Loading…
+      </div>
     }>
-      <div class="space-y-4">
-        {/* Enable toggle */}
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-[13px] text-zinc-200 font-medium">Enable memory</div>
-            <div class="text-[11px] text-zinc-500 mt-0.5">
-              ogcode recalls relevant work from past sessions to give better answers.
+      <div class="space-y-5">
+
+        {/* ── Enable toggle ── */}
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <div class="text-[13px] text-zinc-100 font-medium">Enable agentic memory</div>
+            <div class="text-[11.5px] text-zinc-500 mt-0.5 leading-snug">
+              ogcode recalls relevant work from past sessions to give better, context-aware answers.
             </div>
           </div>
           <button
@@ -292,147 +298,171 @@ function MemoryConfigForm() {
               transition-colors duration-200 focus:outline-none
               ${enabled() ? 'bg-[color:var(--accent)]' : 'bg-zinc-700'}`}
           >
-            <span
-              class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
-                transition duration-200 ${enabled() ? 'translate-x-4' : 'translate-x-0'}`}
-            />
+            <span class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
+              transition duration-200 ${enabled() ? 'translate-x-4' : 'translate-x-0'}`} />
           </button>
         </div>
 
         <Show when={enabled()}>
-          <div class="space-y-3 pt-1">
-            {/* Embed provider */}
-            <div>
-              <label class="block text-[11px] text-zinc-500 mb-1.5">Memory provider</label>
-              <div class="relative">
-                <select
-                  value={embedProvider()}
-                  onChange={e => {
-                    const p = e.currentTarget.value;
-                    setEmbedProvider(p);
-                    if (!embedModel()) setEmbedModel(EMBED_MODEL_HINTS[p] || '');
-                  }}
-                  class={selectClass}
-                >
-                  <For each={EMBED_PROVIDERS}>
-                    {(p) => <option value={p.id}>{p.label}</option>}
-                  </For>
-                </select>
-                <svg
-                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
-                  fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          <div class="space-y-4">
+
+            {/* ── Section 1: Vector Store ── */}
+            <div class="rounded-lg border border-[color:var(--border-subtle)] overflow-hidden">
+              <div class="px-4 py-2.5 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-[color:var(--accent)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 10h16M4 14h16" />
                 </svg>
+                <span class="text-[11.5px] font-semibold text-zinc-300">Vector Store</span>
+                <span class="ml-auto text-[10.5px] text-zinc-500">Stores and retrieves memory embeddings</span>
+              </div>
+              <div class="px-4 py-3 space-y-3">
+                {/* Provider + Model side by side */}
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-[11px] text-zinc-500 mb-1.5">Provider</label>
+                    <div class="relative">
+                      <select
+                        value={embedProvider()}
+                        onChange={e => {
+                          const p = e.currentTarget.value;
+                          setEmbedProvider(p);
+                          if (!embedModel()) setEmbedModel(EMBED_MODEL_HINTS[p] || '');
+                        }}
+                        class={selectClass}
+                      >
+                        <For each={EMBED_PROVIDERS}>
+                          {(p) => <option value={p.id}>{p.label}</option>}
+                        </For>
+                      </select>
+                      <svg class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-[11px] text-zinc-500 mb-1.5">Embedding model</label>
+                    <input
+                      type="text"
+                      value={embedModel()}
+                      onInput={e => setEmbedModel(e.currentTarget.value)}
+                      placeholder={EMBED_MODEL_HINTS[embedProvider()] || 'e.g. text-embedding-3-small'}
+                      class={inputClass}
+                    />
+                  </div>
+                </div>
+                {/* API key */}
+                <div>
+                  <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                    API key
+                    <Show when={embedApiKey() === '__SET__'}>
+                      <span class="text-emerald-500 font-medium">● set</span>
+                    </Show>
+                  </label>
+                  <input
+                    type="password"
+                    value={embedApiKey() === '__SET__' ? '' : embedApiKey()}
+                    onInput={e => setEmbedApiKey(e.currentTarget.value)}
+                    placeholder={embedApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
+                    class={inputClass}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Embed model */}
-            <div>
-              <label class="block text-[11px] text-zinc-500 mb-1.5">Memory model</label>
-              <input
-                type="text"
-                value={embedModel()}
-                onInput={e => setEmbedModel(e.currentTarget.value)}
-                placeholder={EMBED_MODEL_HINTS[embedProvider()] || 'e.g. text-embedding-3-small'}
-                class={inputClass}
-              />
-            </div>
-
-            {/* Embed API key */}
-            <div>
-              <label class="block text-[11px] text-zinc-500 mb-1.5">
-                API key
-                <Show when={embedApiKey() === '__SET__'}>
-                  <span class="ml-1.5 text-emerald-500">● already set</span>
+            {/* ── Section 2: AI Understanding ── */}
+            <div class="rounded-lg border border-[color:var(--border-subtle)] overflow-hidden">
+              <div class="px-4 py-2.5 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-[color:var(--accent)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <span class="text-[11.5px] font-semibold text-zinc-300">AI Understanding</span>
+                <span class="ml-auto text-[10.5px] text-zinc-500">Summarises and understands your history</span>
+              </div>
+              <div class="px-4 py-3 space-y-3">
+                {/* Provider + Model side by side */}
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-[11px] text-zinc-500 mb-1.5">Provider</label>
+                    <div class="relative">
+                      <select
+                        value={chatProvider()}
+                        onChange={e => {
+                          const p = e.currentTarget.value;
+                          setChatProvider(p);
+                          if (p && !chatModel()) setChatModel(CHAT_MODEL_HINTS[p] || '');
+                          if (!p) setChatModel('');
+                        }}
+                        class={selectClass}
+                      >
+                        <For each={CHAT_PROVIDERS}>
+                          {(p) => <option value={p.id}>{p.label}</option>}
+                        </For>
+                      </select>
+                      <svg class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-[11px] text-zinc-500 mb-1.5">Model</label>
+                    <Show
+                      when={chatProvider()}
+                      fallback={
+                        <input
+                          type="text"
+                          disabled
+                          placeholder="Select a provider first"
+                          class={inputClass}
+                        />
+                      }
+                    >
+                      <ModelPicker
+                        provider={chatProvider()}
+                        apiKey={chatApiKey()}
+                        type="chat"
+                        value={chatModel()}
+                        onSelect={setChatModel}
+                        placeholder={CHAT_MODEL_HINTS[chatProvider()] || 'e.g. claude-sonnet-4-6'}
+                        inputClass={inputClass}
+                        selectClass={selectClass}
+                      />
+                    </Show>
+                  </div>
+                </div>
+                {/* API key — only when a provider is chosen */}
+                <Show when={chatProvider()}>
+                  <div>
+                    <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                      API key
+                      <Show when={chatApiKey() === '__SET__'}>
+                        <span class="text-emerald-500 font-medium">● set</span>
+                      </Show>
+                    </label>
+                    <input
+                      type="password"
+                      value={chatApiKey() === '__SET__' ? '' : chatApiKey()}
+                      onInput={e => setChatApiKey(e.currentTarget.value)}
+                      placeholder={chatApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
+                      class={inputClass}
+                    />
+                  </div>
                 </Show>
-              </label>
-              <input
-                type="password"
-                value={embedApiKey() === '__SET__' ? '' : embedApiKey()}
-                onInput={e => setEmbedApiKey(e.currentTarget.value)}
-                placeholder={embedApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
-                class={inputClass}
-              />
-            </div>
-
-            {/* Section divider */}
-            <div class="pt-1 pb-0.5 border-t border-[color:var(--border-subtle)]">
-              <p class="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">
-                AI for understanding your history
-              </p>
-            </div>
-
-            {/* Chat provider */}
-            <div>
-              <label class="block text-[11px] text-zinc-500 mb-1.5">AI provider</label>
-              <div class="relative">
-                <select
-                  value={chatProvider()}
-                  onChange={e => {
-                    const p = e.currentTarget.value;
-                    setChatProvider(p);
-                    if (p && !chatModel()) setChatModel(CHAT_MODEL_HINTS[p] || '');
-                    if (!p) setChatModel('');
-                  }}
-                  class={selectClass}
-                >
-                  <For each={CHAT_PROVIDERS}>
-                    {(p) => <option value={p.id}>{p.label}</option>}
-                  </For>
-                </select>
-                <svg
-                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
-                  fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
               </div>
             </div>
 
-            {/* Chat model — only when a specific provider is chosen */}
-            <Show when={chatProvider()}>
-              <div>
-                <label class="block text-[11px] text-zinc-500 mb-1.5">AI model</label>
-                <ModelPicker
-                  provider={chatProvider()}
-                  apiKey={chatApiKey()}
-                  type="chat"
-                  value={chatModel()}
-                  onSelect={setChatModel}
-                  placeholder={CHAT_MODEL_HINTS[chatProvider()] || 'e.g. claude-sonnet-4-6'}
-                  inputClass={inputClass}
-                  selectClass={selectClass}
-                />
-              </div>
-
-              {/* Chat API key */}
-              <div>
-                <label class="block text-[11px] text-zinc-500 mb-1.5">
-                  API key
-                  <Show when={chatApiKey() === '__SET__'}>
-                    <span class="ml-1.5 text-emerald-500">● already set</span>
-                  </Show>
-                </label>
-                <input
-                  type="password"
-                  value={chatApiKey() === '__SET__' ? '' : chatApiKey()}
-                  onInput={e => setChatApiKey(e.currentTarget.value)}
-                  placeholder={chatApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
-                  class={inputClass}
-                />
-              </div>
-            </Show>
           </div>
         </Show>
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <div class="pt-3 border-t border-[color:var(--border-subtle)] flex items-center justify-between gap-3">
           <Show when={error()}>
             <p class="text-[11px] text-red-400">{error()}</p>
           </Show>
           <Show when={saved() && !error()}>
-            <p class="text-[11px] text-emerald-400">Saved — restart ogcode to apply changes.</p>
+            <p class="text-[11px] text-emerald-400">Saved — restart ogcode to apply.</p>
           </Show>
           <Show when={!error() && !saved()}>
             <p class="text-[11px] text-zinc-600">Changes apply after restarting ogcode.</p>
@@ -442,7 +472,7 @@ function MemoryConfigForm() {
             onClick={handleSave}
             disabled={saving()}
             class="shrink-0 h-8 px-4 text-[12px] font-medium rounded-lg transition
-              bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent-hover)]
+              bg-[color:var(--accent)] text-[color:var(--on-primary)] hover:bg-[color:var(--accent-hover)]
               disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             <Show when={saving()}>
@@ -453,6 +483,7 @@ function MemoryConfigForm() {
             {saving() ? 'Saving…' : 'Save'}
           </button>
         </div>
+
       </div>
     </Show>
   );

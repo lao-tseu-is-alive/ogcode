@@ -83,14 +83,6 @@ function PlanListContent() {
       <PlanSidebar />
 
       <div class="flex-1 flex flex-col overflow-hidden relative bg-[color:var(--bg-base)]">
-        {/* Soft accent glow */}
-        <div
-          class="absolute inset-x-0 top-0 h-[420px] pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(ellipse 70% 50% at 50% 0%, var(--glow), transparent 65%)',
-          }}
-        />
 
         <div class="relative flex-1 overflow-y-auto flex flex-col">
           <div class="flex-1 flex flex-col items-center justify-center w-full max-w-2xl mx-auto px-6 pb-24">
@@ -176,6 +168,71 @@ function PlanListContent() {
                 )}
               </For>
             </div>
+
+            {/* Pre-flight checklist */}
+            <div class="mt-6 w-full rounded-xl border border-[color:var(--border-default)] bg-[color:var(--bg-surface)] divide-y divide-[color:var(--border-subtle)]">
+              <div class="px-4 py-2.5 flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-zinc-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <span class="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Before you plan</span>
+              </div>
+
+              {/* Git repo */}
+              <CheckRow
+                ok={server.isGitRepo()}
+                label="Project is a git repository"
+                okDetail="git initialized"
+                warnDetail={
+                  <span>Run <code class="font-mono text-[10.5px] bg-[color:var(--bg-elevated)] px-1 py-[1px] rounded">git init</code> in your project directory first</span>
+                }
+              />
+
+              {/* Remote */}
+              <CheckRow
+                ok={server.hasRemote()}
+                label="Remote repository connected"
+                okDetail="remote configured"
+                warnDetail={
+                  <span>Add a remote — <code class="font-mono text-[10.5px] bg-[color:var(--bg-elevated)] px-1 py-[1px] rounded">git remote add origin &lt;url&gt;</code></span>
+                }
+              />
+
+              {/* GitHub CLI */}
+              <CheckRow
+                ok={server.ghInstalled()}
+                label="GitHub CLI installed"
+                okDetail="gh is available"
+                warnDetail={
+                  <span>Install from <code class="font-mono text-[10.5px] bg-[color:var(--bg-elevated)] px-1 py-[1px] rounded">cli.github.com</code> — required for PR creation</span>
+                }
+              />
+
+              {/* Branch */}
+              <div class="px-4 py-2.5 flex items-start gap-2.5">
+                <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-[1px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="text-[11.5px] text-zinc-400 leading-snug">
+                  Make sure you're on your intended working branch
+                  <Show when={server.branch()}>
+                    {' '}— currently on{' '}
+                    <code class="font-mono text-[10.5px] text-zinc-200 bg-[color:var(--bg-elevated)] px-1 py-[1px] rounded">{server.branch()}</code>
+                  </Show>
+                </span>
+              </div>
+
+              {/* Pull */}
+              <div class="px-4 py-2.5 flex items-start gap-2.5">
+                <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-[1px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="text-[11.5px] text-zinc-400 leading-snug">
+                  Pull the latest changes before starting —{' '}
+                  <code class="font-mono text-[10.5px] text-zinc-300 bg-[color:var(--bg-elevated)] px-1 py-[1px] rounded">git pull</code>
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Footer */}
@@ -197,6 +254,41 @@ function PlanListContent() {
             </Show>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CheckRow(props: { ok: boolean; label: string; okDetail: string; warnDetail: any }) {
+  return (
+    <div class="px-4 py-2.5 flex items-start gap-2.5">
+      <Show
+        when={props.ok}
+        fallback={
+          <svg class="w-3.5 h-3.5 text-red-400 shrink-0 mt-[1px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+        }
+      >
+        <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-[1px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </Show>
+      <div class="min-w-0 text-[11.5px] leading-snug">
+        <Show
+          when={props.ok}
+          fallback={
+            <span class="text-red-300">{props.label} — </span>
+          }
+        >
+          <span class="text-zinc-400">{props.label} — </span>
+        </Show>
+        <Show
+          when={props.ok}
+          fallback={<span class="text-zinc-400">{props.warnDetail}</span>}
+        >
+          <span class="text-emerald-500/70">{props.okDetail}</span>
+        </Show>
       </div>
     </div>
   );
