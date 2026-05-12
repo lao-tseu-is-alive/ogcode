@@ -1,63 +1,29 @@
-# 🚀 Ogcode v0.1.11 Release
+# 🚀 Ogcode v0.2.4 Release
 
 ## 📋 Executive Summary
-This patch release focuses on **critical reliability improvements** for the task execution engine, fixing race conditions and crash recovery issues that could leave tasks in inconsistent states.
+This patch release introduces a refreshed, streamlined homepage with a clean "coming soon" design, providing visitors with a clearer preview of what's to come.
 
 ---
 
-## 🐛 Critical Bug Fixes
+## 🎨 Visual Improvements
 
-### Task Retry & Crash Recovery System
-
-**Bug #2 - Stale Error Messages on Retry**  
-`ResetFailed()` now properly clears the `pr_error` field when retrying tasks. Previously, old error messages would persist across retries, causing confusion.
-
-**Bug #3 - Race Condition in DeleteBranch**  
-Fixed concurrent access issue by wrapping `git.DeleteBranch()` calls with `s.gitMu.Lock()/Unlock()`. This prevents corruption when multiple task retries happen simultaneously.
-
-**Bug #4 - Orphaned Worktree Cleanup**  
-Implemented automatic cleanup of orphaned worktree directories after server crashes. The `FailStuckTasks()` function now returns failed tasks, allowing the server to remove abandoned `.ogcode/worktrees/` directories on startup.
-
-**Impact:** Tasks are now significantly more reliable when retrying failed operations and recovering from unexpected shutdowns.
+### Homepage Redesign
+- Simplified the homepage to a clean "coming soon" page
+- Removed complex content in favor of a minimalist approach
+- Focuses on the core value proposition while the full website is under development
 
 ---
 
-## 🔧 Improvements & Compatibility
-
-### GitHub CLI Support
-- Removed `--json` flag from `gh pr create` for backward compatibility with older GitHub CLI versions
-
-### Build Pipeline
-- Fixed GoReleaser configuration to prevent automatic commits of winget manifests to the main branch
-
----
-
-## 📝 Documentation Updates
-
-- Updated Discord community invite link in README
-
----
-
-## 📊 Changes Summary
+## 📝 Changes Summary
 
 ```
-3 files changed, 60 insertions(+), 10 deletions(-)
+2 files changed, 6 insertions(+), 8 deletions(-)
 
-internal/task/store.go         | 46 +++++++++++++++++++++++++++--------
-internal/server/server.go      | 18 +++++++++++---
-internal/server/task_routes.go |  6 ++++-
-README.md                      |  4 ++--
-.goreleaser.yaml              |  2 +-
+web/src/App.tsx         | 10 ++++-----
+web/src/index.css       |  4 +++--
 ```
 
 ---
-
-## 🎯 Upgrade Priority: HIGH
-
-**Recommended for all users**, especially those:
-- Using task retry functionality frequently
-- Running Ogcode in production environments
-- Experiencing "stuck" tasks after server restarts
 
 ## 📥 Installation
 
@@ -78,4 +44,4 @@ go install github.com/prasenjeet-symon/ogcode@latest
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/releases/tag/v0.1.11*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/releases/tag/v0.2.4*

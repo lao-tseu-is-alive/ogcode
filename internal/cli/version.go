@@ -9,7 +9,7 @@ import (
 
 // These variables are set via ldflags during build by GoReleaser.
 var (
-	version = "dev"
+	version = "v0.2.4"
 	commit  = "none"
 	date    = "unknown"
 )
