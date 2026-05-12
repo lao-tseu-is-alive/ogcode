@@ -3,144 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ogcode — Coming Soon</title>
-  <meta name="description" content="ogcode - AI-powered coding agent. Coming soon.">
-  <meta name="theme-color" content="#0a0a0a">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <title>ogcode</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg: #050505;
-      --surface: #0a0a0a;
-      --surface-2: #111111;
-      --border: #222222;
-      --text: #e5e5e5;
-      --text-dim: #a3a3a3;
-      --text-muted: #737373;
-      --accent: #3b82f6;
-      --accent-bright: #60a5fa;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    }
-
-    html { height: 100%; }
-
     body {
-      font-family: var(--font);
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      padding: 1.5rem;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    .logo {
-      width: 64px;
-      height: 64px;
-      background: linear-gradient(135deg, var(--accent), #a78bfa);
-      border-radius: 16px;
+      font-family: system-ui, sans-serif;
+      background: #000;
+      color: #fff;
+      height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 32px;
-      margin-bottom: 2rem;
-      animation: fadeIn 0.8s ease-out;
-      box-shadow: 0 0 40px rgba(59, 130, 246, 0.3);
+      margin: 0;
     }
-
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      margin-bottom: 0.5rem;
-      animation: fadeIn 0.8s 0.1s ease-out backwards;
-    }
-
-    h1 span { color: var(--accent-bright); }
-
-    .tagline {
-      font-size: 1.125rem;
-      color: var(--text-dim);
-      margin-bottom: 2rem;
-      text-align: center;
-      animation: fadeIn 0.8s 0.2s ease-out backwards;
-    }
-
-    .coming-soon {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.625rem 1.25rem;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 100px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: var(--text-dim);
-      animation: fadeIn 0.8s 0.3s ease-out backwards;
-    }
-
-    .coming-soon .dot {
-      width: 8px;
-      height: 8px;
-      background: var(--accent);
-      border-radius: 50%;
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    footer {
-      position: fixed;
-      bottom: 2rem;
-      left: 0;
-      right: 0;
-      text-align: center;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      animation: fadeIn 0.8s 0.4s ease-out backwards;
-    }
-
-    footer a {
-      color: var(--text-dim);
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-
-    footer a:hover {
-      color: var(--text);
-    }
-
-    @media (max-width: 640px) {
-      h1 { font-size: 2rem; }
-      .tagline { font-size: 1rem; }
+    p {
+      margin: 0;
     }
   </style>
 </head>
 <body>
-  <div class="logo">⚡</div>
-  <h1>og<span>code</span></h1>
-  <p class="tagline">AI-powered coding agent</p>
-  <div class="coming-soon">
-    <span class="dot"></span>
-    App coming soon
-  </div>
-
-  <footer>
-    <a href="https://github.com/prasenjeet-symon/ogcode">GitHub</a>
-  </footer>
+  <p>Coming soon</p>
 </body>
 </html>
