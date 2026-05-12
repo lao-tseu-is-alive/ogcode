@@ -671,48 +671,41 @@ type recallResponse struct {
 }
 
 func parseRecallResponse(text string) recallResponse {
-	r := recallResponse{FinalContext: strings.TrimSpace(text), Confidence: 1.0}
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "CONFIDENCE:") {
-			v := strings.TrimPrefix(line, "CONFIDENCE:")
-			v = strings.TrimSpace(v)
-			if f, ok := parseConfidence(strings.TrimSuffix(v, "/1")); ok {
-				r.Confidence = f
-			}
-		} else if strings.HasPrefix(line, "FACTS_USED:") {
-			v := strings.TrimPrefix(line, "FACTS_USED:")
-			v = strings.TrimSpace(v)
-			var n int
-			fmt.Sscanf(v, "%d", &n)
-			r.FactsUsed = n
-		} else if strings.HasPrefix(line, "CONTEXT_FOUND:") {
-			v := strings.TrimSpace(strings.TrimPrefix(line, "CONTEXT_FOUND:"))
-			r.ContextFound = strings.HasPrefix(strings.ToUpper(v), "YES")
-		} else if strings.HasPrefix(line, "DRAFT_CONTEXT:") {
-			r.DraftContext = strings.TrimPrefix(line, "DRAFT_CONTEXT:")
-			r.DraftContext = strings.TrimSpace(r.DraftContext)
-		} else if strings.HasPrefix(line, "FINAL_CONTEXT:") {
-			r.FinalContext = strings.TrimPrefix(line, "FINAL_CONTEXT:")
-			r.FinalContext = strings.TrimSpace(r.FinalContext)
-		} else if strings.HasPrefix(line, "FOLLOW_UP:") || strings.HasPrefix(line, "FOLLOWUP:") {
-			r.FollowUp = strings.TrimSpace(strings.TrimPrefix(line, "FOLLOWUP:"))
-			r.FollowUp = strings.TrimSpace(strings.TrimPrefix(r.FollowUp, "FOLLOW_UP:"))
-		} else if strings.HasPrefix(line, "CRITIQUE:") {
-			r.Critique = strings.TrimPrefix(line, "CRITIQUE:")
-			r.Critique = strings.TrimSpace(r.Critique)
-		} else if strings.HasPrefix(line, "REFINEMENT_NEEDED:") {
-			v := strings.TrimSpace(strings.TrimPrefix(line, "REFINEMENT_NEEDED:"))
-			r.RefinementNeeded = strings.HasPrefix(strings.ToUpper(v), "YES")
+	// Strip optional markdown code fence the LLM may wrap around JSON.
+	raw := strings.TrimSpace(text)
+	if strings.HasPrefix(raw, "```") {
+		if i := strings.Index(raw, "\n"); i != -1 {
+			raw = raw[i+1:]
 		}
+		raw = strings.TrimSuffix(strings.TrimSpace(raw), "```")
+		raw = strings.TrimSpace(raw)
 	}
-	return r
-}
 
-func parseConfidence(s string) (float32, bool) {
-	var f float32
-	n, err := fmt.Sscanf(s, "%f", &f)
-	return f, n == 1 && err == nil && f >= 0 && f <= 1
+	var j struct {
+		ThoughtProcess   string  `json:"thought_process"`
+		ContextFound     bool    `json:"context_found"`
+		DraftContext     string  `json:"draft_context"`
+		Critique         string  `json:"critique"`
+		RefinementNeeded bool    `json:"refinement_needed"`
+		Confidence       float32 `json:"confidence"`
+		FollowUp         string  `json:"followup"`
+		FinalContext     string  `json:"final_context"`
+		FactsUsed        int     `json:"facts_used"`
+	}
+	if err := json.Unmarshal([]byte(raw), &j); err != nil {
+		// Fallback: treat the entire response as the final context.
+		return recallResponse{FinalContext: strings.TrimSpace(text), Confidence: 1.0}
+	}
+	return recallResponse{
+		DraftContext:     j.DraftContext,
+		FinalContext:     j.FinalContext,
+		ContextFound:     j.ContextFound,
+		Confidence:       j.Confidence,
+		FactsUsed:        j.FactsUsed,
+		FollowUp:         j.FollowUp,
+		Critique:         j.Critique,
+		RefinementNeeded: j.RefinementNeeded,
+	}
 }
 
 func buildRecallPrompt(question string, skeletonTree map[string]TopicTree, semanticTree map[string]TopicTree, topFacts []Node, history []string) string {
@@ -736,15 +729,18 @@ func buildRecallPrompt(question string, skeletonTree map[string]TopicTree, seman
 	sb.WriteString("\n=== MOST RELEVANT FACTS (Semantic matches marked with ★) ===\n")
 	sb.WriteString(semanticTreeText(semanticTree, topFacts))
 	sb.WriteString("\nUser Query: " + question + "\n\n")
-	sb.WriteString(`Respond strictly in the following format:
-THOUGHT_PROCESS: <Does this query need past context to be answered well? Which stored facts are relevant?>
-CONTEXT_FOUND: <YES or NO. Say NO if the query is generic or the memory contains nothing relevant.>
-DRAFT_CONTEXT: <If YES, write a concise factual summary of ONLY the relevant past context — what was discussed, decided, or built that is directly needed to answer this query. Do NOT answer the query. If NO, leave blank.>
-CRITIQUE: <Review your draft. Did you accidentally answer the query instead of providing context? Did you include irrelevant facts or hallucinate?>
-REFINEMENT_NEEDED: <YES or NO. Say YES if the critique found issues or a FOLLOWUP search would help.>
-CONFIDENCE: <0.0-1.0 confidence that the context you retrieved is sufficient for the downstream LLM.>
-FOLLOWUP: <If REFINEMENT_NEEDED is YES, what specific topic or fact should we search for next?>
-FINAL_CONTEXT: <Your polished background context brief for the downstream LLM. If CONTEXT_FOUND is NO, write exactly: EMPTY_CONTEXT>`)
+	sb.WriteString(`Respond with a single JSON object and nothing else — no markdown fences, no explanation:
+{
+  "thought_process": "<Does this query need past context? Which stored facts are relevant?>",
+  "context_found": <true or false. false if the query is generic or memory has nothing relevant>,
+  "draft_context": "<If true, a factual summary of ONLY the relevant past context — what was discussed, decided, or built. Do NOT answer the query. If false, empty string.>",
+  "critique": "<Did you accidentally answer the query? Include irrelevant facts? Hallucinate?>",
+  "refinement_needed": <true or false. true if the critique found issues or a followup search would help>,
+  "confidence": <0.0-1.0 confidence the retrieved context is sufficient for the downstream LLM>,
+  "followup": "<If refinement_needed is true, what specific topic or fact to search for next. Otherwise empty string.>",
+  "facts_used": <integer count of facts drawn upon>,
+  "final_context": "<Your polished background context brief for the downstream LLM. If context_found is false, use empty string.>"
+}`)
 	return sb.String()
 }
 

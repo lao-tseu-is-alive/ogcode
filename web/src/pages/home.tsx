@@ -86,14 +86,6 @@ function HomeContent() {
       <SessionSidebar />
 
       <div class="flex-1 flex flex-col overflow-hidden relative bg-[color:var(--bg-base)]">
-        {/* Soft accent glow */}
-        <div
-          class="absolute inset-x-0 top-0 h-[420px] pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(ellipse 70% 50% at 50% 0%, var(--glow), transparent 65%)',
-          }}
-        />
 
         <div class="relative flex-1 overflow-y-auto flex flex-col">
           <div class="flex-1 flex flex-col items-center justify-center w-full max-w-2xl mx-auto px-6 pb-24">

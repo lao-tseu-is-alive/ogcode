@@ -325,8 +325,9 @@ export const SessionProvider: ParentComponent = (props) => {
     // Stop any existing polling from previous session when switching
     if (!sameSession) {
       stopPolling();
-      // Always clear messages when switching to a different session
-      // This prevents cross-session data leakage
+      setLoadingSessionId('');
+      setCompacted(false);
+      if (compactedTimer) { clearTimeout(compactedTimer); compactedTimer = null; }
       setMessages([]);
     }
     // Re-entering the same session keeps cached messages and refreshes in place.
@@ -348,6 +349,10 @@ export const SessionProvider: ParentComponent = (props) => {
   }
 
   async function newSession(model?: string) {
+    stopPolling();
+    setLoadingSessionId('');
+    setCompacted(false);
+    if (compactedTimer) { clearTimeout(compactedTimer); compactedTimer = null; }
     const session = await createSession(server.directory(), model || selectedModel());
     setSessions((prev) => [session, ...prev]);
     setActiveSession(session);
