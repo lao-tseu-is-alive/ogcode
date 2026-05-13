@@ -36,7 +36,7 @@ func (s *Server) handleListPlans(w http.ResponseWriter, r *http.Request) {
 		plans = []*plan.Plan{}
 	}
 
-	// Compute AllTasksCompleted for each plan
+	// Compute AllTasksCompleted and Archived for each plan
 	for _, p := range plans {
 		if p.Status == plan.StatusLocked {
 			tasks, err := s.taskStore.ListByPlan(p.ID)
@@ -51,6 +51,7 @@ func (s *Server) handleListPlans(w http.ResponseWriter, r *http.Request) {
 				p.AllTasksCompleted = allDone
 			}
 		}
+		p.Archived = p.ArchivedAt > 0
 	}
 
 	writeJSON(w, http.StatusOK, plans)
@@ -837,9 +838,15 @@ func (s *Server) handleGetPlanMessages(w http.ResponseWriter, r *http.Request) {
 
 // generatePlanMarkdown renders a plan archive: title, dates, the final plan
 // summary, and a rich task list with branch, PR, and description per task.
-func (s *Server) generatePlanMarkdown(p *plan.Plan) string {
-	messages, _ := s.store.GetMessages(session.SessionID(p.SessionID), "", 1000)
-	tasks, _ := s.taskStore.ListByPlan(p.ID)
+func (s *Server) generatePlanMarkdown(p *plan.Plan) (string, error) {
+	messages, err := s.store.GetMessages(session.SessionID(p.SessionID), "", 1000)
+	if err != nil {
+		return "", fmt.Errorf("get messages: %w", err)
+	}
+	tasks, err := s.taskStore.ListByPlan(p.ID)
+	if err != nil {
+		return "", fmt.Errorf("list tasks: %w", err)
+	}
 
 	var md strings.Builder
 
@@ -925,7 +932,7 @@ func (s *Server) generatePlanMarkdown(p *plan.Plan) string {
 		}
 	}
 
-	return md.String()
+	return md.String(), nil
 }
 
 func (s *Server) handleExportPlan(w http.ResponseWriter, r *http.Request) {
@@ -936,7 +943,11 @@ func (s *Server) handleExportPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content := s.generatePlanMarkdown(p)
+	content, err := s.generatePlanMarkdown(p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	filename := strings.ToLower(strings.ReplaceAll(p.Title, " ", "-"))
 	filename = strings.Map(func(r rune) rune {
@@ -961,19 +972,19 @@ func (s *Server) handleExportPlan(w http.ResponseWriter, r *http.Request) {
 // tryArchivePlan checks whether all tasks in the plan are completed and, if so,
 // writes the plan as a markdown file to <projectDir>/.ogcode/archives/<planID>.md.
 // The file is written only once — subsequent calls are no-ops when the file exists.
-func (s *Server) tryArchivePlan(planID string) {
+func (s *Server) tryArchivePlan(planID string) error {
 	p, err := s.planStore.Get(planID)
 	if err != nil || p == nil || p.Status != plan.StatusLocked {
-		return
+		return err
 	}
 
 	tasks, err := s.taskStore.ListByPlan(planID)
 	if err != nil || len(tasks) == 0 {
-		return
+		return err
 	}
 	for _, t := range tasks {
 		if t.Status != task.StatusCompleted {
-			return
+			return nil
 		}
 	}
 
@@ -984,41 +995,47 @@ func (s *Server) tryArchivePlan(planID string) {
 
 	// Skip if already archived.
 	if _, err := os.Stat(archivePath); err == nil {
-		return
+		return nil
 	}
 
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		slog.Error("create archive dir", "plan", planID, "err", err)
-		return
+		return err
 	}
 
-	content := s.generatePlanMarkdown(p)
+	content, err := s.generatePlanMarkdown(p)
+	if err != nil {
+		slog.Error("generate plan markdown for archive", "plan", planID, "err", err)
+		return err
+	}
 	if err := os.WriteFile(archivePath, []byte(content), 0o644); err != nil {
 		slog.Error("write plan archive", "plan", planID, "path", archivePath, "err", err)
-		return
+		return err
 	}
 	slog.Info("plan archived", "plan", planID, "path", archivePath)
 	s.bus.Publish("plan.archived", map[string]string{"planId": planID, "path": archivePath})
+	return nil
 }
 
 // planArchivePaths returns absolute paths to all completed plan archives in
 // <directory>/.ogcode/archives/, excluding the current plan's own file.
 func (s *Server) planArchivePaths(directory, excludePlanID string) []string {
-	archiveDir := filepath.Join(directory, ".ogcode", "archives")
-	entries, err := os.ReadDir(archiveDir)
-	if err != nil {
+	// Use the DB to filter only plans that are locked and have been archived.
+	plans, err := s.planStore.ListArchived(directory)
+	if err != nil || len(plans) == 0 {
 		return nil
 	}
+
+	archiveDir := filepath.Join(directory, ".ogcode", "archives")
 	var paths []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+	for _, p := range plans {
+		if p.ID == excludePlanID {
 			continue
 		}
-		// Filename is "<slug>-<planID>.md" — skip the current plan's archive.
-		if strings.Contains(e.Name(), excludePlanID) {
-			continue
-		}
-		paths = append(paths, filepath.Join(archiveDir, e.Name()))
+		// Filename matches the archive format: "<slug>-<planID>.md"
+		slug := git.Slugify(p.Title)
+		archivePath := filepath.Join(archiveDir, slug+"-"+p.ID+".md")
+		paths = append(paths, archivePath)
 	}
 	return paths
 }
@@ -1136,8 +1153,8 @@ func collectStreamText(ctx context.Context, pr provider.Provider, modelID, syste
 	userParts, _ := json.Marshal([]provider.ContentPart{{Type: "text", Text: userMessage}})
 
 	req := provider.StreamRequest{
-		Model:    modelID,
-		System:   []string{systemPrompt},
+		Model:  modelID,
+		System: []string{systemPrompt},
 		Messages: []provider.ModelMessage{
 			{Role: "user", Content: userParts},
 		},
