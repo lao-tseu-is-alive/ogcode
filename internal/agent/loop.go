@@ -55,6 +55,16 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		return fmt.Errorf("get session: %w", err)
 	}
 
+	// Warn if the agent name doesn't match the session type — catches accidental
+	// mismatches at call sites (breakdown intentionally differs, so not a hard error).
+	if sess != nil && sess.SessionType != "" && sess.SessionType != agentName {
+		knownMismatch := agentName == "breakdown" && sess.SessionType == "build"
+		if !knownMismatch {
+			slog.Warn("agent/session type mismatch — possible call-site bug",
+				"sessionType", sess.SessionType, "agentName", agentName, "session", sessionID)
+		}
+	}
+
 	// Load AGENT.md files from session directory
 	workDir := lr.Dir
 	if sess != nil && sess.Directory != "" {
@@ -907,6 +917,13 @@ func buildTurnResponse(messages []*session.MessageWithParts, userMsgIdx int) str
 }
 
 func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.SessionID, messageID session.MessageID, tc pendingToolCall, a Agent, workDir string) (tool.Result, error) {
+	// Reject tools not in the agent's allowed list — guards against prompt injection
+	// or a misbehaving model calling tools it was never offered.
+	if !a.HasTool(tc.Name) {
+		slog.Warn("agent called disallowed tool, rejecting", "agent", a.ID, "tool", tc.Name)
+		return tool.Result{Output: fmt.Sprintf("tool %q is not available to the %s agent", tc.Name, a.ID)}, nil
+	}
+
 	// Try built-in tools first
 	t := lr.Tools.Get(tc.Name)
 	if t != nil {

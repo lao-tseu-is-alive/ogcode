@@ -204,10 +204,12 @@ func (s *Server) handleLockPlan(w http.ResponseWriter, r *http.Request) {
 	s.cancelPlanLoop(p)
 
 	// Ask the LLM to produce a final comprehensive plan document.
-	// This response becomes the canonical summary stored in the archive.
-	// Failure is non-fatal — we still proceed with locking.
+	// This must succeed — the breakdown agent relies on it as its sole input.
+	// Return an error so the UI can surface it and let the user retry locking.
 	if err := s.generateFinalPlanSummary(p); err != nil {
-		slog.Warn("final plan summary failed, proceeding without", "plan", p.ID, "err", err)
+		slog.Error("final plan summary failed, aborting lock", "plan", p.ID, "err", err)
+		http.Error(w, "failed to generate final plan summary — please try locking again", http.StatusInternalServerError)
+		return
 	}
 
 	if err := s.planStore.Lock(planID); err != nil {

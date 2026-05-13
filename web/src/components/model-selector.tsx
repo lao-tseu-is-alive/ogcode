@@ -51,8 +51,9 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
 
   const selectedModelInfo = (): ModelInfo | undefined => {
     const id = props.selectedModel ? props.selectedModel() : session.selectedModel();
-    // Only resolve within enabled models so disabled models never appear in the trigger.
-    return enabledModels().find((m) => m.id === id);
+    // Prefer enabled models, but fall back to all models so a session whose
+    // model has since been disabled still shows the correct label in the trigger.
+    return enabledModels().find((m) => m.id === id) ?? allModels().find((m) => m.id === id);
   };
 
   const handleSelect = (modelId: string) => {

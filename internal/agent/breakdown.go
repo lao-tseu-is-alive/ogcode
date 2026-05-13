@@ -32,64 +32,63 @@ func BreakdownPrompt(messages []*session.MessageWithParts, archivePaths []string
 		b.WriteString("\nRead them if you need context about past decisions or what has already been implemented.\n\n")
 	}
 
-	b.WriteString("Below is the full conversation from a planning session. Analyze it and produce a structured task breakdown as a JSON array.\n\n")
-	b.WriteString("--- BEGIN PLAN CONVERSATION ---\n\n")
+	// Extract only the final agreed plan — the last assistant message written at lock time.
+	finalSummary, _ := extractFinalSummary(messages)
 
-	for _, msg := range messages {
-		role := string(msg.Info.Role)
-		if msg.Info.Agent != "" {
-			role = fmt.Sprintf("%s (%s)", role, msg.Info.Agent)
-		}
-		b.WriteString(fmt.Sprintf("[%s]:\n", role))
-
-		for _, part := range msg.Parts {
-			switch part.Type {
-			case session.PartText:
-				var data session.TextPartData
-				if err := json.Unmarshal(part.Data, &data); err == nil {
-					b.WriteString(data.Text)
-					b.WriteString("\n")
-				}
-			case session.PartTool:
-				var data session.ToolPartData
-				if err := json.Unmarshal(part.Data, &data); err == nil {
-					b.WriteString(fmt.Sprintf("[Tool: %s", data.Tool))
-					if data.State.Title != nil {
-						b.WriteString(fmt.Sprintf(" — %s", *data.State.Title))
-					}
-					b.WriteString("]")
-					if data.State.Output != nil {
-						output := *data.State.Output
-						if len(output) > 500 {
-							output = output[:500] + "..."
-						}
-						b.WriteString(fmt.Sprintf("\nOutput: %s", output))
-					}
-					b.WriteString("\n")
-				}
-			case session.PartReasoning:
-				var data session.ReasoningPartData
-				if err := json.Unmarshal(part.Data, &data); err == nil {
-					b.WriteString(fmt.Sprintf("[Reasoning: %s]\n", data.Text))
-				}
-			}
-		}
-		b.WriteString("\n")
+	if finalSummary != "" {
+		b.WriteString("=== FINAL AGREED PLAN ===\n")
+		b.WriteString("This is the canonical plan the user approved. Use it as the sole source for the task breakdown.\n\n")
+		b.WriteString(finalSummary)
+		b.WriteString("\n=== END FINAL PLAN ===\n\n")
 	}
 
-	b.WriteString("--- END PLAN CONVERSATION ---\n\n")
+	b.WriteString("## Rules for the task breakdown\n\n")
+
+	b.WriteString("GRANULARITY: Aim for tasks a developer can complete in one sitting (a few hours). " +
+		"Do not over-split — 3 to 10 tasks is typical. Merge trivially small steps into their natural parent task.\n\n")
+
+	b.WriteString("DESCRIPTION QUALITY: Each task description must be implementation-ready. Include:\n" +
+		"- Exact file paths to create or modify\n" +
+		"- Function/type/interface names to add or change\n" +
+		"- Patterns and conventions to follow (reference existing code where relevant)\n" +
+		"- Edge cases and error handling to consider\n" +
+		"A developer should be able to implement the task from the description alone without re-reading the plan.\n\n")
+
 	b.WriteString("DEPENDENCY RULE: Each task may depend on AT MOST ONE other task. " +
 		"Design strictly linear chains (A→B→C). " +
 		"Fan-in graphs (A,B→C) are not allowed. " +
 		"If a task logically requires work from multiple predecessors, consolidate those predecessors into a single task first.\n\n")
+
 	b.WriteString("FILE OWNERSHIP RULE: Parallel tasks (tasks with no dependency between them) " +
 		"MUST NOT edit the same files. Each file should be owned by exactly one parallel workstream. " +
 		"If two tasks need to touch the same file, add a dependency between them so they run sequentially. " +
 		"For each task, mentally list the files it will modify — if any file appears in two parallel tasks, " +
 		"make one depend on the other. This prevents merge conflicts when the branches are combined.\n\n")
+
 	b.WriteString("Now call the submit_task_breakdown tool with the complete task breakdown array. Do NOT output raw JSON — use the tool.")
 
 	return b.String()
+}
+
+// extractFinalSummary separates the last assistant text message (the canonical
+// final plan written at lock time) from the rest of the conversation messages.
+func extractFinalSummary(messages []*session.MessageWithParts) (summary string, rest []*session.MessageWithParts) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg.Info.Role != session.RoleAssistant {
+			continue
+		}
+		for _, part := range msg.Parts {
+			if part.Type != session.PartText {
+				continue
+			}
+			var data session.TextPartData
+			if err := json.Unmarshal(part.Data, &data); err == nil && strings.TrimSpace(data.Text) != "" {
+				return data.Text, messages[:i]
+			}
+		}
+	}
+	return "", messages
 }
 
 // extractJSONArray finds the first '[' in s and returns the substring up to and

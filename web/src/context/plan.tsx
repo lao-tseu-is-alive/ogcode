@@ -29,6 +29,7 @@ interface PlanContextValue {
   plans: () => Plan[];
   activePlan: () => Plan | null;
   memorySavedTokens: () => number;
+  lockError: () => string;
   tasks: () => Task[];
   messages: () => MessageWithParts[];
   loading: () => boolean;
@@ -80,6 +81,7 @@ export const PlanProvider: ParentComponent = (props) => {
   const [loadingPlanId, setLoadingPlanId] = createSignal<string>('');
   const loading = () => loadingPlanId() === activePlan()?.id && loadingPlanId() !== '';
   const [memorySavedTokens, setMemorySavedTokens] = createSignal(0);
+  const [lockError, setLockError] = createSignal('');
 
   // Archive notification: set by the plan.archived SSE event, cleared on plan switch or dismiss.
   const [archivePath, setArchivePath] = createSignal<string>('');
@@ -364,15 +366,17 @@ export const PlanProvider: ParentComponent = (props) => {
   async function lockPlan() {
     const plan = activePlan();
     if (!plan) return;
+    setLockError('');
     setLoadingPlanId(plan.id);
     try {
       const updated = await lockPlanAPI(plan.id);
       setActivePlan(updated);
       stopFastPoll();
       setLoadingPlanId('');
-    } catch (e) {
+    } catch (e: any) {
       setLoadingPlanId('');
-      console.error('lock plan failed:', e);
+      const msg = e?.message?.replace(/^API error \d+:\s*/, '').trim() ?? 'Failed to lock plan';
+      setLockError(msg);
     }
   }
 
@@ -748,6 +752,7 @@ export const PlanProvider: ParentComponent = (props) => {
     plans,
     activePlan,
     memorySavedTokens,
+    lockError,
     tasks,
     messages,
     loading,

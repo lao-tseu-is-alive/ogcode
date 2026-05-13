@@ -9,6 +9,7 @@ import PlanPromptInput from '../components/plan-prompt-input';
 import TaskBoard from '../components/task-board';
 import Breadcrumb from '../components/breadcrumb';
 import NotificationBell from '../components/notification-bell';
+import TokenPill from '../components/token-pill';
 
 function formatTokens(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
@@ -87,6 +88,8 @@ function PlanDetailContent() {
                 {getModelLabel(plan.activePlan()?.model)}
               </span>
             </Show>
+
+            <TokenPill messages={plan.messages} />
 
             <Show when={server.memoryEnabled()}>
               <span

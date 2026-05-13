@@ -1,5 +1,6 @@
 import { createMemo, Show } from 'solid-js';
 import { useSession } from '../context/session';
+import type { MessageWithParts } from '../api/client';
 
 interface Totals {
   input: number;
@@ -17,14 +18,15 @@ function formatTokens(n: number): string {
   return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, '') + 'M';
 }
 
-export default function TokenPill() {
+export default function TokenPill(props: { messages?: () => MessageWithParts[] } = {}) {
   const session = useSession();
+  const getMessages = () => props.messages ? props.messages() : session.messages();
 
   const totals = createMemo<Totals>(() => {
     const out: Totals = {
       input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0,
     };
-    for (const m of session.messages()) {
+    for (const m of getMessages()) {
       const t = m.info.tokens;
       if (!t) continue;
       out.input      += t.input ?? 0;

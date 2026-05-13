@@ -60,6 +60,16 @@ export default function PlanPromptInput() {
 
   return (
     <div class="shrink-0 bg-gradient-to-t from-[color:var(--bg-base)] via-[color:var(--bg-base)] to-transparent pt-4">
+      <Show when={plan.lockError()}>
+        <div class="max-w-3xl mx-auto px-4 md:px-6 mb-2">
+          <div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-[12px] text-red-300">
+            <svg class="w-3.5 h-3.5 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            {plan.lockError()}
+          </div>
+        </div>
+      </Show>
       <form onSubmit={handleSubmit} class="max-w-3xl mx-auto px-4 md:px-6 pb-4">
         <div
           class={`rounded-2xl border bg-[color:var(--bg-surface)] transition-all duration-150
