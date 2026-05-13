@@ -993,8 +993,8 @@ func (s *Server) tryArchivePlan(planID string) error {
 	slug := git.Slugify(p.Title)
 	archivePath := filepath.Join(archiveDir, slug+"-"+planID+".md")
 
-	// Skip if already archived.
-	if _, err := os.Stat(archivePath); err == nil {
+	// Skip if already archived (use DB gate, not filesystem).
+	if p.ArchivedAt > 0 {
 		return nil
 	}
 
@@ -1011,6 +1011,10 @@ func (s *Server) tryArchivePlan(planID string) error {
 	if err := os.WriteFile(archivePath, []byte(content), 0o644); err != nil {
 		slog.Error("write plan archive", "plan", planID, "path", archivePath, "err", err)
 		return err
+	}
+	// Mark as archived in DB only after file write succeeds.
+	if err := s.planStore.Archive(planID); err != nil {
+		slog.Error("set archived flag", "plan", planID, "err", err)
 	}
 	slog.Info("plan archived", "plan", planID, "path", archivePath)
 	s.bus.Publish("plan.archived", map[string]string{"planId": planID, "path": archivePath})
