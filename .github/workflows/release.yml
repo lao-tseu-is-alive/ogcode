@@ -49,14 +49,15 @@ jobs:
         if: success()
         env:
           GH_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
-          VERSION: ${{ github.ref_name }}
         run: |
           # Get version from tag or workflow_dispatch input
-          if [ -n "${{ github.event.inputs.version }}" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.ref_name }}"
           fi
           VERSION="${VERSION#v}"
-          BRANCH="ogcode-v${VERSION}"
+          BRANCH="prasenjeet-symon-ogcode-${VERSION}"
           FORK_OWNER="prasenjeet-symon"
           
           echo "Processing winget release for v${VERSION}..."
