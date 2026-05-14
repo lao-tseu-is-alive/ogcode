@@ -65,7 +65,7 @@ winget:
     repository:
       owner: prasenjeet-symon
       name: winget-pkgs
-      branch: main
+      branch: "{{ .ProjectName }}-{{ .Version }}"
       token: "{{ .Env.WINGET_PKGS_TOKEN }}"
     commit_author:
       name: Prasenjeet Symon

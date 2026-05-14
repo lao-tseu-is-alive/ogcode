@@ -44,29 +44,9 @@ jobs:
           GH_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BRANCH="prasenjeet-symon-ogcode-${VERSION}"
-          REPO="https://github.com/prasenjeet-symon/winget-pkgs"
+          BRANCH="ogcode-${GITHUB_REF_NAME}"
 
-          # Make gh CLI available and configure git to use it for auth
-          gh auth setup-git
-
-          # Clone the fork (GoReleaser already committed manifests into it)
-          git clone --depth 1 "${REPO}" winget-pkgs-work
-          cd winget-pkgs-work
-
-          # Configure git
-          git config user.name "prasenjeet-symon"
-          git config user.email "prasenjeet-symon@users.noreply.github.com"
-
-          # Create a new branch from the updated main (GoReleaser pushed manifests here)
-          git checkout -b "${BRANCH}"
-
-          # Commit and push (authenticated via gh credential helper)
-          git add .
-          git diff --cached --quiet || git commit -m "Update prasenjeet-symon.ogcode to ${VERSION}"
-          git push origin "${BRANCH}" --force
-
-          # Create PR via GitHub CLI
+          # Create PR from the branch GoReleaser pushed to
           gh pr create \
             --repo microsoft/winget-pkgs \
             --title "New version: prasenjeet-symon.ogcode version ${VERSION}" \
