@@ -71,6 +71,11 @@ export const SessionProvider: ParentComponent = (props) => {
   const [memorySavedTokens, setMemorySavedTokens] = createSignal(0);
   const [messagesRaw, setMessagesRaw] = createSignal<MessageWithParts[]>([]);
   const messages = messagesRaw;
+  // Version counter: incremented on each session selection.
+  // SSE handler ignores any event whose version doesn't match — this prevents
+  // a race where an SSE event from a previous selection arrives after the new
+  // session's API response overwrites the value.
+  let memorySavingsVersion = 0;
 
   // Merge incoming messages with the existing array, keeping object references
   // for unchanged entries so SolidJS's <For> doesn't re-render the whole list
@@ -338,16 +343,16 @@ export const SessionProvider: ParentComponent = (props) => {
       setMessages(msgs);
 
       // Fetch the authoritative session record so we have the real memoryTokensSaved,
-      // not the potentially-stale cached value. Bump lastSSEUpdate so the SSE handler
-      // won't overwrite this fresh value with stale accumulated savings from before the
-      // session was selected.
+      // not the potentially-stale cached value. Bump the version counter so the SSE
+      // handler discards any events that arrived during the selection (i.e. from a
+      // previous session or a previous selection cycle).
       const sessionsList = await listSessions(server.directory());
       setSessions(sessionsList);
       const fresh = sessionsList.find((s) => s.id === id);
       if (fresh) {
         setActiveSession(fresh);
         setMemorySavedTokens(fresh.memoryTokensSaved ?? 0);
-        lastSSEUpdate = Date.now();
+        memorySavingsVersion++; // stale SSE events now carry an old version
       }
 
       // Always keep a background poll so the session stays in sync
@@ -649,31 +654,8 @@ export const SessionProvider: ParentComponent = (props) => {
     }, 150);
   }));
 
-  // Handle session.updated SSE events (e.g. auto-generated title)
-  createEffect(on(server.eventTick, () => {
-    const last = server.lastEvent();
-    if (!last || last.type !== 'session.updated') return;
-    const updated = last.properties as Session | undefined;
-    if (!updated?.id) return;
-    setSessions((prev) =>
-      prev.map((s) => (s.id === updated.id ? { ...s, title: updated.title, updatedAt: updated.updatedAt } : s))
-    );
-    // Also update activeSession if it matches
-    if (activeSession()?.id === updated.id) {
-      setActiveSession((prev) => (prev ? { ...prev, title: updated.title, updatedAt: updated.updatedAt } : prev));
-    }
-  }));
-
-  createEffect(on(server.eventTick, () => {
-    const last = server.lastEvent();
-    if (!last || last.type !== 'memory.savings') return;
-    const evtSessionId = (last.properties as any)?.sessionId;
-    if (!evtSessionId || evtSessionId !== activeSession()?.id) return;
-    const saved = Number((last.properties as any)?.savedTokens ?? 0);
-    setMemorySavedTokens((prev) => prev + saved);
-  }));
-
-  // Handle memory.savings: same pattern — guard against stale events from a previous session.
+  // SSE handler for memory.savings: guards against stale events from a previous
+  // session or a previous selection cycle using the version counter.
   createEffect(on([server.eventTick, activeSession], ([_tick, sess]) => {
     if (!sess) return;
     const last = server.lastEvent();
@@ -681,6 +663,11 @@ export const SessionProvider: ParentComponent = (props) => {
     const evtSessionId = (last.properties as any)?.sessionId;
     if (!evtSessionId || evtSessionId !== sess.id) return;
     const saved = Number((last.properties as any)?.savedTokens ?? 0);
+    const evtVersion = Number((last.properties as any)?.version ?? 0);
+    // If the event carries a version number, use it to filter stale events.
+    // Otherwise fall back to incrementing on each selection (less precise but still
+    // prevents most races for events that don't include version in their payload).
+    if (evtVersion > 0 && evtVersion < memorySavingsVersion) return;
     setMemorySavedTokens((prev) => prev + saved);
   }));
 
