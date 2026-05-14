@@ -75,7 +75,6 @@ export const SessionProvider: ParentComponent = (props) => {
   // SSE handler ignores any event whose version doesn't match — this prevents
   // a race where an SSE event from a previous selection arrives after the new
   // session's API response overwrites the value.
-  let memorySavingsVersion = 0;
 
   // Merge incoming messages with the existing array, keeping object references
   // for unchanged entries so SolidJS's <For> doesn't re-render the whole list
@@ -343,16 +342,13 @@ export const SessionProvider: ParentComponent = (props) => {
       setMessages(msgs);
 
       // Fetch the authoritative session record so we have the real memoryTokensSaved,
-      // not the potentially-stale cached value. Bump the version counter so the SSE
-      // handler discards any events that arrived during the selection (i.e. from a
-      // previous session or a previous selection cycle).
+      // not the potentially-stale cached value.
       const sessionsList = await listSessions(server.directory());
       setSessions(sessionsList);
       const fresh = sessionsList.find((s) => s.id === id);
       if (fresh) {
         setActiveSession(fresh);
         setMemorySavedTokens(fresh.memoryTokensSaved ?? 0);
-        memorySavingsVersion++; // stale SSE events now carry an old version
       }
 
       // Always keep a background poll so the session stays in sync
@@ -654,20 +650,21 @@ export const SessionProvider: ParentComponent = (props) => {
     }, 150);
   }));
 
-  // SSE handler for memory.savings: guards against stale events from a previous
-  // session or a previous selection cycle using the version counter.
-  createEffect(on([server.eventTick, activeSession], ([_tick, sess]) => {
+  // SSE handler for memory.savings.  Use the numeric event-tick to guard against
+  // re-reactive firings (e.g. on activeSession change) that would otherwise
+  // double-count a delta against the freshly-fetched persisted value.
+  let lastProcessedMemoryTick = 0;
+  createEffect(on(server.eventTick, (tick) => {
+    if (tick === lastProcessedMemoryTick) return;
+    lastProcessedMemoryTick = tick;
+
+    const sess = activeSession();
     if (!sess) return;
     const last = server.lastEvent();
     if (!last || last.type !== 'memory.savings') return;
     const evtSessionId = (last.properties as any)?.sessionId;
     if (!evtSessionId || evtSessionId !== sess.id) return;
     const saved = Number((last.properties as any)?.savedTokens ?? 0);
-    const evtVersion = Number((last.properties as any)?.version ?? 0);
-    // If the event carries a version number, use it to filter stale events.
-    // Otherwise fall back to incrementing on each selection (less precise but still
-    // prevents most races for events that don't include version in their payload).
-    if (evtVersion > 0 && evtVersion < memorySavingsVersion) return;
     setMemorySavedTokens((prev) => prev + saved);
   }));
 
