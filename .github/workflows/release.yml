@@ -95,22 +95,20 @@ jobs:
             fi
           fi
           
+          # Create PR body
+          PR_BODY="Automated PR created by GoReleaser for ogcode v${VERSION}. This PR updates the winget manifest for ogcode CLI tool. _This PR was automatically generated._"
+          
           # Create PR
           echo "Creating PR for ogcode v${VERSION}..."
           gh pr create \
             --repo microsoft/winget-pkgs \
             --title "[ogcode] New version: prasenjeet-symon.ogcode version ${VERSION}" \
-            --body "Automated PR created by GoReleaser for ogcode v${VERSION}.
-
-This PR updates the winget manifest for ogcode CLI tool.
-
----
-_This PR was automatically generated._" \
+            --body "${PR_BODY}" \
             --head "${FORK_OWNER}:${BRANCH}" \
             --base master \
             --label "manifest" || {
               # If create fails, check if it's due to no new commits
-              if gh api repos/microsoft/winget-pkgs/compare/master..."${FORK_OWNER}:${BRANCH}" --jq '.behind_by' 2>/dev/null | grep -q "0"; then
+              if gh api "repos/microsoft/winget-pkgs/compare/master...${FORK_OWNER}:${BRANCH}" --jq '.behind_by' 2>/dev/null | grep -q "0"; then
                 echo "No new commits - PR may already be up to date"
                 exit 0
               fi
