@@ -106,8 +106,7 @@ jobs:
             --title "[ogcode] New version: prasenjeet-symon.ogcode version ${VERSION}" \
             --body "${PR_BODY}" \
             --head "${FORK_OWNER}:${BRANCH}" \
-            --base master \
-            --label "manifest" || {
+            --base master || {
               # If create fails, check if it's due to no new commits
               if gh api "repos/microsoft/winget-pkgs/compare/master...${FORK_OWNER}:${BRANCH}" --jq '.behind_by' 2>/dev/null | grep -q "0"; then
                 echo "No new commits - PR may already be up to date"
