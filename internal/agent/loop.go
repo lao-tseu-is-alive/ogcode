@@ -138,7 +138,8 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		// Calculate net token savings: without memory the full history is sent every turn,
 		// so savings = all skipped history tokens minus the memory context injected.
 		// Negative means memory adds overhead (normal on short sessions); positive means savings.
-		if memoryText != "" && len(messages) > 1 {
+		// Skip if memoryText is only whitespace (would be overhead with no context benefit).
+		if strings.TrimSpace(memoryText) != "" && len(messages) > 1 {
 			lastUserIdx := -1
 			for i := len(messages) - 1; i >= 0; i-- {
 				if messages[i].Info.Role == session.RoleUser {
@@ -161,7 +162,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 					}
 				}
 				// 1 token ≈ 4 chars. Net = history avoided − memory injected.
-				netSaved := (skippedChars - len(memoryText)) / 4
+				netSaved := (skippedChars - len(memoryText)) / 4.0
 				lr.Bus.Publish("memory.savings", map[string]any{
 					"sessionId":   string(sessionID),
 					"savedTokens": netSaved,

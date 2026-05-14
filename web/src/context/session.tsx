@@ -318,6 +318,8 @@ export const SessionProvider: ParentComponent = (props) => {
     // Clear pendingModel when switching sessions so the destination session's
     // own persisted model is used, not whatever was selected in the previous session.
     if (!sameSession) {
+      // Use the locally-cached value as a starting point; the API fetch below will
+      // replace it with the authoritative value, and SSE events will accumulate on top.
       setMemorySavedTokens(session.memoryTokensSaved ?? 0);
       setPendingModel('');
     }
@@ -334,6 +336,19 @@ export const SessionProvider: ParentComponent = (props) => {
     try {
       const msgs = await getMessages(id);
       setMessages(msgs);
+
+      // Fetch the authoritative session record so we have the real memoryTokensSaved,
+      // not the potentially-stale cached value. Bump lastSSEUpdate so the SSE handler
+      // won't overwrite this fresh value with stale accumulated savings from before the
+      // session was selected.
+      const sessionsList = await listSessions(server.directory());
+      setSessions(sessionsList);
+      const fresh = sessionsList.find((s) => s.id === id);
+      if (fresh) {
+        setActiveSession(fresh);
+        setMemorySavedTokens(fresh.memoryTokensSaved ?? 0);
+        lastSSEUpdate = Date.now();
+      }
 
       // Always keep a background poll so the session stays in sync
       startBgPoll(id);
@@ -654,6 +669,17 @@ export const SessionProvider: ParentComponent = (props) => {
     if (!last || last.type !== 'memory.savings') return;
     const evtSessionId = (last.properties as any)?.sessionId;
     if (!evtSessionId || evtSessionId !== activeSession()?.id) return;
+    const saved = Number((last.properties as any)?.savedTokens ?? 0);
+    setMemorySavedTokens((prev) => prev + saved);
+  }));
+
+  // Handle memory.savings: same pattern — guard against stale events from a previous session.
+  createEffect(on([server.eventTick, activeSession], ([_tick, sess]) => {
+    if (!sess) return;
+    const last = server.lastEvent();
+    if (!last || last.type !== 'memory.savings') return;
+    const evtSessionId = (last.properties as any)?.sessionId;
+    if (!evtSessionId || evtSessionId !== sess.id) return;
     const saved = Number((last.properties as any)?.savedTokens ?? 0);
     setMemorySavedTokens((prev) => prev + saved);
   }));

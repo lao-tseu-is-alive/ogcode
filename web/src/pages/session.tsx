@@ -139,9 +139,11 @@ function ChatContent() {
                   return 'Agentic memory active';
                 })()}
                 class={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border font-medium
-                  ${session.memorySavedTokens() < 0
+                  ${session.memorySavedTokens() > 0
+                    ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
+                    : session.memorySavedTokens() < 0
                     ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
-                    : 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
+                    : 'text-zinc-400 bg-zinc-400/10 border-zinc-400/20'
                   }`}
               >
                 <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
