@@ -1,58 +1,37 @@
-# 🚀 Ogcode v0.2.5 Release
+# 🚀 Ogcode v0.2.6 Release
 
 ## 📋 Executive Summary
-This patch release brings significant improvements to the agent system with smarter plan breakdown extraction, enhanced security through tool allowlists, and a more robust plan locking experience with better error feedback.
+This patch release enhances agent instructions with better documentation references and stricter rules against unnecessary exploration of dependency directories, improving agent performance and reliability.
 
 ---
 
-## 🔧 Backend Improvements
+## 📝 Agent Instructions Improvements
 
-### Agent System Enhancements
-- **Refined System Prompts**: Improved BuildAgent and PlanAgent prompts with clearer process steps and hard rules for scope, file ownership, and dependency linearity
-- **Better Summary Extraction**: Added `extractFinalSummary()` to pass only the locked plan to the breakdown agent instead of the full conversation — reducing noise and improving accuracy
-- **Tool Allowlist Security**: Added explicit tool allowlist checks in `executeTool` — rejects any tool not in the agent's explicit list, guarding against prompt injection or model errors
-- **Session Mismatch Detection**: Added session/agent type mismatch warnings in RunLoop to catch call-site bugs early
-- **Plan Locking Reliability**: Made `handleLockPlan` fail fatally with HTTP 500 when final plan summary generation fails, enabling UI retry prompts
+### Documentation Reference
+- **Added devdocs.io**: All agent system prompts (BuildAgent, PlanAgent, BreakdownAgent) now reference `https://devdocs.io` as the canonical source for API documentation and library references
+- Agents will consult devdocs.io when encountering unfamiliar libraries or APIs
 
-### Plan Archiving Fix
-- Fixed race condition in `tryArchivePlan` by using DB gate (`ArchivedAt > 0`) instead of `os.Stat`
-- Properly call `planStore.Archive()` after successful file write to persist archived state
+### Dependency Directory Rule
+- **New hard rule**: Agents are now explicitly prohibited from exploring or reading package manager and dependency directories
+- **Protected directories** include: `node_modules`, `vendor`, `.venv`, `__pycache__`, `dist`
+- These directories contain third-party code and should only be accessed when a specific issue explicitly requires it
+- This prevents agents from wasting token budget and time on irrelevant third-party code
 
----
-
-## 🎨 Frontend Improvements
-
-### Token & Model Display
-- **TokenPill Component**: Enhanced to accept a `messages` prop for displaying plan session tokens independently from build session
-- **Model Selector Fallback**: Fixed fallback chain to include `allModels()` when selected model is disabled — prevents empty labels
-
-### Error Handling
-- **Lock Error Feedback**: Added `lockError` signal to PlanContext with dismissible error banner in `PlanPromptInput` when locking fails
-
-### Build Output
-- Renamed build output directory from `'build'` to `'dist'` in web embed configuration
+### Scope Clarification
+- Refined the research instruction in BuildAgent to clarify that documentation lookup is for APIs, not dependency source code
 
 ---
 
 ## 📝 Changes Summary
 
 ```
-18 files changed, 191 insertions(+), 109 deletions(-)
+1 file changed, 9 insertions(+), 6 deletions(-)
 
-internal/agent/agent.go         | 119 ++++++++++++++++++++-----------
-internal/agent/breakdown.go    |  85 +++++++++++-----------
-internal/agent/loop.go         |  17 +++++
-internal/server/plan_routes.go |  16 ++++++-
-web/embed.go                   |   2 +-
-web/src/components/*.tsx       |  21 +++++--
-web/src/context/*.tsx          |   9 ++-
-web/src/pages/*.tsx            |   3 +
+internal/agent/agent.go | 15 +++++++++++++++
 ```
 
-### Key Commits
-- `614481f` - feat: improve agent instructions, breakdown extraction, and token display
-- `f00bfe7` - fix: use DB gate and call planStore.Archive in tryArchivePlan
-- `cbf701e` - User Greeting (#3)
+### Key Commit
+- `cf47011` - docs: add devdocs.io reference and dependency directory rule to agent instructions
 
 ---
 
@@ -75,4 +54,4 @@ go install github.com/prasenjeet-symon/ogcode@latest
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/releases/tag/v0.2.5*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/releases/tag/v0.2.6*
