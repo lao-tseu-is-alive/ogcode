@@ -19,3 +19,6 @@ manifests/
 # OS files
 .DS_Store
 *.swp
+
+# Claude Code CLI
+.claude/
