@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.2.7)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -29,6 +35,7 @@ jobs:
           node-version: "20"
 
       - name: Run GoReleaser
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -44,6 +51,10 @@ jobs:
           GH_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
+          # Get version from tag or workflow_dispatch input
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          fi
           VERSION="${VERSION#v}"
           BRANCH="ogcode-v${VERSION}"
           FORK_OWNER="prasenjeet-symon"
