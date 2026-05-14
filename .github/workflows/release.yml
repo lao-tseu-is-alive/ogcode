@@ -57,7 +57,7 @@ jobs:
             VERSION="${{ github.ref_name }}"
           fi
           VERSION="${VERSION#v}"
-          BRANCH="prasenjeet-symon-ogcode-${VERSION}"
+          BRANCH="ogcode-${VERSION}"
           FORK_OWNER="prasenjeet-symon"
           
           echo "Processing winget release for v${VERSION}..."
