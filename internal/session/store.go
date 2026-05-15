@@ -71,7 +71,8 @@ func (s *Store) Update(session *Session) error {
 }
 
 // UpdateMemoryTokensSaved atomically increments memory_tokens_saved by delta (may be negative).
-// delta is clamped so the column never goes below 0 or above 1_000_000_000 to prevent overflow.
+// delta is clamped above at 1_000_000_000 to prevent overflow; negative values are
+// preserved so callers can track memory overhead accurately.
 func (s *Store) UpdateMemoryTokensSaved(id SessionID, delta int) error {
 	// Clamp delta so the running total stays in a safe range.
 	// MAX_TOKENS = 1 billion tokens ≈ 4 GB of text — far beyond any realistic session.
@@ -80,7 +81,7 @@ func (s *Store) UpdateMemoryTokensSaved(id SessionID, delta int) error {
 		delta = maxTokens
 	}
 	_, err := s.db.Exec(
-		`UPDATE session SET memory_tokens_saved = MAX(0, MIN(?, memory_tokens_saved + ?)), time_updated = ? WHERE id = ?`,
+		`UPDATE session SET memory_tokens_saved = MIN(?, memory_tokens_saved + ?), time_updated = ? WHERE id = ?`,
 		maxTokens, delta, Now(), id,
 	)
 	return err

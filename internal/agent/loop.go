@@ -162,7 +162,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 					}
 				}
 				// 1 token ≈ 4 chars. Net = history avoided − memory injected.
-				netSaved := (skippedChars - len(memoryText)) / 4.0
+				netSaved := (skippedChars - len(memoryText)) / 4
 				lr.Bus.Publish("memory.savings", map[string]any{
 					"sessionId":   string(sessionID),
 					"savedTokens": netSaved,
@@ -1313,11 +1313,20 @@ func ensureStartsWithUser(messages []provider.ModelMessage) []provider.ModelMess
 
 // trimToRecent trims a slice of provider messages to the most recent n entries,
 // ensuring the first kept message has role "user" so the conversation is valid.
+// If the last n entries contain no user message (edge case during heavy tool-call
+// loops), it returns the raw n-window rather than an empty slice, so the LLM
+// always receives something.
 func trimToRecent(messages []provider.ModelMessage, n int) []provider.ModelMessage {
 	if len(messages) <= n {
 		return messages
 	}
-	return ensureStartsWithUser(messages[len(messages)-n:])
+	trimmed := ensureStartsWithUser(messages[len(messages)-n:])
+	if len(trimmed) == 0 {
+		// Safety: the last n messages contain no user message (should not happen).
+		// Keep the original n-window so the LLM sees something rather than nothing.
+		return messages[len(messages)-n:]
+	}
+	return trimmed
 }
 
 // isContextLengthError returns true when the provider rejects the request because
