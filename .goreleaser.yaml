@@ -71,9 +71,14 @@ winget:
       name: Prasenjeet Symon
       email: prasenjeet-symon@users.noreply.github.com
     commit_msg_template: "{{ .PackageIdentifier }} {{ .Version }}"
-    path: manifests/p/prasenjeet-symon/ogcode
+    path: manifests/p/prasenjeet-symon/ogcode/{{.Version}}
     ids:
       - ogcode
+    tags:
+      - ogcode
+      - coding-assistant
+    publisher_support_url: "https://github.com/prasenjeet-symon/ogcode/issues"
+    release_notes_url: "https://github.com/prasenjeet-symon/ogcode/releases/tag/{{.Tag}}"
 
 brews:
   - name: ogcode
