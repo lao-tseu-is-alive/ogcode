@@ -486,8 +486,6 @@ export const SessionProvider: ParentComponent = (props) => {
   // Stops itself (reverts to background poll) when the loop is done.
   function startPolling(sessionId: string) {
     stopFastPoll();
-    const startedAt = Date.now();
-    const MAX_WAIT_MS = 2 * 60 * 1000;
     fastPollInterval = setInterval(async () => {
       try {
         if (activeSession()?.id !== sessionId) {
@@ -504,10 +502,6 @@ export const SessionProvider: ParentComponent = (props) => {
         const loopActive = isAgentLoopActive(msgs);
 
         if (!loopActive) {
-          setLoadingSessionId('');
-          stopFastPoll(); // background poll keeps running
-        } else if (Date.now() - startedAt > MAX_WAIT_MS) {
-          console.warn('poll timeout, clearing loading state');
           setLoadingSessionId('');
           stopFastPoll(); // background poll keeps running
         } else {

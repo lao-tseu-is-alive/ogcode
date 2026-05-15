@@ -221,8 +221,6 @@ export const PlanProvider: ParentComponent = (props) => {
 
   function startPolling(planId: string) {
     stopFastPoll();
-    const startedAt = Date.now();
-    const MAX_WAIT_MS = 2 * 60 * 1000;
     fastPollInterval = setInterval(async () => {
       try {
         const plan = activePlan();
@@ -236,10 +234,6 @@ export const PlanProvider: ParentComponent = (props) => {
         setMessages(msgs);
 
         if (!isAgentLoopActive(msgs)) {
-          setLoadingPlanId('');
-          stopFastPoll();
-        } else if (Date.now() - startedAt > MAX_WAIT_MS) {
-          console.warn('poll timeout, clearing loading state');
           setLoadingPlanId('');
           stopFastPoll();
         } else {
