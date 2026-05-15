@@ -1,37 +1,25 @@
-# 🚀 Ogcode v0.2.6 Release
+# 🚀 Ogcode v0.2.9 Release
 
 ## 📋 Executive Summary
-This patch release enhances agent instructions with better documentation references and stricter rules against unnecessary exploration of dependency directories, improving agent performance and reliability.
-
----
-
-## 📝 Agent Instructions Improvements
-
-### Documentation Reference
-- **Added devdocs.io**: All agent system prompts (BuildAgent, PlanAgent, BreakdownAgent) now reference `https://devdocs.io` as the canonical source for API documentation and library references
-- Agents will consult devdocs.io when encountering unfamiliar libraries or APIs
-
-### Dependency Directory Rule
-- **New hard rule**: Agents are now explicitly prohibited from exploring or reading package manager and dependency directories
-- **Protected directories** include: `node_modules`, `vendor`, `.venv`, `__pycache__`, `dist`
-- These directories contain third-party code and should only be accessed when a specific issue explicitly requires it
-- This prevents agents from wasting token budget and time on irrelevant third-party code
-
-### Scope Clarification
-- Refined the research instruction in BuildAgent to clarify that documentation lookup is for APIs, not dependency source code
+This patch release brings Mermaid diagram support throughout the chat interface, improves the WinGet distribution pipeline, and fixes a UI timeout issue that prematurely hid the cancel CTA.
 
 ---
 
 ## 📝 Changes Summary
 
-```
-1 file changed, 9 insertions(+), 6 deletions(-)
+### ✨ New Features
+- **Mermaid diagram rendering** in chat markdown (sequence, flow, state, class, ER, Gantt diagrams)
+- **BuildAgent auto-generates Mermaid diagrams** when describing plans or architectures
+- **PlanAgent generates diagrams** when a visual plan is more helpful than text
+- **Horizontally scrollable markdown tables** for better readability with wide content
+- **Agentic Session Memory** — settings page label renamed from "Agentic Memory" for clarity
 
-internal/agent/agent.go | 15 +++++++++++++++
-```
+### 🔧 Bug Fixes
+- **WinGet manifest path fixed** — manifests are now emitted to `manifests/p/prasenjeet-symon/ogcode/{{.Version}}` to satisfy Microsoft validation requirements
+- **Removed 2-minute polling timeout** — prevents premature loss of the cancel CTA while agents are working
 
-### Key Commit
-- `cf47011` - docs: add devdocs.io reference and dependency directory rule to agent instructions
+### 📦 Distribution
+- WinGoReleaser WinGet block updated with proper manifest directory structure, `tags`, `publisher_support_url`, and `release_notes_url` metadata
 
 ---
 
@@ -47,6 +35,16 @@ curl -fsSL http://ogcode.xyz/install.sh | sh
 irm http://ogcode.xyz/install.ps1 | iex
 ```
 
+**Homebrew:**
+```bash
+brew install prasenjeet-symon/tap/ogcode
+```
+
+**Winget:**
+```powershell
+winget install prasenjeet-symon.ogcode
+```
+
 **Go Install:**
 ```bash
 go install github.com/prasenjeet-symon/ogcode@latest
@@ -54,4 +52,4 @@ go install github.com/prasenjeet-symon/ogcode@latest
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/releases/tag/v0.2.6*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/releases/tag/v0.2.9*
