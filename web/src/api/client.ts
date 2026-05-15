@@ -451,6 +451,52 @@ export function retryTask(id: string): Promise<Task> {
   return fetchAPI(`/tasks/${id}/retry`, { method: 'POST' });
 }
 
+// Notes API
+export interface Note {
+  id: string;
+  directory: string;
+  title: string;
+  query: string;
+  content: string;
+  sessionId?: string;
+  status: 'generating' | 'done' | 'error';
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NoteVersion {
+  id: string;
+  noteId: string;
+  version: number;
+  content: string;
+  createdAt: number;
+}
+
+export function listNotes(directory?: string): Promise<Note[]> {
+  const dir = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+  return fetchAPI(`/notes${dir}`);
+}
+
+export function createNote(query: string, directory?: string, model?: string): Promise<Note> {
+  return fetchAPI('/notes', {
+    method: 'POST',
+    body: JSON.stringify({ query, directory, model }),
+  });
+}
+
+export function getNote(id: string): Promise<Note> {
+  return fetchAPI(`/notes/${id}`);
+}
+
+export function deleteNote(id: string): Promise<void> {
+  return fetchAPI(`/notes/${id}`, { method: 'DELETE' });
+}
+
+export function listNoteVersions(noteId: string): Promise<NoteVersion[]> {
+  return fetchAPI(`/notes/${noteId}/versions`);
+}
+
 // Version API
 export interface VersionInfo {
   version: string;

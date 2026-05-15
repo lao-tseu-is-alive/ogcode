@@ -21,6 +21,7 @@ import (
 	"github.com/prasenjeet-symon/ogcode/internal/git"
 	"github.com/prasenjeet-symon/ogcode/internal/mcp"
 	"github.com/prasenjeet-symon/ogcode/internal/memory"
+	"github.com/prasenjeet-symon/ogcode/internal/note"
 	"github.com/prasenjeet-symon/ogcode/internal/plan"
 	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
@@ -47,6 +48,7 @@ type Server struct {
 	store      *session.Store
 	planStore  *plan.Store
 	taskStore  *task.Store
+	noteStore  *note.Store
 	registry   *provider.Registry
 	defaultProvider provider.Provider
 	loopRunner *agent.LoopRunner
@@ -103,6 +105,7 @@ func (s *Server) Start() error {
 	s.store = session.NewStore(database)
 	s.planStore = plan.NewStore(database)
 	s.taskStore = task.NewStore(database)
+	s.noteStore = note.NewStore(database)
 
 	// Recover tasks that were in_progress when the server last stopped.
 	failedTasks, err := s.taskStore.FailStuckTasks()
@@ -315,6 +318,7 @@ func (s *Server) Start() error {
 		Dir:             s.dir,
 		Memory:          mem,
 		MCP:             s.mcpClient,
+		NoteStore:       s.noteStore,
 	}
 
 	// Initialize version manager

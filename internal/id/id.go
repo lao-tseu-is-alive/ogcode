@@ -44,6 +44,14 @@ func NewTaskID() TaskID {
 	return TaskID("tsk_" + newULID())
 }
 
+func NewNoteID() string {
+	return "nte_" + newULID()
+}
+
+func NewNoteVersionID() string {
+	return "ntv_" + newULID()
+}
+
 func newULID() string {
 	mu.Lock()
 	defer mu.Unlock()

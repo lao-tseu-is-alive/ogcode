@@ -13,6 +13,7 @@ import (
 	"github.com/prasenjeet-symon/ogcode/internal/id"
 	"github.com/prasenjeet-symon/ogcode/internal/mcp"
 	"github.com/prasenjeet-symon/ogcode/internal/memory"
+	"github.com/prasenjeet-symon/ogcode/internal/note"
 	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 	"github.com/prasenjeet-symon/ogcode/internal/tool"
@@ -29,6 +30,7 @@ type LoopRunner struct {
 	MaxSteps        int
 	Memory          *memory.Memory
 	MCP             *mcp.Client
+	NoteStore       *note.Store
 }
 
 // RunLoop executes the core agent loop: prompt -> stream -> tools -> loop back.
@@ -71,6 +73,43 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		workDir = sess.Directory
 	}
 	agentMDContent := LoadAgentMD(workDir)
+
+	// For note sessions: save the final assistant message as note content when the loop exits.
+	// This defer runs before the loop.done publish (LIFO) so the note is persisted before
+	// the frontend is notified.
+	if lr.NoteStore != nil && sess != nil && sess.SessionType == "note" {
+		capturedSessionID := string(sessionID)
+		defer func() {
+			msgs, err := lr.Store.GetMessages(sessionID, "", 1000)
+			if err != nil {
+				slog.Warn("note finalize: failed to load messages", "session", capturedSessionID, "err", err)
+				return
+			}
+			var content string
+			for i := len(msgs) - 1; i >= 0; i-- {
+				if msgs[i].Info.Role != session.RoleAssistant {
+					continue
+				}
+				for _, p := range msgs[i].Parts {
+					if p.Type == session.PartText {
+						var data session.TextPartData
+						if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
+							content = data.Text
+						}
+					}
+				}
+				if content != "" {
+					break
+				}
+			}
+			if err := lr.NoteStore.FinalizeBySession(capturedSessionID, content, exitReason); err != nil {
+				slog.Warn("note finalize: failed to save note", "session", capturedSessionID, "err", err)
+				return
+			}
+			lr.Bus.Publish("note.updated", map[string]string{"sessionId": capturedSessionID})
+			slog.Info("note finalized", "session", capturedSessionID, "reason", exitReason)
+		}()
+	}
 
 	memoryEnabled := lr.Memory != nil && lr.Memory.Enabled()
 

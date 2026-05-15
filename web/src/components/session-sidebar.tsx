@@ -94,6 +94,19 @@ export default function SessionSidebar() {
           </button>
           <div class="flex-1" />
           <button
+            onClick={() => navigate('/notes')}
+            title="Notes"
+            class={`w-8 h-8 rounded-lg flex items-center justify-center transition
+              ${location.pathname.startsWith('/notes')
+                ? 'text-[color:var(--accent)] bg-[color:var(--accent-soft)]'
+                : 'text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)]'
+              }`}
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+          </button>
+          <button
             onClick={() => navigate('/settings', { state: { from: location.pathname } })}
             title="Settings"
             class="w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)] flex items-center justify-center transition"
@@ -203,6 +216,24 @@ export default function SessionSidebar() {
             {query() ? 'No matches' : 'No sessions yet'}
           </div>
         </Show>
+      </div>
+
+      {/* Notes nav item — above footer */}
+      <div class="shrink-0 px-2 pb-1">
+        <button
+          type="button"
+          onClick={() => navigate('/notes')}
+          class={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[13px] transition
+            ${location.pathname.startsWith('/notes')
+              ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
+              : 'text-zinc-500 hover:text-zinc-200 hover:bg-[color:var(--bg-hover)]/50'
+            }`}
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+          <span>Notes</span>
+        </button>
       </div>
 
       {/* Footer */}
