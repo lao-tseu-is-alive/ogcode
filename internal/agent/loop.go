@@ -1348,24 +1348,6 @@ func ensureStartsWithUser(messages []provider.ModelMessage) []provider.ModelMess
 	return messages
 }
 
-// trimToRecent trims a slice of provider messages to the most recent n entries,
-// ensuring the first kept message has role "user" so the conversation is valid.
-// If the last n entries contain no user message (edge case during heavy tool-call
-// loops), it returns the raw n-window rather than an empty slice, so the LLM
-// always receives something.
-func trimToRecent(messages []provider.ModelMessage, n int) []provider.ModelMessage {
-	if len(messages) <= n {
-		return messages
-	}
-	trimmed := ensureStartsWithUser(messages[len(messages)-n:])
-	if len(trimmed) == 0 {
-		// Safety: the last n messages contain no user message (should not happen).
-		// Keep the original n-window so the LLM sees something rather than nothing.
-		return messages[len(messages)-n:]
-	}
-	return trimmed
-}
-
 // isContextLengthError returns true when the provider rejects the request because
 // the prompt exceeds the model's maximum context window.
 func isContextLengthError(err error) bool {
