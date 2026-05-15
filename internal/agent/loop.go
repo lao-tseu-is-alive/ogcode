@@ -273,11 +273,18 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 			// Compaction is completely bypassed when memory is active.
 			modelMessages = toProviderMessages(messages, memoryText)
 		} else {
-			// Compaction path (memory disabled): send full history and use proactive
-			// trimming + reactive LLM compaction to stay inside the context window.
-			modelMessages = toProviderMessages(messages, "")
+			// Compaction path (memory disabled): compaction operates on user-turn
+			// boundaries, not individual tool steps. The full current user turn (from
+			// the last text-user message forward) is always sent intact. Previous
+			// turns are represented by the compactionSummary injected into the
+			// system prompt so the model never loses the thread of the session.
+			turnStartIdx := findLastTextUserMessageIndex(messages)
+			if turnStartIdx >= 0 && turnStartIdx < len(messages) {
+				modelMessages = toProviderMessages(messages[turnStartIdx:], "")
+			} else {
+				modelMessages = toProviderMessages(messages, "")
+			}
 			if compactionSummary != "" {
-				modelMessages = trimToRecent(modelMessages, 12)
 				systemPrompts = append(systemPrompts, compactionSummary)
 			}
 		}
@@ -1043,6 +1050,26 @@ func lastUserMessageID(messages []*session.MessageWithParts) *session.MessageID 
 		}
 	}
 	return nil
+}
+
+// findLastTextUserMessageIndex scans backwards for the most recent user
+// message that contains at least one text part (not just tool results).
+// It returns the index or -1 when none is found.
+func findLastTextUserMessageIndex(messages []*session.MessageWithParts) int {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Info.Role != session.RoleUser {
+			continue
+		}
+		for _, p := range messages[i].Parts {
+			if p.Type == session.PartText {
+				var data session.TextPartData
+				if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
+					return i
+				}
+			}
+		}
+	}
+	return -1
 }
 
 func toProviderMessages(messages []*session.MessageWithParts, memoryText string) []provider.ModelMessage {
