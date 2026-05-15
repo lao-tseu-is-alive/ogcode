@@ -72,6 +72,8 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 	}
 	agentMDContent := LoadAgentMD(workDir)
 
+	memoryEnabled := lr.Memory != nil && lr.Memory.Enabled()
+
 	var p provider.Provider
 	var modelID string
 	if sess != nil && sess.Model != "" {
@@ -100,7 +102,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 
 	// Agentic memory: read graph context before the loop
 	var memoryText string
-	if lr.Memory != nil && lr.Memory.Enabled() {
+	if memoryEnabled {
 		graphText := lr.Memory.ReadMemory(ctx, string(sessionID))
 		if graphText != "" {
 			memoryText = graphText
@@ -212,7 +214,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 			}
 			slog.Info("agent loop breaking", "session", sessionID, "reason", "last assistant finished", "finish", finish, "totalMessages", len(messages))
 			exitReason = finish
-			if lr.Memory != nil && lr.Memory.Enabled() {
+			if memoryEnabled {
 				lr.writeMemory(ctx, sessionID)
 			}
 			return nil
@@ -260,18 +262,24 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		if lr.MCP != nil {
 			mcpTools = lr.MCP.Tools()
 		}
-		system := buildSystemPrompt(agent, workDir, lr.Memory != nil && lr.Memory.Enabled(), agentMDContent, mcpTools)
+		system := buildSystemPrompt(agent, workDir, memoryEnabled, agentMDContent, mcpTools)
 
-		// Convert messages to provider format (with memory context filtering)
-		modelMessages := toProviderMessages(messages, memoryText)
-
-		// If a compaction summary exists (from this turn or a prior one), trim the
-		// provider messages to the recent window so the same context limit isn't hit
-		// again, and inject the summary into the system prompt.
 		systemPrompts := []string{system}
-		if compactionSummary != "" {
-			modelMessages = trimToRecent(modelMessages, 12)
-			systemPrompts = append(systemPrompts, compactionSummary)
+		var modelMessages []provider.ModelMessage
+
+		if memoryEnabled {
+			// Agentic memory path: memory handles context compression by filtering
+			// history to the last user message and injecting <prior_context>.
+			// Compaction is completely bypassed when memory is active.
+			modelMessages = toProviderMessages(messages, memoryText)
+		} else {
+			// Compaction path (memory disabled): send full history and use proactive
+			// trimming + reactive LLM compaction to stay inside the context window.
+			modelMessages = toProviderMessages(messages, "")
+			if compactionSummary != "" {
+				modelMessages = trimToRecent(modelMessages, 12)
+				systemPrompts = append(systemPrompts, compactionSummary)
+			}
 		}
 
 		// Stream from LLM with retry for transient errors
@@ -298,8 +306,10 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 				break
 			}
 			slog.Warn("stream chat attempt failed", "session", sessionID, "attempt", attempt, "err", streamErr)
-			// Context length exceeded: summarize old history with the LLM and retry
-			if compactionCount < maxCompactions && isContextLengthError(streamErr) {
+			// Context length exceeded: summarize old history with the LLM and retry.
+			// Only used when agentic memory is OFF; with memory active the context is
+			// already compressed via <prior_context> so compaction should not run.
+			if !memoryEnabled && compactionCount < maxCompactions && isContextLengthError(streamErr) {
 				before := len(streamReq.Messages)
 				slog.Info("context length exceeded, using LLM to compact history", "session", sessionID, "messages", before)
 				summaryAddendum, compactedMsgs := lr.llmCompact(ctx, p, modelID, streamReq.Messages)
@@ -767,7 +777,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		if !toolCallsExecuted {
 			slog.Info("agent loop complete", "session", sessionID, "steps", step, "reason", finishReason)
 			exitReason = finishReason
-			if lr.Memory != nil && lr.Memory.Enabled() {
+			if memoryEnabled {
 				lr.writeMemory(ctx, sessionID)
 			}
 			return nil
@@ -821,7 +831,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 
 	// Reached MaxSteps with tool calls still pending — treat as stop.
 	exitReason = "stop"
-	if lr.Memory != nil && lr.Memory.Enabled() {
+	if memoryEnabled {
 		lr.writeMemory(ctx, sessionID)
 	}
 	return nil
