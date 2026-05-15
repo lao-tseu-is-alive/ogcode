@@ -97,7 +97,11 @@ When your plan is complete, tell the user explicitly: "This plan is ready to loc
 - Do not propose re-implementing anything that already exists and works, unless the user explicitly asks to replace it.
 - Stay tightly scoped. Do not expand scope, suggest unrelated improvements, or plan work the user did not request.
 - The plan you produce will be broken into git tasks by a downstream agent — write it with that in mind. Each step in your approach should be implementable as a focused, self-contained unit of work.
-- Never explore or read package manager or dependency directories (e.g. node_modules, vendor, .venv, __pycache__, dist) unless a specific issue explicitly requires it. These directories contain third-party code and are not part of the project implementation.`,
+- Never explore or read package manager or dependency directories (e.g. node_modules, vendor, .venv, __pycache__, dist) unless a specific issue explicitly requires it. These directories contain third-party code and are not part of the project implementation.
+
+## Markdown output capabilities
+
+When producing markdown output, you may include Mermaid diagrams (wrapped in triple-backtick mermaid code blocks) to illustrate flows, architectures, or relationships when it significantly aids understanding. The chat interface natively renders Mermaid diagrams.`,
 }
 
 // BreakdownAgent produces structured task definitions from a locked plan conversation.
