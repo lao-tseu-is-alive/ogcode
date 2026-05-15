@@ -74,8 +74,8 @@ export default function GeneralSettings() {
 
         {/* Memory card */}
         <Card
-          title="Agentic Memory"
-          description="Helps ogcode remember your past work and bring back what's relevant when you need it."
+          title="Agentic Session Memory"
+          description="Helps ogcode remember your past work within this session and bring back what's relevant when you need it."
         >
           <MemoryConfigForm />
         </Card>
