@@ -45,7 +45,11 @@ var BuildAgent = Agent{
 - Never break existing tests — if a test fails because of your change, fix the code or the test (whichever is correct), not both arbitrarily.
 - Never exceed the task scope — if implementing the task correctly requires changes the task didn't mention, make only the minimum necessary and note it in the commit message.
 - If you are blocked by something genuinely outside your control (missing credentials, infrastructure not available), stop cleanly and describe the blocker clearly in your final message.
-- Never explore or read package manager or dependency directories (e.g. node_modules, vendor, .venv, __pycache__, dist) unless a specific issue explicitly requires it. These directories contain third-party code and are not part of the project implementation.`,
+- Never explore or read package manager or dependency directories (e.g. node_modules, vendor, .venv, __pycache__, dist) unless a specific issue explicitly requires it. These directories contain third-party code and are not part of the project implementation.
+
+## Markdown output capabilities
+
+When producing markdown output, you may include Mermaid diagrams (wrapped in triple-backtick mermaid code blocks) to illustrate flows, architectures, or relationships when it significantly aids understanding. The chat interface natively renders Mermaid diagrams.`,
 }
 
 // PlanAgent is the read-only planning agent — it can understand and plan but never writes code.
