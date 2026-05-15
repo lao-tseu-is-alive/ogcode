@@ -23,7 +23,10 @@ marked.setOptions({
 export default function MarkdownContent(props: { text: string; class?: string }) {
   const html = createMemo(() => {
     const raw = marked.parse(props.text, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
+    const wrapped = raw
+      .replace(/<table\b([^>]*)>/g, '<div class="overflow-auto max-w-full"><table$1>')
+      .replace(/<\/table>/g, '</table></div>');
+    return DOMPurify.sanitize(wrapped);
   });
 
   return <div class={`prose-chat break-words min-w-0 ${props.class ?? ''}`} innerHTML={html()} />;
