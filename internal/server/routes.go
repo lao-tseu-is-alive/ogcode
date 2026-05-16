@@ -91,6 +91,7 @@ func (s *Server) routes() http.Handler {
 				r.Get("/", s.handleGetNote)
 				r.Delete("/", s.handleDeleteNote)
 				r.Get("/versions", s.handleListNoteVersions)
+				r.Get("/export", s.handleExportNote)
 			})
 		})
 

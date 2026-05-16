@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prasenjeet-symon/ogcode/internal/id"
@@ -161,6 +163,38 @@ func (s *Server) handleListNoteVersions(w http.ResponseWriter, r *http.Request) 
 		versions = []*note.NoteVersion{}
 	}
 	writeJSON(w, http.StatusOK, versions)
+}
+
+func (s *Server) handleExportNote(w http.ResponseWriter, r *http.Request) {
+	noteID := chi.URLParam(r, "noteID")
+	n, err := s.noteStore.Get(noteID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n == nil {
+		http.Error(w, "note not found", http.StatusNotFound)
+		return
+	}
+
+	filename := strings.ToLower(strings.ReplaceAll(n.Title, " ", "-"))
+	filename = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		return -1
+	}, filename)
+	if filename == "" {
+		filename = "note"
+	}
+	if len(filename) > 50 {
+		filename = filename[:50]
+	}
+
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.md"`, filename))
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(n.Content))
 }
 
 func (s *Server) handleDeleteNote(w http.ResponseWriter, r *http.Request) {

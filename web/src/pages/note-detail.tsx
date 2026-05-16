@@ -2,7 +2,7 @@ import { createSignal, Show, onMount, onCleanup, For } from 'solid-js';
 import { useNavigate, useParams } from '@solidjs/router';
 import { useNote } from '../context/note';
 import { useServer } from '../context/server';
-import { type Note, type NoteVersion, listNoteVersions } from '../api/client';
+import { type Note, type NoteVersion, listNoteVersions, downloadNoteExport } from '../api/client';
 import MarkdownContent from '../components/markdown-content';
 import SessionSidebar from '../components/session-sidebar';
 import PlanSidebar from '../components/plan-sidebar';
@@ -96,6 +96,15 @@ export default function NoteDetailPage() {
     if (n?.status === 'generating') startPoll();
     else stopPoll();
     return n;
+  };
+
+  const handleExport = async () => {
+    if (!note()) return;
+    try {
+      await downloadNoteExport(note()!.id);
+    } catch (e) {
+      console.error('export note failed:', e);
+    }
   };
 
   const handleDelete = async () => {
@@ -195,6 +204,19 @@ export default function NoteDetailPage() {
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   v{currentNote()!.version}
+                </button>
+              </Show>
+
+              {/* Export */}
+              <Show when={currentNote()}>
+                <button
+                  onClick={handleExport}
+                  class="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition"
+                  title="Export note"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
                 </button>
               </Show>
 

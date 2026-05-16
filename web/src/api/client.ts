@@ -497,6 +497,20 @@ export function listNoteVersions(noteId: string): Promise<NoteVersion[]> {
   return fetchAPI(`/notes/${noteId}/versions`);
 }
 
+export async function downloadNoteExport(noteId: string): Promise<void> {
+  const res = await fetch(`${API}/notes/${noteId}/export`);
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const disp = res.headers.get('Content-Disposition') || '';
+  const match = disp.match(/filename="(.+)"/);
+  a.download = match?.[1] || 'note.md';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Version API
 export interface VersionInfo {
   version: string;
