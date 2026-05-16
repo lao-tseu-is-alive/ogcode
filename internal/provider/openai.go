@@ -510,9 +510,42 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 	}
 
 	client := &http.Client{Timeout: 600 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
+
+	var resp *http.Response
+	retryDelays := []time.Duration{2 * time.Second, 5 * time.Second, 10 * time.Second}
+	for attempt := 0; ; attempt++ {
+		var reqErr error
+		resp, reqErr = client.Do(httpReq)
+		if reqErr != nil {
+			return nil, fmt.Errorf("send request: %w", reqErr)
+		}
+		if resp.StatusCode != http.StatusTooManyRequests || attempt >= len(retryDelays) {
+			break
+		}
+		resp.Body.Close()
+		delay := retryDelays[attempt]
+		slog.Warn("rate limited by provider, retrying", "provider", p.id, "attempt", attempt+1, "delay", delay)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+		httpReq, err = http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+		if err != nil {
+			return nil, fmt.Errorf("create retry request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if p.apiKey != "" {
+			token := p.apiKey
+			if !strings.Contains(token, " ") {
+				token = "Bearer " + token
+			}
+			httpReq.Header.Set("Authorization", token)
+		}
+		if p.id == "openrouter" {
+			httpReq.Header.Set("HTTP-Referer", "https://ogcode.xyz")
+			httpReq.Header.Set("X-Title", "ogcode")
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {
