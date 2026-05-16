@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prasenjeet-symon/ogcode/internal/note"
 	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
@@ -122,6 +123,45 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := session.SessionID(chi.URLParam(r, "sessionID"))
+
+	// Abort any running agent loop for this session before deleting
+	s.mu.Lock()
+	if cancel, ok := s.running[id]; ok {
+		cancel()
+		delete(s.running, id)
+		delete(s.runningToken, id)
+	}
+	s.mu.Unlock()
+
+	// Finalize any note that was being generated for this session
+	if n, noteErr := s.noteStore.GetBySessionID(string(id)); noteErr == nil && n != nil && n.Status == note.StatusGenerating {
+		// Collect whatever content exists in the assistant messages
+		content := ""
+		if msgs, msgsErr := s.store.GetMessages(id, "", 1000); msgsErr == nil {
+			for i := len(msgs) - 1; i >= 0; i-- {
+				if msgs[i].Info.Role == session.RoleAssistant {
+					for _, p := range msgs[i].Parts {
+						if p.Type == session.PartText {
+							var data session.TextPartData
+							if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
+								content = data.Text
+							}
+						}
+					}
+					if content != "" {
+						break
+					}
+				}
+			}
+		}
+		reason := "aborted"
+		if finErr := s.noteStore.FinalizeBySession(string(id), content, reason); finErr != nil {
+			slog.Warn("finalize note on session delete", "session", id, "err", finErr)
+		} else {
+			s.bus.Publish("note.updated", map[string]string{"sessionId": string(id)})
+		}
+	}
+
 	if err := s.store.Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

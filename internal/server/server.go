@@ -107,6 +107,13 @@ func (s *Server) Start() error {
 	s.taskStore = task.NewStore(database)
 	s.noteStore = note.NewStore(database)
 
+	// Recover notes stuck in "generating" status from a previous server crash.
+	if stuck, err := s.noteStore.RecoverStuckNotes(); err != nil {
+		slog.Warn("recover stuck notes", "err", err)
+	} else if len(stuck) > 0 {
+		slog.Info("recovered stuck notes", "count", len(stuck))
+	}
+
 	// Recover tasks that were in_progress when the server last stopped.
 	failedTasks, err := s.taskStore.FailStuckTasks()
 	if err != nil {

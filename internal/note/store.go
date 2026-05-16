@@ -3,6 +3,7 @@ package note
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,6 +142,59 @@ func (s *Store) ListVersions(noteID string) ([]*NoteVersion, error) {
 		versions = append(versions, &v)
 	}
 	return versions, nil
+}
+
+// RecoverStuckNotes finds all notes still in "generating" status and marks
+// them as "error". This runs on server startup to handle notes whose agent
+// loop was interrupted by a server restart or crash.
+func (s *Store) RecoverStuckNotes() ([]*Note, error) {
+	rows, err := s.db.Query(
+		`SELECT id, directory, title, query, content, session_id, status, version, time_created, time_updated
+		 FROM note WHERE status = ?`, StatusGenerating,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("recover stuck notes: %w", err)
+	}
+	defer rows.Close()
+
+	var stuck []*Note
+	for rows.Next() {
+		n, err := scanNoteRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		stuck = append(stuck, n)
+	}
+
+	now := Now()
+	for _, n := range stuck {
+		title := n.Title
+		if title == "" || strings.HasPrefix(title, "Note: ") {
+			title = n.Query
+			if len(title) > 60 {
+				title = title[:60] + "…"
+			}
+		}
+		content := n.Content
+		if content == "" {
+			content = "# " + title + "\n\n> Note generation was interrupted.\n\n**Query:** " + n.Query + "\n"
+		}
+		_, err := s.db.Exec(
+			`UPDATE note SET status = ?, title = ?, content = ?, time_updated = ? WHERE id = ?`,
+			StatusError, title, content, now, n.ID,
+		)
+		if err != nil {
+			slog.Warn("recover stuck note: failed to update", "note", n.ID, "err", err)
+			continue
+		}
+		n.Status = StatusError
+		n.Title = title
+		n.Content = content
+		n.UpdatedAt = now
+		_ = s.writeFile(n)
+	}
+
+	return stuck, nil
 }
 
 func (s *Store) Delete(id string) error {
