@@ -7,6 +7,7 @@ import mermaid from 'mermaid';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import Plotly from 'plotly.js-dist-min';
+import { renderRoughDiagram, type RoughSpec } from './rough-renderer';
 
 mermaid.initialize({
   startOnLoad: false,
@@ -82,6 +83,10 @@ export default function MarkdownContent(props: { text: string; class?: string })
       .replace(
         /<pre><code class="hljs language-plotly">([\s\S]*?)<\/code><\/pre>/g,
         '<div class="plotly-chart" style="min-height:300px">$1</div>'
+      )
+      .replace(
+        /<pre><code class="hljs language-rough">([\s\S]*?)<\/code><\/pre>/g,
+        '<div class="rough-diagram" style="min-height:200px">$1</div>'
       );
     return DOMPurify.sanitize(wrapped, { USE_PROFILES: { html: true, svg: true }, ADD_ATTR: ['style', 'aria-hidden'] });
   });
@@ -103,6 +108,16 @@ export default function MarkdownContent(props: { text: string; class?: string })
         Plotly.newPlot(el, spec.data ?? [], spec.layout ?? {}, { responsive: true, displayModeBar: false, ...spec.config });
       } catch {
         el.textContent = 'Invalid Plotly spec';
+      }
+    });
+    const roughNodes = containerRef.querySelectorAll<HTMLElement>('.rough-diagram');
+    roughNodes.forEach(el => {
+      try {
+        const spec = JSON.parse(el.textContent || '{}') as RoughSpec;
+        el.textContent = '';
+        renderRoughDiagram(el, spec);
+      } catch {
+        el.textContent = 'Invalid Rough diagram spec';
       }
     });
   });

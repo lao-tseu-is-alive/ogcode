@@ -371,6 +371,21 @@ textarea.auto-resize {
 }
 
 /* ============================================================
+   RoughJS hand-drawn diagrams
+   ============================================================ */
+.rough-diagram {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin: 0.75em 0;
+  overflow: hidden;
+}
+.rough-diagram svg {
+  display: block;
+}
+
+/* ============================================================
    Utility overrides
    ============================================================ */
 .hide-scrollbar::-webkit-scrollbar { display: none; }
