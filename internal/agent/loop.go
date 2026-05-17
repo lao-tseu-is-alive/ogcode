@@ -146,33 +146,17 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		if graphText != "" {
 			memoryText = graphText
 		}
-		// If not the first turn, also recall relevant context
+
 		messages, _ := lr.Store.GetMessages(sessionID, "", 1000)
-		if len(messages) > 1 {
-			for i := len(messages) - 1; i >= 0; i-- {
-				if messages[i].Info.Role == session.RoleUser {
-					var userText string
-					for _, p := range messages[i].Parts {
-						if p.Type == session.PartText {
-							var data session.TextPartData
-							if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
-								userText = data.Text
-							}
-						}
-					}
-					if userText != "" {
-						recentExchanges := extractRecentExchanges(messages[:i], 2)
-						recallText := lr.Memory.RecallMemory(ctx, string(sessionID), userText, recentExchanges)
-						if recallText != "" {
-							if memoryText != "" {
-								memoryText += "\n\n### Relevant Context\n" + recallText
-							} else {
-								memoryText = recallText
-							}
-						}
-					}
-					break
-				}
+
+		// Append the last non-tool assistant response so the LLM has continuity
+		// without needing to recall it. Targeted recall for specific facts is done
+		// on-demand via the memory_recall tool.
+		if lastText := extractLastAssistantText(messages); lastText != "" {
+			if memoryText != "" {
+				memoryText += "\n\n### Last Response\n" + lastText
+			} else {
+				memoryText = "### Last Response\n" + lastText
 			}
 		}
 
@@ -1030,40 +1014,33 @@ type pendingToolCall struct {
 	PartID session.PartID
 }
 
-// extractRecentExchanges returns up to maxExchanges user+assistant turns from
-// the tail of messages as "Role: text" strings, truncated to 500 chars each.
-// These are passed to memory recall to help resolve references like
-// "the previous API", "continue", "that approach", etc.
-func extractRecentExchanges(messages []*session.MessageWithParts, maxExchanges int) []string {
-	var lines []string
-	exchanges := 0
-	for i := len(messages) - 1; i >= 0 && exchanges < maxExchanges; i-- {
+// extractLastAssistantText returns the text from the most recent assistant message
+// that contains text but no tool calls (i.e. a final response, not a mid-loop tool step).
+// Reasoning parts are intentionally excluded.
+func extractLastAssistantText(messages []*session.MessageWithParts) string {
+	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
-		var role string
-		switch msg.Info.Role {
-		case session.RoleUser:
-			role = "User"
-		case session.RoleAssistant:
-			role = "Assistant"
-			exchanges++ // count each assistant turn as one full exchange
-		default:
+		if msg.Info.Role != session.RoleAssistant {
 			continue
 		}
+		var text string
+		hasTool := false
 		for _, p := range msg.Parts {
-			if p.Type == session.PartText {
+			switch p.Type {
+			case session.PartTool:
+				hasTool = true
+			case session.PartText:
 				var data session.TextPartData
 				if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
-					text := data.Text
-					if len(text) > 500 {
-						text = text[:500] + "…"
-					}
-					lines = append([]string{role + ": " + text}, lines...)
-					break
+					text = data.Text
 				}
 			}
 		}
+		if text != "" && !hasTool {
+			return text
+		}
 	}
-	return lines
+	return ""
 }
 
 func shouldBreak(messages []*session.MessageWithParts) bool {
@@ -1328,9 +1305,9 @@ Current date: %s`, a.System, dir, runtime.GOOS, runtime.GOARCH, now)
 	if memoryEnabled {
 		prompt += `
 
-You have access to agentic memory. Prior conversation context is provided in <prior_context> blocks. This is a lossy summary of everything discussed so far — treat it as authoritative for past events. It does NOT contain verbatim code or exact search results.
+You have access to agentic memory. Prior conversation context is provided in <prior_context> blocks, which includes a knowledge graph summary of past sessions and the most recent assistant response for continuity.
 
-If you need to probe deeper into past context, use the memory_recall tool with a specific question. Do not rely on <prior_context> for exact details — use it for orientation, then recall for specifics.`
+To retrieve specific past facts, decisions, or details, use the memory_recall tool with a precise question. Use it proactively whenever the current query references past context, prior decisions, or earlier work — do not guess or hallucinate past details.`
 	}
 
 	return prompt

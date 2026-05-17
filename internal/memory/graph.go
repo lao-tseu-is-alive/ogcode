@@ -481,12 +481,11 @@ func buildTreeFromNodes(nodes []Node, edges []Edge) map[string]TopicTree {
 // ──── Recall ────
 
 type RecallOptions struct {
-	SessionID      string
-	Question       string
-	RecentMessages []string // last N raw conversation turns for reference resolution
-	MaxRounds      int      // max refinement rounds, default 3
-	Threshold      float32  // confidence threshold to stop early, default 0.7
-	Limit          int      // max facts in lightweight tree, default 50
+	SessionID string
+	Question  string
+	MaxRounds int     // max refinement rounds, default 3
+	Threshold float32 // confidence threshold to stop early, default 0.7
+	Limit     int     // max facts in lightweight tree, default 50
 	MinScore       float32  // minimum cosine similarity to include fact
 	Since          int64
 	Until          int64
@@ -522,10 +521,8 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 		ToOrder:   opts.ToOrder,
 	}
 
-	searchQuery := g.rewriteQuery(ctx, opts.SessionID, opts.Question, opts.RecentMessages)
-
 	var queryVec []float32
-	vecs, err := g.Embed.Embed(ctx, []string{searchQuery})
+	vecs, err := g.Embed.Embed(ctx, []string{opts.Question})
 	if err == nil && len(vecs) > 0 {
 		queryVec = vecs[0]
 	}
@@ -948,89 +945,6 @@ func cosine(a, b []float32) float32 {
 		return float32(math.Sqrt(float64(f)))
 	}
 	return dot / (sqrt(magA) * sqrt(magB))
-}
-
-// needsRewrite returns true when the query contains words or phrases that
-// suggest it references something from prior context and should be rewritten.
-func needsRewrite(query string) bool {
-	lower := strings.ToLower(query)
-
-	// Multi-word phrases checked first (more specific).
-	phrases := []string{
-		"keep going", "do it", "do that", "do the same",
-		"the previous", "the last", "go on", "continue from",
-		"same thing", "that approach", "that method", "that function",
-		"the one", "the other", "like before", "as before",
-	}
-	for _, p := range phrases {
-		if strings.Contains(lower, p) {
-			return true
-		}
-	}
-
-	// Single-word references — check as whole words.
-	words := strings.FieldsFunc(lower, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z')
-	})
-	wordSet := make(map[string]bool, len(words))
-	for _, w := range words {
-		wordSet[w] = true
-	}
-	refWords := []string{
-		"it", "its", "this", "that", "these", "those",
-		"they", "them", "their", "he", "she", "him", "her",
-		"previous", "last", "above", "there", "same",
-		"continue", "again", "another", "other",
-	}
-	for _, ref := range refWords {
-		if wordSet[ref] {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *Graph) rewriteQuery(ctx context.Context, _ string, rawQuery string, recentMessages []string) string {
-	if g.Chat == nil {
-		return rawQuery
-	}
-	// Skip the LLM call entirely when the query appears self-contained.
-	if !needsRewrite(rawQuery) {
-		return rawQuery
-	}
-	// Pronouns and references almost always point to the immediately preceding
-	// exchanges — recent conversation is sufficient. Memory facts belong in the
-	// recall step that follows, not here.
-	if len(recentMessages) == 0 {
-		return rawQuery
-	}
-
-	var rawContext strings.Builder
-	for _, line := range recentMessages {
-		rawContext.WriteString(line + "\n")
-	}
-
-	prompt := fmt.Sprintf(`You are resolving references in a user query to make it fully self-contained.
-
-RECENT CONVERSATION:
-%s
-LATEST QUERY: %s
-
-Resolve ALL of the following reference types found in the query:
-- Pronouns: it, its, this, that, these, those, they, them, he, she
-- Temporal/ordinal: "the previous", "the last", "the earlier", "the above", "the one before"
-- Action continuations: "continue", "keep going", "do the same", "do it again", "go on"
-- Implicit entities: "the API", "the function", "the approach", "the method" when clearly referring to something specific from the conversation above
-
-If the query is already self-contained or the reference cannot be resolved from the conversation above, return it unchanged.
-Respond ONLY with the rewritten query, nothing else.`,
-		rawContext.String(), rawQuery)
-
-	resp, err := g.Chat.Chat(ctx, "", prompt)
-	if err != nil || strings.TrimSpace(resp) == "" {
-		return rawQuery
-	}
-	return strings.TrimSpace(resp)
 }
 
 // chatClient adapts an ogcode streaming Provider into a blocking ChatClient.

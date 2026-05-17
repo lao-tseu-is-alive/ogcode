@@ -104,9 +104,7 @@ func (m *Memory) ReadMemory(ctx context.Context, sessionID string) string {
 }
 
 // RecallMemory performs semantic recall for a specific question.
-// recentMessages contains the last N raw conversation turns (role: text) used
-// to resolve references like "the previous API" or "continue" before embedding.
-func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string, recentMessages []string) string {
+func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string) string {
 	if !m.Enabled() {
 		return ""
 	}
@@ -117,12 +115,11 @@ func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string, r
 	_ = m.Store.EnsureSession(sessionID)
 
 	result, err := m.Graph.Recall(ctx, RecallOptions{
-		SessionID:      sessionID,
-		Question:       question,
-		RecentMessages: recentMessages,
-		Limit:          50,
-		MaxRounds:      3,
-		Threshold:      0.7,
+		SessionID: sessionID,
+		Question:  question,
+		Limit:     50,
+		MaxRounds: 3,
+		Threshold: 0.7,
 	})
 	if err != nil {
 		slog.Warn("memory recall failed", "err", err)

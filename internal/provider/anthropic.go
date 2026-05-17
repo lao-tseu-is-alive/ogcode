@@ -52,18 +52,74 @@ func (p *AnthropicProvider) StreamChat(ctx context.Context, req StreamRequest) (
 	}
 
 	messages := make([]anthropicMessage, 0, len(req.Messages))
-	for _, m := range req.Messages {
+	for i := 0; i < len(req.Messages); i++ {
+		m := req.Messages[i]
 		if m.Role == "system" {
 			continue
 		}
-		var content any
-		if err := json.Unmarshal(m.Content, &content); err != nil {
-			content = string(m.Content)
+
+		if m.ToolCallID != "" {
+			// Tool result: collect consecutive tool results into one user message
+			// (Anthropic requires alternating roles, so all results for one turn go together)
+			var blocks []map[string]any
+			for i < len(req.Messages) && req.Messages[i].ToolCallID != "" {
+				tr := req.Messages[i]
+				var output string
+				if err := json.Unmarshal(tr.Content, &output); err != nil {
+					output = string(tr.Content)
+				}
+				blocks = append(blocks, map[string]any{
+					"type":        "tool_result",
+					"tool_use_id": tr.ToolCallID,
+					"content":     output,
+				})
+				i++
+			}
+			i-- // outer loop will increment
+			messages = append(messages, anthropicMessage{Role: "user", Content: blocks})
+		} else if m.ToolCalls != nil {
+			// Assistant message with tool calls: convert from OpenAI format to Anthropic tool_use blocks
+			type oaiFn struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			}
+			type oaiCall struct {
+				ID       string `json:"id"`
+				Function oaiFn  `json:"function"`
+			}
+			var calls []oaiCall
+			var blocks []map[string]any
+			if err := json.Unmarshal(m.ToolCalls, &calls); err == nil {
+				if m.Content != nil {
+					var text string
+					if err := json.Unmarshal(m.Content, &text); err == nil && text != "" {
+						blocks = append(blocks, map[string]any{"type": "text", "text": text})
+					}
+				}
+				for _, call := range calls {
+					var input any
+					if err := json.Unmarshal([]byte(call.Function.Arguments), &input); err != nil {
+						input = map[string]any{}
+					}
+					blocks = append(blocks, map[string]any{
+						"type":  "tool_use",
+						"id":    call.ID,
+						"name":  call.Function.Name,
+						"input": input,
+					})
+				}
+			}
+			messages = append(messages, anthropicMessage{Role: "assistant", Content: blocks})
+		} else {
+			var content any
+			if err := json.Unmarshal(m.Content, &content); err != nil {
+				content = string(m.Content)
+			}
+			messages = append(messages, anthropicMessage{
+				Role:    m.Role,
+				Content: content,
+			})
 		}
-		messages = append(messages, anthropicMessage{
-			Role:    m.Role,
-			Content: content,
-		})
 	}
 
 	systemPrompt := strings.Join(req.System, "\n\n")
@@ -159,15 +215,14 @@ func (p *AnthropicProvider) streamEvents(body io.ReadCloser, ch chan<- StreamEve
 			if evt.ContentBlock != nil && evt.ContentBlock.Type == "tool_use" {
 				currentToolID = evt.ContentBlock.ID
 				currentToolName = evt.ContentBlock.Name
-				var input json.RawMessage = evt.ContentBlock.Input
-				if input == nil {
-					input = json.RawMessage("{}")
-				}
+				// Don't send the placeholder `{}` from content_block_start as ToolInput.
+				// Anthropic always sends `"input":{}` here; the real input arrives
+				// exclusively via input_json_delta events. Sending `{}` would prepend
+				// it to the accumulated delta bytes, producing invalid JSON.
 				ch <- StreamEvent{
 					Type:       EventToolCallStart,
 					ToolCallID: currentToolID,
 					ToolName:   currentToolName,
-					ToolInput:  input,
 				}
 			}
 		case "content_block_delta":
