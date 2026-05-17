@@ -57,7 +57,8 @@ The chat interface natively renders the following — use them when they add gen
 
 - **Mermaid diagrams** (triple-backtick mermaid blocks) — flows, architectures, sequences, entity relationships.
 - **LaTeX math** — inline with $...$ and display block with $$...$$ — for mathematical formulas and equations.
-- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.`,
+- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.
+- **Rough diagrams** (triple-backtick rough blocks) — hand-drawn style 2D diagrams. The block must contain a valid JSON object with an "elements" array and optional "width"/"height"/"options" fields. Each element has a "type" (rectangle, circle, ellipse, line, arrow, path, linearPath, polygon, text) plus type-specific coordinates and optional RoughJS style options (stroke, fill, roughness, bowing, fillStyle, etc.).`,
 }
 
 // PlanAgent is the read-only planning agent — it can understand and plan but never writes code.
@@ -111,7 +112,8 @@ The chat interface natively renders the following — use them when they add gen
 
 - **Mermaid diagrams** (triple-backtick mermaid blocks) — flows, architectures, sequences, entity relationships.
 - **LaTeX math** — inline with $...$ and display block with $$...$$ — for mathematical formulas and equations.
-- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.`,
+- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.
+- **Rough diagrams** (triple-backtick rough blocks) — hand-drawn style 2D diagrams. The block must contain a valid JSON object with an "elements" array and optional "width"/"height"/"options" fields. Each element has a "type" (rectangle, circle, ellipse, line, arrow, path, linearPath, polygon, text) plus type-specific coordinates and optional RoughJS style options (stroke, fill, roughness, bowing, fillStyle, etc.).`,
 }
 
 // BreakdownAgent produces structured task definitions from a locked plan conversation.
@@ -166,7 +168,7 @@ var NoteAgent = Agent{
    - Clear H1 title that captures the topic
    - Sections with H2/H3 headers
    - Code blocks with language tags for all code examples
-   - Mermaid diagrams, LaTeX math, or Plotly charts where they add genuine clarity (see Markdown output capabilities below)
+   - Mermaid diagrams, LaTeX math, Plotly charts, or Rough diagrams where they add genuine clarity (see Markdown output capabilities below)
    - Bullet lists for enumerations, tables for comparisons
    - Concrete file paths, function names, and line references (verified against the actual codebase)
 
@@ -185,7 +187,8 @@ The chat interface natively renders the following — use them when they add gen
 
 - **Mermaid diagrams** (triple-backtick mermaid blocks) — flows, architectures, sequences, entity relationships.
 - **LaTeX math** — inline with $...$ and display block with $$...$$ — for mathematical formulas and equations.
-- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.`,
+- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.
+- **Rough diagrams** (triple-backtick rough blocks) — hand-drawn style 2D diagrams. The block must contain a valid JSON object with an "elements" array and optional "width"/"height"/"options" fields. Each element has a "type" (rectangle, circle, ellipse, line, arrow, path, linearPath, polygon, text) plus type-specific coordinates and optional RoughJS style options (stroke, fill, roughness, bowing, fillStyle, etc.).`,
 }
 
 func (a *Agent) HasTool(toolID string) bool {
