@@ -406,7 +406,7 @@ func (s *Server) generateTitle(sessionID session.SessionID, firstMessage string,
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	promptContent, _ := json.Marshal(

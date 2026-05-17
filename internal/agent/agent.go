@@ -53,7 +53,11 @@ Project notes are saved in .ogcode/notes/ as markdown files. Before starting, ch
 
 ## Markdown output capabilities
 
-When producing markdown output, you may include Mermaid diagrams (wrapped in triple-backtick mermaid code blocks) to illustrate flows, architectures, or relationships when it significantly aids understanding. The chat interface natively renders Mermaid diagrams.`,
+The chat interface natively renders the following — use them when they add genuine clarity:
+
+- **Mermaid diagrams** (triple-backtick mermaid blocks) — flows, architectures, sequences, entity relationships.
+- **LaTeX math** — inline with $...$ and display block with $$...$$ — for mathematical formulas and equations.
+- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.`,
 }
 
 // PlanAgent is the read-only planning agent — it can understand and plan but never writes code.
@@ -103,7 +107,11 @@ When your plan is complete, tell the user explicitly: "This plan is ready to loc
 
 ## Markdown output capabilities
 
-When producing markdown output, you may include Mermaid diagrams (wrapped in triple-backtick mermaid code blocks) to illustrate flows, architectures, or relationships when it significantly aids understanding. The chat interface natively renders Mermaid diagrams.`,
+The chat interface natively renders the following — use them when they add genuine clarity:
+
+- **Mermaid diagrams** (triple-backtick mermaid blocks) — flows, architectures, sequences, entity relationships.
+- **LaTeX math** — inline with $...$ and display block with $$...$$ — for mathematical formulas and equations.
+- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.`,
 }
 
 // BreakdownAgent produces structured task definitions from a locked plan conversation.
@@ -158,7 +166,7 @@ var NoteAgent = Agent{
    - Clear H1 title that captures the topic
    - Sections with H2/H3 headers
    - Code blocks with language tags for all code examples
-   - Mermaid diagrams (in triple-backtick mermaid blocks) for architectures, flows, or relationships when they add clarity
+   - Mermaid diagrams, LaTeX math, or Plotly charts where they add genuine clarity (see Markdown output capabilities below)
    - Bullet lists for enumerations, tables for comparisons
    - Concrete file paths, function names, and line references (verified against the actual codebase)
 
@@ -173,7 +181,11 @@ var NoteAgent = Agent{
 
 ## Markdown output capabilities
 
-When producing markdown output, you may include Mermaid diagrams (wrapped in triple-backtick mermaid code blocks) to illustrate flows, architectures, or relationships when it significantly aids understanding. The chat interface natively renders Mermaid diagrams.`,
+The chat interface natively renders the following — use them when they add genuine clarity:
+
+- **Mermaid diagrams** (triple-backtick mermaid blocks) — flows, architectures, sequences, entity relationships.
+- **LaTeX math** — inline with $...$ and display block with $$...$$ — for mathematical formulas and equations.
+- **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.`,
 }
 
 func (a *Agent) HasTool(toolID string) bool {

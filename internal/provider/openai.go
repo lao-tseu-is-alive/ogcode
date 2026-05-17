@@ -490,11 +490,12 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 	}
 
 	url := strings.TrimRight(p.baseURL, "/") + "/chat/completions"
-	slog.Info("streaming chat request", "provider", p.id, "model", model, "url", url)
+	slog.Info("streaming chat request", "provider", p.id, "model", model, "url", url, "body_bytes", len(jsonBody))
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	httpReq.ContentLength = int64(len(jsonBody))
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	if p.apiKey != "" {
@@ -519,12 +520,29 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 		if reqErr != nil {
 			return nil, fmt.Errorf("send request: %w", reqErr)
 		}
-		if resp.StatusCode != http.StatusTooManyRequests || attempt >= len(retryDelays) {
+		shouldRetry := false
+		if attempt < len(retryDelays) {
+			if resp.StatusCode == http.StatusTooManyRequests {
+				shouldRetry = true
+			} else if resp.StatusCode == http.StatusBadRequest {
+				// Retry transient "failed to read request body" errors from cloud providers.
+				bodyBytes, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if strings.Contains(string(bodyBytes), "failed to read request body") {
+					slog.Warn("transient request body error, retrying", "provider", p.id, "attempt", attempt+1)
+					shouldRetry = true
+					// Reconstruct resp.Body so the generic error path can read it if all retries fail.
+					resp = &http.Response{StatusCode: http.StatusBadRequest, Body: io.NopCloser(bytes.NewReader(bodyBytes))}
+				}
+			}
+		}
+		if !shouldRetry {
 			break
 		}
+		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		delay := retryDelays[attempt]
-		slog.Warn("rate limited by provider, retrying", "provider", p.id, "attempt", attempt+1, "delay", delay)
+		slog.Warn("retrying request", "provider", p.id, "attempt", attempt+1, "status", resp.StatusCode, "delay", delay)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -534,6 +552,7 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 		if err != nil {
 			return nil, fmt.Errorf("create retry request: %w", err)
 		}
+		httpReq.ContentLength = int64(len(jsonBody))
 		httpReq.Header.Set("Content-Type", "application/json")
 		if p.apiKey != "" {
 			token := p.apiKey
