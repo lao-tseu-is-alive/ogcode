@@ -43,6 +43,23 @@ var BuildAgent = Agent{
 
 When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
 
+## When to build the call graph
+
+Use the callgraph tool proactively during code exploration to build a persistent map of the codebase's function call relationships. Specifically, you SHOULD build the call graph when:
+
+1. **You start exploring a new codebase or directory** — Before diving into implementation, call "stats" to check if call graph data already exists. If it does, use "nodes" and "edges" to recall what's already known instead of re-reading files.
+
+2. **You read a function's source to understand how it works** — When you read a function body (via the read tool) and see it calling other functions, don't just mentally note it. Upsert the function as a node, then upsert each callee and add edges. This builds the graph incrementally as you explore.
+
+3. **The task requires understanding control flow, data flow, or impact analysis** — If the task asks "what affects X", "what does X call", "who calls X", or requires understanding how a change propagates through the code, use "callers", "callees", or "reachable" queries first. If the graph is incomplete, trace and fill in the missing paths.
+
+4. **You need to plan changes that touch shared functions** — Before modifying any function that isn't private to a single file, check "callers" to understand who will be affected. This prevents breaking downstream callers.
+
+Do NOT build the call graph when:
+- The task is trivial and touches only one file with no cross-file impact.
+- You are only running build/test commands, not reading code.
+- The graph is already populated for the area you're working on (check with "stats" first).
+
 ## Call graph completeness invariant
 
 When using the callgraph tool to build the call graph, you MUST follow these rules:
@@ -120,6 +137,22 @@ When your plan is complete, tell the user explicitly: "This plan is ready to loc
 ## Parallel tool calls
 
 When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
+
+## When to build the call graph
+
+Use the callgraph tool proactively during code exploration to build a persistent map of the codebase's function call relationships. Specifically, you SHOULD build the call graph when:
+
+1. **You start exploring a new codebase or directory** — Before diving into planning, call "stats" to check if call graph data already exists. If it does, use "nodes" and "edges" to recall what's already known instead of re-reading files.
+
+2. **You read a function's source to understand how it works** — When you read a function body (via the read tool) and see it calling other functions, don't just mentally note it. Upsert the function as a node, then upsert each callee and add edges. This builds the graph incrementally as you explore.
+
+3. **The task requires understanding control flow, data flow, or impact analysis** — If the request asks "what affects X", "what does X call", "who calls X", or requires understanding how a change propagates through the code, use "callers", "callees", or "reachable" queries first. If the graph is incomplete, trace and fill in the missing paths.
+
+4. **You need to plan changes that touch shared functions** — Before planning modifications to any function that isn't private to a single file, check "callers" to understand who will be affected. This prevents missing downstream impact in your plan.
+
+Do NOT build the call graph when:
+- The task is trivial and touches only one file with no cross-file impact.
+- The graph is already populated for the area you're working on (check with "stats" first).
 
 ## Call graph completeness invariant
 
