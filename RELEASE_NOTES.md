@@ -1,31 +1,25 @@
-# 🚀 Ogcode v0.3.1 Release
+# 🚀 Ogcode v0.4.0 Release
 
 ## 📋 Executive Summary
-This minor release introduces rich markdown rendering with LaTeX math and Plotly chart support, a project notes feature with export, improved session compaction and agentic memory architecture, and several provider reliability fixes including retry logic for transient errors.
+This release introduces MEMORY.md — persistent project memory that survives across sessions — alongside parallel tool execution for faster agent runs, per-model pricing visibility in the UI, expanded model catalog support, and key reliability fixes.
 
 ---
 
 ## 📝 Changes Summary
 
 ### ✨ New Features
-- **LaTeX math rendering** in chat markdown — inline ($...$) and display ($$...$$) equations rendered via KaTeX
-- **Plotly interactive charts** in chat markdown — bar, line, scatter, pie, heatmap and more via triple-backtick `plotly` code blocks
-- **Project notes** — persistent markdown notes per project, saved in `.ogcode/notes/`, with a dedicated NoteAgent
-- **Note export** — download notes as markdown files via a new endpoint and UI button
-- **Agent markdown capabilities** expanded — all agents (Build, Plan, Note) now know about Mermaid, LaTeX, and Plotly rendering and will use them when appropriate
-- **Improved session compaction** — operates on user-turn boundaries instead of raw loop steps for more natural context trimming
+- **MEMORY.md — persistent project memory** — agents can now read/write a `MEMORY.md` file in your project to persist decisions, architecture notes, and hard-won knowledge across sessions. The system prompt always explains MEMORY.md's purpose and how to maintain it, even when the file doesn't yet exist.
+- **Parallel tool execution** — multiple independent tool calls are now executed concurrently via goroutines instead of sequentially, significantly reducing round-trip latency on agent turns with multiple file reads, searches, or bash commands.
+- **LLM instructed to prefer parallel tool calls** — each agent system prompt now includes an explicit section telling the LLM to batch independent tool calls in a single response block, taking full advantage of parallel execution.
+- **Per-model pricing in catalog and UI** — InputPricePerM and OutputPricePerM are now stored in the model catalog and displayed as price badges in the model selector dropdown and Settings > Models page.
+- **New models added to catalog** — Anthropic: claude-opus-4-6, claude-opus-4-5-20251101, claude-opus-4-1-20250805, claude-sonnet-4-5-20250929. OpenAI: gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano. GPT-4o/GPT-4o-mini retired from active-by-default.
 
 ### 🔧 Bug Fixes
-- **Provider retry for transient body errors** — `400 Bad Request` responses containing "failed to read request body" are now automatically retried with exponential backoff instead of failing immediately
-- **429 rate-limit retry logging** improved — retry messages now include status code and clearer context
-- **Agentic memory and compaction decoupled** — these previously conflicting features now run on mutually exclusive paths, preventing token-savings miscalculation
-- **Guard against empty slices** — `trimToRecent` protected from panicking on empty slices; token-savings math corrected
-- **Title generation timeout** increased from 15s to 60s to prevent premature timeouts on slower providers
-- **Dead `trimToRecent` function** removed from agent code
+- **Nil-safety checks for GetPart** — two places in RunLoop could dereference a nil part when GetPart returns (nil, nil), causing potential panics. Now explicitly checked.
+- **MEMORY.md instructions always injected** — previously only injected when a file already existed, meaning agents in projects without MEMORY.md never learned about the feature. Now always present.
 
-### 🛠 Reliability
-- **Explicit `Content-Length` header** set on streaming chat requests to help cloud providers that require it
-- **Request body byte count** logged at debug level for easier troubleshooting of truncation issues
+### 🛠 Internal
+- **Version bump from 0.3.0 → 0.3.1 → 0.4.0** — version references updated across CLI and web package.
 
 ---
 
@@ -58,4 +52,4 @@ go install github.com/prasenjeet-symon/ogcode@latest
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.3.0...v0.3.1*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.3.1...v0.4.0*
