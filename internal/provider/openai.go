@@ -400,6 +400,8 @@ func (p *OpenAIProvider) Models() []ModelInfo {
 				Name:            m.Name,
 				ProviderID:      "openai",
 				ActiveByDefault: m.ActiveByDefault,
+				InputPricePerM:  m.InputPricePerM,
+				OutputPricePerM: m.OutputPricePerM,
 			})
 		}
 	}

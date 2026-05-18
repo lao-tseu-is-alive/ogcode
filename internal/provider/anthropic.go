@@ -40,6 +40,8 @@ func (p *AnthropicProvider) Models() []ModelInfo {
 			ProviderID:      "anthropic",
 			ActiveByDefault: m.ActiveByDefault,
 			Default:         m.ID == p.model,
+			InputPricePerM:  m.InputPricePerM,
+			OutputPricePerM: m.OutputPricePerM,
 		})
 	}
 	return all

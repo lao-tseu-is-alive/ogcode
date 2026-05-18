@@ -47,12 +47,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ModelEntry struct {
-		ID         string `json:"id"`
-		Name       string `json:"name"`
-		ProviderID string `json:"providerId"`
-		Default    bool   `json:"default"`
-		Enabled    bool   `json:"enabled"`
-		IsCustom   bool   `json:"isCustom"`
+		ID              string  `json:"id"`
+		Name            string  `json:"name"`
+		ProviderID      string  `json:"providerId"`
+		Default         bool    `json:"default"`
+		Enabled         bool    `json:"enabled"`
+		IsCustom        bool    `json:"isCustom"`
+		InputPricePerM  float64 `json:"inputPricePerM"`
+		OutputPricePerM float64 `json:"outputPricePerM"`
 	}
 
 	var result []ModelEntry
@@ -62,12 +64,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			defaultEnabled = pref.Enabled
 		}
 		entry := ModelEntry{
-			ID:         m.ID,
-			Name:       m.Name,
-			ProviderID: m.ProviderID,
-			Default:    m.Default,
-			Enabled:    defaultEnabled,
-			IsCustom:   false,
+			ID:              m.ID,
+			Name:            m.Name,
+			ProviderID:      m.ProviderID,
+			Default:         m.Default,
+			Enabled:         defaultEnabled,
+			IsCustom:        false,
+			InputPricePerM:  m.InputPricePerM,
+			OutputPricePerM: m.OutputPricePerM,
 		}
 		result = append(result, entry)
 	}

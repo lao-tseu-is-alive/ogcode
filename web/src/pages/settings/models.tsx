@@ -323,6 +323,7 @@ export default function ModelsSettings() {
 }
 
 function ModelRow(props: { model: ModelInfo; onToggle: () => void; onRemove: () => void }) {
+  const hasPrice = () => props.model.inputPricePerM > 0 || props.model.outputPricePerM > 0;
   return (
     <div class={`group px-4 py-3 flex items-center gap-3 transition ${props.model.enabled ? '' : 'opacity-60'}`}>
       <div class="flex-1 min-w-0">
@@ -334,10 +335,18 @@ function ModelRow(props: { model: ModelInfo; onToggle: () => void; onRemove: () 
           <Show when={props.model.isCustom}>
             <Badge tone="violet">Custom</Badge>
           </Show>
+          <Show when={hasPrice()}>
+            <Badge tone="zinc">${fmtPrice(props.model.inputPricePerM)} / ${fmtPrice(props.model.outputPricePerM)}</Badge>
+          </Show>
         </div>
-        <Show when={props.model.id !== props.model.name}>
-          <div class="text-[11px] text-zinc-500 font-mono truncate mt-0.5">{props.model.id}</div>
-        </Show>
+        <div class="flex items-center gap-2 mt-0.5">
+          <Show when={props.model.id !== props.model.name}>
+            <span class="text-[11px] text-zinc-500 font-mono truncate">{props.model.id}</span>
+          </Show>
+          <Show when={hasPrice()}>
+            <span class="text-[10px] text-zinc-600">in / out per 1M tokens</span>
+          </Show>
+        </div>
       </div>
 
       <Show when={props.model.isCustom}>
@@ -357,6 +366,14 @@ function ModelRow(props: { model: ModelInfo; onToggle: () => void; onRemove: () 
       <Toggle on={props.model.enabled} onClick={props.onToggle} />
     </div>
   );
+}
+
+function fmtPrice(n: number): string {
+  if (n === 0) return '0';
+  if (n < 0.01) return n.toFixed(2);
+  if (n < 1) return n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 function Toggle(props: { on: boolean; onClick: () => void }) {

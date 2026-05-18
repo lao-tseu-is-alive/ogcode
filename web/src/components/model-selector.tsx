@@ -123,6 +123,11 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
                           {model.name}
                         </span>
                         <div class="flex items-center gap-1 shrink-0">
+                          <Show when={model.inputPricePerM > 0 || model.outputPricePerM > 0}>
+                            <span class="text-[9px] text-zinc-500 bg-zinc-500/10 px-1 py-0.5 rounded font-mono tabular-nums">
+                              ${fmtPrice(model.inputPricePerM)}/${fmtPrice(model.outputPricePerM)}
+                            </span>
+                          </Show>
                           <Show when={model.isCustom}>
                             <span class="text-[9px] text-violet-400 bg-violet-500/10 px-1 py-0.5 rounded">custom</span>
                           </Show>
@@ -146,4 +151,12 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
       </Show>
     </div>
   );
+}
+
+function fmtPrice(n: number): string {
+  if (n === 0) return '0';
+  if (n < 0.01) return n.toFixed(2);
+  if (n < 1) return n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }

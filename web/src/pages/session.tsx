@@ -15,36 +15,29 @@ function getModelLabel(model: string | undefined): string {
   return name.replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-preview$/, '');
 }
 
-// Input token price per 1 million tokens (USD).
-const TOKEN_PRICE_PER_M: Record<string, number> = {
-  'claude-sonnet-4-6':          3.00,
-  'claude-sonnet-4-20250514':   3.00,
-  'claude-opus-4-7':            15.00,
-  'claude-opus-4-20250514':     15.00,
-  'claude-haiku-4-5-20251001':  0.80,
-  'gpt-4o':                     2.50,
-  'gpt-4o-mini':                0.15,
-  'gpt-4-turbo':                10.00,
-  'gpt-3.5-turbo':              0.50,
-  'o1':                         15.00,
-  'o3-mini':                    1.10,
-  'o4-mini':                    1.10,
-};
-
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
 }
 
-function estimateCost(tokens: number, model: string, dynamicPrices: Record<string, number>): string | null {
-  // Dynamic prices (from real-time API) take precedence over static table.
+function estimateCost(tokens: number, model: string, dynamicPrices: Record<string, number>, models: { id: string; inputPricePerM: number }[]): string | null {
+  // Dynamic prices (from real-time API) take precedence for OpenRouter/Ollama.
   const base = model.split('/').pop() ?? model;
-  const price = dynamicPrices[model] ?? dynamicPrices[base] ?? TOKEN_PRICE_PER_M[base] ?? TOKEN_PRICE_PER_M[model];
-  if (!price) return null;
-  const cost = (tokens / 1_000_000) * price;
-  if (cost < 0.0001) return null;
-  return cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(3)}`;
+  const dynPrice = dynamicPrices[model] ?? dynamicPrices[base];
+  if (dynPrice) {
+    const cost = (tokens / 1_000_000) * dynPrice;
+    if (cost < 0.0001) return null;
+    return cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(3)}`;
+  }
+  // Fallback to catalog prices from the model list.
+  const info = models.find((m) => m.id === model) ?? models.find((m) => m.id === base);
+  if (info && info.inputPricePerM > 0) {
+    const cost = (tokens / 1_000_000) * info.inputPricePerM;
+    if (cost < 0.0001) return null;
+    return cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(3)}`;
+  }
+  return null;
 }
 
 function shortenPath(path: string): string {
@@ -153,9 +146,9 @@ function ChatContent() {
                 <Show when={session.memorySavedTokens() > 0}>
                   <span class="text-emerald-500/70">·</span>
                   <span class="text-emerald-300">~{formatTokens(session.memorySavedTokens())} saved</span>
-                  <Show when={estimateCost(session.memorySavedTokens(), session.activeSession()?.model ?? '', dynamicPrices())}>
+                  <Show when={estimateCost(session.memorySavedTokens(), session.activeSession()?.model ?? '', dynamicPrices(), session.models())}>
                     <span class="text-emerald-500/70 font-normal">
-                      ({estimateCost(session.memorySavedTokens(), session.activeSession()?.model ?? '', dynamicPrices())})
+                      ({estimateCost(session.memorySavedTokens(), session.activeSession()?.model ?? '', dynamicPrices(), session.models())})
                     </span>
                   </Show>
                 </Show>

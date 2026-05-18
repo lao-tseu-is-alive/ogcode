@@ -71,11 +71,13 @@ type StreamRequest struct {
 }
 
 type ModelInfo struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	ProviderID      string `json:"providerId"`
-	Default         bool   `json:"default"`
-	ActiveByDefault bool   `json:"activeByDefault"`
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	ProviderID      string  `json:"providerId"`
+	Default         bool    `json:"default"`
+	ActiveByDefault bool    `json:"activeByDefault"`
+	InputPricePerM  float64 `json:"inputPricePerM"`
+	OutputPricePerM float64 `json:"outputPricePerM"`
 }
 
 type Provider interface {

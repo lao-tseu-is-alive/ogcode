@@ -236,6 +236,8 @@ export interface ModelInfo {
   default: boolean;
   enabled: boolean;
   isCustom: boolean;
+  inputPricePerM: number;
+  outputPricePerM: number;
 }
 
 export function getModels(): Promise<ModelInfo[]> {
