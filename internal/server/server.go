@@ -17,6 +17,7 @@ import (
 
 	"github.com/prasenjeet-symon/ogcode/internal/agent"
 	"github.com/prasenjeet-symon/ogcode/internal/bus"
+	"github.com/prasenjeet-symon/ogcode/internal/callgraph"
 	"github.com/prasenjeet-symon/ogcode/internal/db"
 	"github.com/prasenjeet-symon/ogcode/internal/git"
 	"github.com/prasenjeet-symon/ogcode/internal/mcp"
@@ -47,8 +48,9 @@ type Server struct {
 	bus        *bus.Bus
 	store      *session.Store
 	planStore  *plan.Store
-	taskStore  *task.Store
-	noteStore  *note.Store
+	taskStore     *task.Store
+	noteStore     *note.Store
+	callgraphStore *callgraph.Store
 	registry   *provider.Registry
 	defaultProvider provider.Provider
 	loopRunner *agent.LoopRunner
@@ -106,6 +108,7 @@ func (s *Server) Start() error {
 	s.planStore = plan.NewStore(database)
 	s.taskStore = task.NewStore(database)
 	s.noteStore = note.NewStore(database)
+	s.callgraphStore = callgraph.NewStore(database)
 
 	// Recover notes stuck in "generating" status from a previous server crash.
 	if stuck, err := s.noteStore.RecoverStuckNotes(); err != nil {
@@ -200,6 +203,7 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.GlobTool{})
 	toolRegistry.Register(tool.GrepTool{})
 	toolRegistry.Register(tool.BreakdownTool{})
+	toolRegistry.Register(tool.NewCallGraphTool(s.callgraphStore))
 	// memory_recall will be registered below after mem is initialized
 
 	// Determine default provider with stable priority
