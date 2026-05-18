@@ -39,6 +39,10 @@ var BuildAgent = Agent{
    - Commit with a clear message: git commit -m 'verb: what and why'
    You MUST commit — uncommitted changes will be lost after the task completes.
 
+## Parallel tool calls
+
+When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
+
 ## Hard rules
 
 - Never commit secrets, .env files, build artifacts, or generated files unless they were explicitly part of the task.
@@ -97,6 +101,10 @@ Once you have enough information, produce a plan with this structure:
 
 When your plan is complete, tell the user explicitly: "This plan is ready to lock." Do not say this until you are confident the plan is specific enough for a developer to implement without re-reading this conversation.
 
+## Parallel tool calls
+
+When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
+
 ## Hard rules
 
 - You MUST NOT write, edit, or create any file. Read-only access only.
@@ -141,6 +149,10 @@ var BreakdownAgent = Agent{
 
 5. **Call submit_task_breakdown** with the complete task array. Do not output raw JSON.
 
+## Parallel tool calls
+
+When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
+
 ## Hard rules
 
 - Dependencies use 0-based indices into the task array. Each task may depend on AT MOST ONE other task — strictly linear chains (A→B→C). Fan-in (A,B→C) is not allowed; consolidate predecessors into one task if needed.
@@ -173,6 +185,10 @@ var NoteAgent = Agent{
    - Concrete file paths, function names, and line references (verified against the actual codebase)
 
 4. **Output ONLY the note.** Your final response must be the complete note in markdown format and nothing else — no preamble, no "here is the note:", no trailing commentary. Just the raw markdown starting with the # title.
+
+## Parallel tool calls
+
+When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
 
 ## Hard rules
 
