@@ -1249,13 +1249,24 @@ Current date: %s`, a.System, dir, runtime.GOOS, runtime.GOARCH, now)
 
 	if memoryMDContent != "" {
 		prompt += memoryMDContent
-		prompt += `
+	}
+
+	prompt += `
 
 ## MEMORY.md — Project Long-Term Memory
 
-The content above in the <memory-md> tag is loaded from your project's MEMORY.md file(s). This is the project's persistent, cross-session knowledge base. It survives across conversations — unlike chat history, which resets each session.
+`
+	if memoryMDContent != "" {
+		prompt += `The content above in the <memory-md> tag is loaded from your project's MEMORY.md file(s). This is the project's persistent, cross-session knowledge base. It survives across conversations — unlike chat history, which resets each session.
 
-### Purpose
+`
+	} else {
+		prompt += `No MEMORY.md file was found in this project. You should create one in the project root directory. This is the project's persistent, cross-session knowledge base — it survives across conversations, unlike chat history which resets each session. Create it now using the write tool if the project has any meaningful knowledge to record.
+
+`
+	}
+
+	prompt += `### Purpose
 MEMORY.md stores hard-won knowledge about this project that you would otherwise forget between sessions. Think of it as a lab notebook: a place to record what you've learned so your future self (and future sessions) don't have to rediscover it.
 
 ### What belongs in MEMORY.md
@@ -1280,11 +1291,10 @@ MEMORY.md stores hard-won knowledge about this project that you would otherwise 
 ### How to maintain MEMORY.md
 - Use the read tool to inspect current contents before making changes
 - Use the edit tool for targeted updates (preferred — avoids rewriting the whole file)
-- Use the write tool only when restructuring the entire file
+- Use the write tool only when restructuring the entire file or creating the file for the first time
 - Update MEMORY.md proactively when you learn something important — do not wait to be asked
 - Keep it concise and well-organized — future sessions must read and understand it quickly
 - Remove or update stale entries when you discover they're no longer accurate`
-	}
 
 	// Inject MCP skill descriptions (excluding memory tools)
 	if len(mcpTools) > 0 {
