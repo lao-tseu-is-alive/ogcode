@@ -337,3 +337,60 @@ func TestDeleteNodesByDirectory(t *testing.T) {
 		t.Errorf("expected 1 node in /other, got %d", elseNodes)
 	}
 }
+
+func TestDeleteNodesByFile(t *testing.T) {
+	database := openTestDB(t)
+	s := NewStore(database)
+
+	// Create nodes in different files
+	a, _ := s.UpsertNode(CallNode{Directory: "/project", Package: "pkg", Symbol: "A", FilePath: "pkg/a.go", Kind: KindFunction})
+	b, _ := s.UpsertNode(CallNode{Directory: "/project", Package: "pkg", Symbol: "B", FilePath: "pkg/b.go", Kind: KindFunction})
+	c, _ := s.UpsertNode(CallNode{Directory: "/project", Package: "pkg", Symbol: "C", FilePath: "pkg/b.go", Kind: KindFunction})
+
+	// Create edges: A → B, A → C, B → C
+	s.AddEdge(CallEdge{Directory: "/project", CallerID: a.ID, CalleeID: b.ID, CallType: CallDirect})
+	s.AddEdge(CallEdge{Directory: "/project", CallerID: a.ID, CalleeID: c.ID, CallType: CallDirect})
+	s.AddEdge(CallEdge{Directory: "/project", CallerID: b.ID, CalleeID: c.ID, CallType: CallDirect})
+
+	// Verify setup
+	nodes, edges, _ := s.Stats("/project")
+	if nodes != 3 || edges != 3 {
+		t.Fatalf("setup: expected 3 nodes, 3 edges; got %d nodes, %d edges", nodes, edges)
+	}
+
+	// Delete all nodes for pkg/b.go (B and C)
+	deleted, err := s.DeleteNodesByFile("/project", "pkg/b.go")
+	if err != nil {
+		t.Fatalf("DeleteNodesByFile: %v", err)
+	}
+	if deleted != 2 {
+		t.Errorf("expected 2 deleted nodes, got %d", deleted)
+	}
+
+	// Only A should remain
+	nodes, edges, _ = s.Stats("/project")
+	if nodes != 1 {
+		t.Errorf("expected 1 node after deleting by file, got %d", nodes)
+	}
+	if edges != 0 {
+		t.Errorf("expected 0 edges after deleting by file (all edges involved B or C), got %d", edges)
+	}
+
+	// A should still exist
+	got, err := s.GetNode(a.ID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if got == nil || got.Symbol != "A" {
+		t.Error("expected node A to still exist")
+	}
+
+	// Deleting a non-existent file should return 0
+	deleted2, err := s.DeleteNodesByFile("/project", "nonexistent.go")
+	if err != nil {
+		t.Fatalf("DeleteNodesByFile (nonexistent): %v", err)
+	}
+	if deleted2 != 0 {
+		t.Errorf("expected 0 deleted for nonexistent file, got %d", deleted2)
+	}
+}

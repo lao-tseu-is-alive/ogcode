@@ -31,6 +31,7 @@ var BuildAgent = Agent{
    - Build the project if a build command exists (e.g. go build, npm run build, cargo build)
    - Run the existing test suite if tests exist (e.g. go test ./..., npm test)
    - Run the linter if one is configured
+   - Sync the call graph for every mutated file (see "Post-mutation call graph sync" below)
    Fix any errors before committing. Do not leave the codebase in a broken state.
 
 6. **Commit all changes.** Stage only the files you intentionally modified — do not use git add -A blindly:
@@ -75,6 +76,30 @@ When using the callgraph tool to build the call graph, you MUST follow these rul
 Practically, this means:
 - Read a function's source → upsert the node → read each callee's source → upsert each callee node → add edges → repeat for each callee's callees.
 - Only stop when every function in the chain either has callees already in the graph or is a leaf function.
+
+## Post-mutation call graph sync (CRITICAL)
+
+After every successful source code mutation (creating, editing, or deleting a file), you MUST keep the call graph up to date. Stale graph data is worse than no graph data — it leads to wrong impact analysis and broken code changes.
+
+**For every file you mutate, follow this mandatory sequence:**
+
+1. **Purge stale data.** Immediately after a successful write/edit, call the callgraph tool with action "delete_nodes_by_file" for every file you just changed. This removes all nodes and edges that belonged to the old version of that file.
+
+2. **Re-read and re-populate.** Read the mutated file, identify every function/method definition and every call relationship, and upsert the affected nodes and edges back into the call graph. Follow the same completeness invariant as when building the graph initially — trace every call path to its leaf.
+
+3. **Check downstream impact.** After re-populating the file's own functions, check if any functions you modified are called from other files. Use "callers" to find who depends on them. If you changed a function signature, removed a function, or altered its behavior, verify that those callers still work correctly.
+
+**When this applies:**
+- After every write or edit tool call that modifies a source code file.
+- After running git mv or git rm on source files.
+- After creating a new source file with function definitions.
+
+**When this does NOT apply:**
+- Changes to non-code files (markdown, config, .gitignore, etc.).
+- Running build/test commands (these don't modify source).
+- Files that contain no function/method definitions.
+
+**Enforcement:** Do NOT proceed to the next step in your process (including committing) until the call graph is re-synced for the mutated file. This is a hard rule — skipping it means the graph becomes unreliable for future queries.
 
 ## Hard rules
 

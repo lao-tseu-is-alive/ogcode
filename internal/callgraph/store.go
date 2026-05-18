@@ -110,6 +110,53 @@ func (s *Store) DeleteNode(id int64) error {
 	return err
 }
 
+// DeleteNodesByFile removes all call nodes (and their edges) for a given file path
+// within a directory. This is used to purge stale call graph data after a file is
+// mutated, so the agent can re-populate it with accurate information.
+func (s *Store) DeleteNodesByFile(directory, filePath string) (int64, error) {
+	// First, collect the IDs of nodes in this file so we can delete their edges.
+	rows, err := s.db.Query(`
+		SELECT id FROM call_node
+		WHERE directory = ? AND file_path = ?
+	`, directory, filePath)
+	if err != nil {
+		return 0, fmt.Errorf("query nodes by file: %w", err)
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan node id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	// Delete edges referencing these nodes.
+	for _, id := range ids {
+		_, err := s.db.Exec(`DELETE FROM call_edge WHERE caller_id = ? OR callee_id = ?`, id, id)
+		if err != nil {
+			return 0, fmt.Errorf("delete edges for node %d: %w", id, err)
+		}
+	}
+
+	// Delete the nodes themselves.
+	res, err := s.db.Exec(`DELETE FROM call_node WHERE directory = ? AND file_path = ?`, directory, filePath)
+	if err != nil {
+		return 0, fmt.Errorf("delete nodes by file: %w", err)
+	}
+	deleted, _ := res.RowsAffected()
+	return deleted, nil
+}
+
 // DeleteNodesByDirectory removes all call nodes and edges for a directory.
 func (s *Store) DeleteNodesByDirectory(directory string) error {
 	_, err := s.db.Exec(`DELETE FROM call_edge WHERE directory = ?`, directory)

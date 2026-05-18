@@ -42,6 +42,7 @@ Actions:
 - "add_edge" — Add a call edge (caller → callee)
 - "add_nodes_batch" — Add multiple nodes at once
 - "add_edges_batch" — Add multiple edges at once
+- "delete_nodes_by_file" — Remove all nodes and edges for a specific file (used after mutations to clear stale data before re-syncing)
 - "clear" — Remove all call graph data for a directory`
 }
 
@@ -52,11 +53,15 @@ func (t CallGraphTool) Parameters() json.RawMessage {
 		"properties": {
 			"action": {
 				"type": "string",
-				"description": "One of: stats, nodes, edges, callees, callers, reachable, upsert_node, add_edge, add_nodes_batch, add_edges_batch, clear"
+				"description": "One of: stats, nodes, edges, callees, callers, reachable, upsert_node, add_edge, add_nodes_batch, add_edges_batch, delete_nodes_by_file, clear"
 			},
 			"directory": {
 				"type": "string",
 				"description": "The project directory (usually the working directory)"
+			},
+			"file_path": {
+				"type": "string",
+				"description": "File path (relative to directory) for delete_nodes_by_file — removes all nodes and edges belonging to this file"
 			},
 			"node_id": {
 				"type": "integer",
@@ -136,6 +141,7 @@ func (t CallGraphTool) Execute(ctx context.Context, args json.RawMessage, tctx C
 	var params struct {
 		Action    string `json:"action"`
 		Directory string `json:"directory"`
+		FilePath  string `json:"file_path"`
 		NodeID    int64  `json:"node_id"`
 		Package   string `json:"package"`
 		Kind      string `json:"kind"`
@@ -202,6 +208,8 @@ func (t CallGraphTool) Execute(ctx context.Context, args json.RawMessage, tctx C
 		return t.addNodesBatch(dir, params.Nodes)
 	case "add_edges_batch":
 		return t.addEdgesBatch(dir, params.Edges)
+	case "delete_nodes_by_file":
+		return t.deleteNodesByFile(dir, params.FilePath)
 	case "clear":
 		return t.clear(dir)
 	default:
@@ -452,4 +460,15 @@ func (t CallGraphTool) clear(dir string) (Result, error) {
 		return Result{}, fmt.Errorf("clear call graph: %w", err)
 	}
 	return Result{Title: "CallGraph Cleared", Output: fmt.Sprintf("Cleared all call graph data for %s", dir)}, nil
+}
+
+func (t CallGraphTool) deleteNodesByFile(dir, filePath string) (Result, error) {
+	if filePath == "" {
+		return Result{Title: "CallGraph", Output: "file_path is required for delete_nodes_by_file action."}, nil
+	}
+	deleted, err := t.Store.DeleteNodesByFile(dir, filePath)
+	if err != nil {
+		return Result{}, fmt.Errorf("delete nodes by file: %w", err)
+	}
+	return Result{Title: "CallGraph Nodes Deleted by File", Output: fmt.Sprintf("Deleted %d nodes (and their edges) for %s in %s", deleted, filePath, dir)}, nil
 }
