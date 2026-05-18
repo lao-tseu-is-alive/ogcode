@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prasenjeet-symon/ogcode/internal/bus"
@@ -669,7 +670,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 			}
 		}
 
-			// Detect stream interruption: if the channel closed without a finish event
+		// Detect stream interruption: if the channel closed without a finish event
 		// and without any error event, the stream was likely interrupted (network,
 		// timeout, etc.). Do NOT default to "stop" — that silently kills long loops.
 		if finishReason == "" {
@@ -704,102 +705,137 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		}
 		lr.Bus.Publish("message.updated", assistantMsg)
 
-		// Execute ready tool calls
-		toolCallsExecuted := false
-		cancelledMidExecution := false
+		// Execute ready tool calls in parallel for improved throughput.
+		// Built-in tools (bash, read, write, etc.) are stateless and safe for
+		// concurrent use. MCP calls are serialized by the client's mutex, so
+		// they won't truly run in parallel with each other but will run in
+		// parallel with built-in tools. DB part updates are sequential before
+		// and after the parallel execution phase to keep state consistent.
+		var readyCalls []pendingToolCall
 		for _, tc := range pendingToolCalls {
-			if !tc.Ready {
-				continue
+			if tc.Ready {
+				readyCalls = append(readyCalls, tc)
 			}
+		}
+		toolCallsExecuted := len(readyCalls) > 0
 
-			// Check for context cancellation before each tool execution
+		if toolCallsExecuted {
+			if len(readyCalls) > 1 {
+				slog.Info("executing tool calls in parallel", "session", sessionID, "count", len(readyCalls), "tools", toolNames(readyCalls))
+			}
+			// Check for context cancellation before starting any execution
 			if ctx.Err() != nil {
-				slog.Info("agent loop cancelled before tool execution", "session", sessionID, "tool", tc.Name)
-				cancelledMidExecution = true
-				break
+				slog.Info("agent loop cancelled before tool execution", "session", sessionID)
+				exitReason = "aborted"
+				return ctx.Err()
 			}
-			toolCallsExecuted = true
 
+			type toolExecInfo struct {
+				tc     pendingToolCall
+				result tool.Result
+				err    error
+			}
 
-			// Mark tool part as running
-			part, _ := lr.Store.GetPart(tc.PartID)
-			if part != nil {
-				var toolData session.ToolPartData
-				json.Unmarshal(part.Data, &toolData)
-				toolData.State = session.ToolState{
-					Status: session.ToolRunning,
-					Input:  toolData.State.Input,
-					Title:  &tc.Name,
-					Time: session.ToolTime{
-						Start: session.Now(),
-					},
+			// Mark all ready tool parts as "running" first (sequential — fast DB ops)
+			execInfos := make([]toolExecInfo, len(readyCalls))
+			for i, tc := range readyCalls {
+				part, _ := lr.Store.GetPart(tc.PartID)
+				if part != nil {
+					var toolData session.ToolPartData
+					json.Unmarshal(part.Data, &toolData)
+					toolData.State = session.ToolState{
+						Status: session.ToolRunning,
+						Input:  toolData.State.Input,
+						Title:  &tc.Name,
+						Time: session.ToolTime{
+							Start: session.Now(),
+						},
+					}
+					updatedData, _ := json.Marshal(toolData)
+					part.Data = updatedData
+					part.UpdatedAt = session.Now()
+					lr.Store.UpdatePart(part)
+					lr.Bus.Publish("message.part.updated", map[string]string{
+						"sessionId": string(sessionID),
+						"partId":    string(part.ID),
+					})
 				}
+				execInfos[i].tc = tc
+			}
+
+			// Execute all ready tool calls concurrently
+			var wg sync.WaitGroup
+			for i := range readyCalls {
+				wg.Add(1)
+				go func(idx int) {
+					defer wg.Done()
+					tc := readyCalls[idx]
+					result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent, workDir)
+					execInfos[idx].result = result
+					execInfos[idx].err = err
+				}(i)
+			}
+			wg.Wait()
+
+			// Update all tool parts with results (sequential — DB writes)
+			for _, info := range execInfos {
+				tc := info.tc
+				part, perr := lr.Store.GetPart(tc.PartID)
+				if perr != nil {
+					slog.Error("get tool part", "err", perr)
+					continue
+				}
+
+				var toolData session.ToolPartData
+				if err := json.Unmarshal(part.Data, &toolData); err != nil {
+					slog.Error("unmarshal tool data", "err", err)
+					continue
+				}
+
+				if info.err != nil {
+					errStr := info.err.Error()
+					toolData.State = session.ToolState{
+						Status: session.ToolError,
+						Input:  tc.Input,
+						Error:  &errStr,
+						Title:  &tc.Name,
+						Time:   toolData.State.Time,
+					}
+				} else {
+					toolData.State = session.ToolState{
+						Status:   session.ToolCompleted,
+						Input:    tc.Input,
+						Output:   &info.result.Output,
+						Title:    &info.result.Title,
+						Metadata: mustMarshal(info.result.Metadata),
+						Time: session.ToolTime{
+							Start: toolData.State.Time.Start,
+							End:   session.Now(),
+						},
+					}
+				}
+
 				updatedData, _ := json.Marshal(toolData)
 				part.Data = updatedData
 				part.UpdatedAt = session.Now()
-				lr.Store.UpdatePart(part)
+				if err := lr.Store.UpdatePart(part); err != nil {
+					slog.Error("update tool part", "err", err)
+				}
+
 				lr.Bus.Publish("message.part.updated", map[string]string{
 					"sessionId": string(sessionID),
 					"partId":    string(part.ID),
 				})
 			}
-			result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent, workDir)
 
-			// Update tool part with result
-			part, perr := lr.Store.GetPart(tc.PartID)
-			if perr != nil {
-				slog.Error("get tool part", "err", perr)
-				continue
+			// If context was cancelled during execution, bail out now. The
+			// tool-result message must not be created — it would contain
+			// partial/missing outputs for unexecuted tool calls.
+			if ctx.Err() != nil {
+				slog.Info("agent loop cancelled after tool execution", "session", sessionID)
+				exitReason = "aborted"
+				return ctx.Err()
 			}
-
-			var toolData session.ToolPartData
-			if err := json.Unmarshal(part.Data, &toolData); err != nil {
-				slog.Error("unmarshal tool data", "err", err)
-				continue
-			}
-
-			if err != nil {
-				errStr := err.Error()
-				toolData.State = session.ToolState{
-					Status: session.ToolError,
-					Input:  tc.Input,
-					Error:  &errStr,
-					Title:  &tc.Name,
-					Time:   toolData.State.Time,
-				}
-			} else {
-				toolData.State = session.ToolState{
-					Status:   session.ToolCompleted,
-					Input:    tc.Input,
-					Output:   &result.Output,
-					Title:    &result.Title,
-					Metadata: mustMarshal(result.Metadata),
-					Time: session.ToolTime{
-						Start: toolData.State.Time.Start,
-						End:   session.Now(),
-					},
-				}
-			}
-
-			updatedData, _ := json.Marshal(toolData)
-			part.Data = updatedData
-			part.UpdatedAt = session.Now()
-			if err := lr.Store.UpdatePart(part); err != nil {
-				slog.Error("update tool part", "err", err)
-			}
-
-			lr.Bus.Publish("message.part.updated", map[string]string{
-				"sessionId": string(sessionID),
-				"partId":    string(part.ID),
-			})
-		}
-
-		// If context was cancelled mid-execution, bail out now. The tool-result
-		// message must not be created — it would contain partial/missing outputs
-		// for unexecuted tool calls, leaving the DB in an inconsistent state.
-		if cancelledMidExecution {
-			exitReason = "aborted"
-			return ctx.Err()
 		}
 
 		// If tool calls were executed, always continue the loop regardless of
@@ -1013,6 +1049,15 @@ type pendingToolCall struct {
 	Input  json.RawMessage
 	Ready  bool
 	PartID session.PartID
+}
+
+// toolNames returns the names of all tool calls for logging.
+func toolNames(calls []pendingToolCall) []string {
+	names := make([]string, len(calls))
+	for i, tc := range calls {
+		names[i] = tc.Name
+	}
+	return names
 }
 
 // extractLastAssistantText returns the text from the most recent assistant message
