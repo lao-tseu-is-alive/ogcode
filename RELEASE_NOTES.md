@@ -1,4 +1,4 @@
-# 🚀 Ogcode v0.3.0 Release
+# 🚀 Ogcode v0.3.1 Release
 
 ## 📋 Executive Summary
 This minor release introduces rich markdown rendering with LaTeX math and Plotly chart support, a project notes feature with export, improved session compaction and agentic memory architecture, and several provider reliability fixes including retry logic for transient errors.
@@ -58,4 +58,4 @@ go install github.com/prasenjeet-symon/ogcode@latest
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.2.9...v0.3.0*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.3.0...v0.3.1*
