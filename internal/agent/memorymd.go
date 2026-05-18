@@ -1,0 +1,95 @@
+package agent
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	memoryMDFilename = "MEMORY.md"
+	maxMemoryMDSize   = 64 * 1024 // 64KB max total across all files
+)
+
+// LoadMemoryMD discovers and loads MEMORY.md files by walking from dir up to
+// the filesystem root. Files are returned in root-to-leaf order (outermost
+// first), so that closer/leaf files appear later in the concatenated result
+// and naturally take precedence for the LLM.
+//
+// Missing files are silently skipped. Permission or read errors are logged
+// as warnings and the file is skipped.
+func LoadMemoryMD(dir string) string {
+	paths := discoverMemoryMDPaths(dir)
+	if len(paths) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	var totalSize int
+
+	for _, p := range paths {
+		content, err := os.ReadFile(p)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				slog.Warn("failed to read MEMORY.md", "path", p, "err", err)
+			}
+			continue
+		}
+
+		trimmed := strings.TrimSpace(string(content))
+		if trimmed == "" {
+			continue
+		}
+
+		remaining := maxMemoryMDSize - totalSize
+		if remaining <= 0 {
+			slog.Warn("MEMORY.md total size exceeds limit, skipping remaining files", "limit", maxMemoryMDSize)
+			break
+		}
+
+		if len(trimmed) > remaining {
+			trimmed = trimmed[:remaining]
+			slog.Warn("MEMORY.md truncated due to size limit", "path", p, "limit", maxMemoryMDSize)
+		}
+
+		relPath, err := filepath.Rel(dir, p)
+		if err != nil {
+			relPath = p
+		}
+
+		fmt.Fprintf(&b, "\n\n<memory-md path=\"%s\">\n%s\n</memory-md>", relPath, trimmed)
+		totalSize += len(trimmed)
+	}
+
+	return b.String()
+}
+
+// discoverMemoryMDPaths walks from dir up to the filesystem root,
+// collecting MEMORY.md file paths. Returns paths in root-to-leaf order
+// (outermost first, innermost last).
+func discoverMemoryMDPaths(dir string) []string {
+	var paths []string
+
+	current := dir
+	for {
+		candidate := filepath.Join(current, memoryMDFilename)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			paths = append(paths, candidate)
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+
+	// Reverse to get root-to-leaf order
+	for i, j := 0, len(paths)-1; i < j; i, j = i+1, j-1 {
+		paths[i], paths[j] = paths[j], paths[i]
+	}
+
+	return paths
+}

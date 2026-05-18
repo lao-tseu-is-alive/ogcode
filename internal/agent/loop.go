@@ -67,12 +67,13 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		}
 	}
 
-	// Load AGENT.md files from session directory
+	// Load AGENT.md and MEMORY.md files from session directory
 	workDir := lr.Dir
 	if sess != nil && sess.Directory != "" {
 		workDir = sess.Directory
 	}
 	agentMDContent := LoadAgentMD(workDir)
+	memoryMDContent := LoadMemoryMD(workDir)
 
 	// For note sessions: save the final assistant message as note content when the loop exits.
 	// This defer runs before the loop.done publish (LIFO) so the note is persisted before
@@ -285,7 +286,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		if lr.MCP != nil {
 			mcpTools = lr.MCP.Tools()
 		}
-		system := buildSystemPrompt(agent, workDir, memoryEnabled, agentMDContent, mcpTools)
+		system := buildSystemPrompt(agent, workDir, memoryEnabled, agentMDContent, memoryMDContent, mcpTools)
 
 		systemPrompts := []string{system}
 		var modelMessages []provider.ModelMessage
@@ -1234,7 +1235,7 @@ func convertMessages(messages []*session.MessageWithParts) []provider.ModelMessa
 	return result
 }
 
-func buildSystemPrompt(a Agent, dir string, memoryEnabled bool, agentMDContent string, mcpTools map[string]mcp.ToolDef) string {
+func buildSystemPrompt(a Agent, dir string, memoryEnabled bool, agentMDContent string, memoryMDContent string, mcpTools map[string]mcp.ToolDef) string {
 	now := time.Now().Format("Mon Jan 2 15:04:05 MST 2006")
 	prompt := fmt.Sprintf(`%s
 
@@ -1244,6 +1245,20 @@ Current date: %s`, a.System, dir, runtime.GOOS, runtime.GOARCH, now)
 
 	if agentMDContent != "" {
 		prompt += agentMDContent
+	}
+
+	if memoryMDContent != "" {
+		prompt += memoryMDContent
+		prompt += `
+
+You have access to a project-level MEMORY.md file shown above in the <memory-md> tag. This is the project's long-term memory — it stores important decisions, patterns, conventions, architecture notes, and other knowledge that should persist across sessions.
+
+You can read, update, or append to this memory using your existing file tools:
+- Use the read tool to inspect the current contents of MEMORY.md
+- Use the edit tool to modify specific sections
+- Use the write tool to rewrite it entirely if needed
+
+When you learn something important that should be remembered across sessions (e.g., a key decision, a discovered pattern, an architectural choice), update MEMORY.md proactively. Do not wait for the user to ask — if it's worth remembering, write it down.`
 	}
 
 	// Inject MCP skill descriptions (excluding memory tools)
