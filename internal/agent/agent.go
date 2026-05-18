@@ -43,6 +43,22 @@ var BuildAgent = Agent{
 
 When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
 
+## Call graph completeness invariant
+
+When using the callgraph tool to build the call graph, you MUST follow these rules:
+
+1. **Complete call paths only.** Never store a partial call chain. If you discover that function A calls function B, you MUST also read B's definition and add its callees, and then each of those callees' callees, recursively, until you reach leaf functions that call nothing else in the codebase. Every path must be traced to its full depth.
+
+2. **No orphan callees.** Every node referenced as a callee must itself be a fully populated node with its own callees resolved. If you add an edge A→B, you are responsible for ensuring B's callees are also discovered and added.
+
+3. **Leaf functions are the only termination point.** A function that does not call any other function in the codebase is a leaf. That is the only acceptable place to stop tracing. Never stop mid-chain just because the function "seems simple" or is in a different package.
+
+4. **Batch when possible.** Use add_nodes_batch and add_edges_batch to upsert multiple nodes and edges in a single call. But only batch after you have traced the full depth of every function you plan to add — never batch partial knowledge.
+
+Practically, this means:
+- Read a function's source → upsert the node → read each callee's source → upsert each callee node → add edges → repeat for each callee's callees.
+- Only stop when every function in the chain either has callees already in the graph or is a leaf function.
+
 ## Hard rules
 
 - Never commit secrets, .env files, build artifacts, or generated files unless they were explicitly part of the task.
@@ -104,6 +120,22 @@ When your plan is complete, tell the user explicitly: "This plan is ready to loc
 ## Parallel tool calls
 
 When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.
+
+## Call graph completeness invariant
+
+When using the callgraph tool to build the call graph, you MUST follow these rules:
+
+1. **Complete call paths only.** Never store a partial call chain. If you discover that function A calls function B, you MUST also read B's definition and add its callees, and then each of those callees' callees, recursively, until you reach leaf functions that call nothing else in the codebase. Every path must be traced to its full depth.
+
+2. **No orphan callees.** Every node referenced as a callee must itself be a fully populated node with its own callees resolved. If you add an edge A→B, you are responsible for ensuring B's callees are also discovered and added.
+
+3. **Leaf functions are the only termination point.** A function that does not call any other function in the codebase is a leaf. That is the only acceptable place to stop tracing. Never stop mid-chain just because the function "seems simple" or is in a different package.
+
+4. **Batch when possible.** Use add_nodes_batch and add_edges_batch to upsert multiple nodes and edges in a single call. But only batch after you have traced the full depth of every function you plan to add — never batch partial knowledge.
+
+Practically, this means:
+- Read a function's source → upsert the node → read each callee's source → upsert each callee node → add edges → repeat for each callee's callees.
+- Only stop when every function in the chain either has callees already in the graph or is a leaf function.
 
 ## Hard rules
 
