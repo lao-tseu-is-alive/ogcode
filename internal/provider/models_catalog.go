@@ -37,8 +37,14 @@ type CatalogModel struct {
 var AnthropicModels = []CatalogModel{
 	// ── Claude 4 family ──────────────────────────────────────────────────────
 	{ID: "claude-opus-4-7", Name: "Claude Opus 4.7", ActiveByDefault: true},
+	{ID: "claude-opus-4-6", Name: "Claude Opus 4.6", ActiveByDefault: true},
 	{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6", ActiveByDefault: true},
 	{ID: "claude-haiku-4-5-20251001", Name: "Claude Haiku 4.5", ActiveByDefault: true},
+
+	// ── Claude 4 intermediate releases ───────────────────────────────────────
+	{ID: "claude-opus-4-5-20251101", Name: "Claude Opus 4.5", ActiveByDefault: false},
+	{ID: "claude-opus-4-1-20250805", Name: "Claude Opus 4.1", ActiveByDefault: false},
+	{ID: "claude-sonnet-4-5-20250929", Name: "Claude Sonnet 4.5", ActiveByDefault: false},
 
 	// ── Claude 4 (older releases) ────────────────────────────────────────────
 	{ID: "claude-opus-4-20250514", Name: "Claude Opus 4", ActiveByDefault: false},
@@ -48,9 +54,19 @@ var AnthropicModels = []CatalogModel{
 // OpenAIModels is the authoritative list of OpenAI models.
 // Maintained by contributors — see file header for instructions.
 var OpenAIModels = []CatalogModel{
-	// ── Flagship ─────────────────────────────────────────────────────────────
-	{ID: "gpt-4o", Name: "GPT-4o", ActiveByDefault: true},
-	{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ActiveByDefault: true},
+	// ── GPT-5 family ────────────────────────────────────────────────────────
+	{ID: "gpt-5", Name: "GPT-5", ActiveByDefault: true},
+	{ID: "gpt-5-mini", Name: "GPT-5 Mini", ActiveByDefault: true},
+	{ID: "gpt-5-nano", Name: "GPT-5 Nano", ActiveByDefault: false},
+
+	// ── GPT-4.1 family ─────────────────────────────────────────────────────
+	{ID: "gpt-4.1", Name: "GPT-4.1", ActiveByDefault: true},
+	{ID: "gpt-4.1-mini", Name: "GPT-4.1 Mini", ActiveByDefault: true},
+	{ID: "gpt-4.1-nano", Name: "GPT-4.1 Nano", ActiveByDefault: false},
+
+	// ── GPT-4o family ───────────────────────────────────────────────────────
+	{ID: "gpt-4o", Name: "GPT-4o", ActiveByDefault: false},
+	{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ActiveByDefault: false},
 
 	// ── Reasoning ────────────────────────────────────────────────────────────
 	{ID: "o4-mini", Name: "o4 Mini", ActiveByDefault: true},
