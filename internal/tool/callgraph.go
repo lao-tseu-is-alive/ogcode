@@ -38,74 +38,60 @@ Actions:
 - "callees" — Given a node ID, find what functions it calls
 - "callers" — Given a node ID, find what functions call it
 - "reachable" — Find all nodes reachable from a node (transitive callers)
-- "upsert_node" — Add or update a call node
+- "upsert_node" — Add or update a call node (MUST include a meaningful "doc" field — see below)
 - "add_edge" — Add a call edge (caller → callee)
-- "add_nodes_batch" — Add multiple nodes at once
+- "add_nodes_batch" — Add multiple nodes at once (each MUST include a meaningful "doc" field)
 - "add_edges_batch" — Add multiple edges at once
 - "delete_nodes_by_file" — Remove all nodes and edges for a specific file (used after mutations to clear stale data before re-syncing)
-- "clear" — Remove all call graph data for a directory`
+- "clear" — Remove all call graph data for a directory
+
+IMPORTANT: The "doc" field on nodes
+Every node MUST have a meaningful "doc" field. This field transforms the call graph
+from a structural map into a semantic map — it lets future queries understand what a
+function does without re-reading source code. The doc field should contain:
+1. What it does — a concise summary of the function's behavior
+2. How it relates to other nodes — which callers/callees it connects and what flows through those edges
+3. Why it exists — the architectural purpose it serves in the overall system
+Example: "Executes the main agent loop, handling streaming, tool execution, and memory writes. Called by Run to start a session; calls buildSystemPrompt to assemble context and processToolCalls to dispatch tools. Exists to separate orchestration logic from per-request setup."
+Do NOT leave the doc field empty or set it to something vague like "processes request".`
 }
 
 func (t CallGraphTool) Parameters() json.RawMessage {
 	return json.RawMessage(`{
-		"type": "object",
-		"required": ["action", "directory"],
-		"properties": {
-			"action": {
-				"type": "string",
-				"description": "One of: stats, nodes, edges, callees, callers, reachable, upsert_node, add_edge, add_nodes_batch, add_edges_batch, delete_nodes_by_file, clear"
-			},
-			"directory": {
-				"type": "string",
-				"description": "The project directory (usually the working directory)"
-			},
-			"file_path": {
-				"type": "string",
-				"description": "File path (relative to directory) for delete_nodes_by_file — removes all nodes and edges belonging to this file"
-			},
-			"node_id": {
-				"type": "integer",
-				"description": "Node ID for callees/callers/reachable queries"
-			},
-			"package": {
-				"type": "string",
-				"description": "Package filter for nodes query"
-			},
-			"kind": {
-				"type": "string",
-				"description": "Node kind filter (function, method) for nodes query"
-			},
-			"max_depth": {
-				"type": "integer",
-				"description": "Max depth for reachable query (default 20)"
-			},
-			"node": {
-				"type": "object",
-				"description": "Node data for upsert_node action",
-				"properties": {
-					"package": {"type": "string"},
-					"symbol": {"type": "string"},
-					"filePath": {"type": "string"},
-					"line": {"type": "integer"},
-					"kind": {"type": "string"},
-					"signature": {"type": "string"},
-					"doc": {"type": "string"}
-				}
-			},
-			"edge": {
-				"type": "object",
-				"description": "Edge data for add_edge action",
-				"properties": {
-					"callerId": {"type": "integer"},
-					"calleeId": {"type": "integer"},
-					"callType": {"type": "string"}
-				}
-			},
-			"nodes": {
-				"type": "array",
-				"description": "Array of nodes for add_nodes_batch",
-				"items": {
+			"type": "object",
+			"required": ["action", "directory"],
+			"properties": {
+				"action": {
+					"type": "string",
+					"description": "One of: stats, nodes, edges, callees, callers, reachable, upsert_node, add_edge, add_nodes_batch, add_edges_batch, delete_nodes_by_file, clear"
+				},
+				"directory": {
+					"type": "string",
+					"description": "The project directory (usually the working directory)"
+				},
+				"file_path": {
+					"type": "string",
+					"description": "File path (relative to directory) for delete_nodes_by_file — removes all nodes and edges belonging to this file"
+				},
+				"node_id": {
+					"type": "integer",
+					"description": "Node ID for callees/callers/reachable queries"
+				},
+				"package": {
+					"type": "string",
+					"description": "Package filter for nodes query"
+				},
+				"kind": {
+					"type": "string",
+					"description": "Node kind filter (function, method) for nodes query"
+				},
+				"max_depth": {
+					"type": "integer",
+					"description": "Max depth for reachable query (default 20)"
+				},
+				"node": {
 					"type": "object",
+					"description": "Node data for upsert_node action",
 					"properties": {
 						"package": {"type": "string"},
 						"symbol": {"type": "string"},
@@ -113,24 +99,48 @@ func (t CallGraphTool) Parameters() json.RawMessage {
 						"line": {"type": "integer"},
 						"kind": {"type": "string"},
 						"signature": {"type": "string"},
-						"doc": {"type": "string"}
+						"doc": {"type": "string", "description": "REQUIRED: What this function does, how it relates to other nodes, and why it exists. Include: (1) what it does — concise behavior summary, (2) how it relates — callers/callees and data flow, (3) why it exists — architectural purpose. Do NOT leave empty."}
 					}
-				}
-			},
-			"edges": {
-				"type": "array",
-				"description": "Array of edges for add_edges_batch",
-				"items": {
+				},
+				"edge": {
 					"type": "object",
+					"description": "Edge data for add_edge action",
 					"properties": {
 						"callerId": {"type": "integer"},
 						"calleeId": {"type": "integer"},
 						"callType": {"type": "string"}
 					}
+				},
+				"nodes": {
+					"type": "array",
+					"description": "Array of nodes for add_nodes_batch",
+					"items": {
+						"type": "object",
+						"properties": {
+							"package": {"type": "string"},
+							"symbol": {"type": "string"},
+							"filePath": {"type": "string"},
+							"line": {"type": "integer"},
+							"kind": {"type": "string"},
+							"signature": {"type": "string"},
+							"doc": {"type": "string", "description": "REQUIRED: What this function does, how it relates to other nodes, and why it exists. Do NOT leave empty."}
+						}
+					}
+				},
+				"edges": {
+					"type": "array",
+					"description": "Array of edges for add_edges_batch",
+					"items": {
+						"type": "object",
+						"properties": {
+							"callerId": {"type": "integer"},
+							"calleeId": {"type": "integer"},
+							"callType": {"type": "string"}
+						}
+					}
 				}
 			}
-		}
-	}`)
+		}`)
 }
 
 func (t CallGraphTool) Execute(ctx context.Context, args json.RawMessage, tctx Context) (Result, error) {
@@ -217,6 +227,13 @@ func (t CallGraphTool) Execute(ctx context.Context, args json.RawMessage, tctx C
 	}
 }
 
+func formatDoc(doc string) string {
+	if doc == "" {
+		return ""
+	}
+	return "\n    " + strings.ReplaceAll(doc, "\n", "\n    ")
+}
+
 func (t CallGraphTool) stats(dir string) (Result, error) {
 	nodes, edges, err := t.Store.Stats(dir)
 	if err != nil {
@@ -240,7 +257,11 @@ func (t CallGraphTool) nodes(dir, pkg, kind string) (Result, error) {
 		if sig != "" {
 			sig = " " + sig
 		}
-		lines = append(lines, fmt.Sprintf("[%d] %s.%s (%s:%d) %s%s", n.ID, n.Package, n.Symbol, n.FilePath, n.Line, n.Kind, sig))
+		line := fmt.Sprintf("[%d] %s.%s (%s:%d) %s%s", n.ID, n.Package, n.Symbol, n.FilePath, n.Line, n.Kind, sig)
+		if n.Doc != "" {
+			line += formatDoc(n.Doc)
+		}
+		lines = append(lines, line)
 	}
 	return Result{Title: "CallGraph Nodes", Output: strings.Join(lines, "\n")}, nil
 }
@@ -295,7 +316,11 @@ func (t CallGraphTool) callees(nodeID int64) (Result, error) {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("%s.%s calls:", caller.Package, caller.Symbol))
 	for _, r := range results {
-		lines = append(lines, fmt.Sprintf("  → [%d] %s.%s (%s:%d) [%s]", r.Callee.ID, r.Callee.Package, r.Callee.Symbol, r.Callee.FilePath, r.Callee.Line, r.Edge.CallType))
+		line := fmt.Sprintf("  → [%d] %s.%s (%s:%d) [%s]", r.Callee.ID, r.Callee.Package, r.Callee.Symbol, r.Callee.FilePath, r.Callee.Line, r.Edge.CallType)
+		if r.Callee.Doc != "" {
+			line += formatDoc(r.Callee.Doc)
+		}
+		lines = append(lines, line)
 	}
 	return Result{Title: fmt.Sprintf("Callees of %s.%s", caller.Package, caller.Symbol), Output: strings.Join(lines, "\n")}, nil
 }
@@ -319,7 +344,11 @@ func (t CallGraphTool) callers(nodeID int64) (Result, error) {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("%s.%s is called by:", callee.Package, callee.Symbol))
 	for _, r := range results {
-		lines = append(lines, fmt.Sprintf("  ← [%d] %s.%s (%s:%d) [%s]", r.Caller.ID, r.Caller.Package, r.Caller.Symbol, r.Caller.FilePath, r.Caller.Line, r.Edge.CallType))
+		line := fmt.Sprintf("  ← [%d] %s.%s (%s:%d) [%s]", r.Caller.ID, r.Caller.Package, r.Caller.Symbol, r.Caller.FilePath, r.Caller.Line, r.Edge.CallType)
+		if r.Caller.Doc != "" {
+			line += formatDoc(r.Caller.Doc)
+		}
+		lines = append(lines, line)
 	}
 	return Result{Title: fmt.Sprintf("Callers of %s.%s", callee.Package, callee.Symbol), Output: strings.Join(lines, "\n")}, nil
 }
@@ -340,7 +369,11 @@ func (t CallGraphTool) reachable(nodeID int64, maxDepth int) (Result, error) {
 	}
 	var lines []string
 	for _, n := range nodes {
-		lines = append(lines, fmt.Sprintf("  [%d] %s.%s (%s:%d)", n.ID, n.Package, n.Symbol, n.FilePath, n.Line))
+		line := fmt.Sprintf("  [%d] %s.%s (%s:%d)", n.ID, n.Package, n.Symbol, n.FilePath, n.Line)
+		if n.Doc != "" {
+			line += formatDoc(n.Doc)
+		}
+		lines = append(lines, line)
 	}
 	return Result{Title: "CallGraph Reachable", Output: strings.Join(lines, "\n")}, nil
 }
@@ -371,7 +404,13 @@ func (t CallGraphTool) upsertNode(dir string, node *struct {
 	if err != nil {
 		return Result{}, fmt.Errorf("upsert call node: %w", err)
 	}
-	return Result{Title: "CallGraph Node Upserted", Output: fmt.Sprintf("Node [%d] %s.%s", result.ID, result.Package, result.Symbol)}, nil
+	var output string
+	if result.Doc != "" {
+		output = fmt.Sprintf("Node [%d] %s.%s\n  doc: %s", result.ID, result.Package, result.Symbol, result.Doc)
+	} else {
+		output = fmt.Sprintf("Node [%d] %s.%s (no doc)", result.ID, result.Package, result.Symbol)
+	}
+	return Result{Title: "CallGraph Node Upserted", Output: output}, nil
 }
 
 func (t CallGraphTool) addEdge(dir string, edge *struct {
@@ -427,7 +466,11 @@ func (t CallGraphTool) addNodesBatch(dir string, nodes []struct {
 	}
 	var lines []string
 	for _, r := range results {
-		lines = append(lines, fmt.Sprintf("[%d] %s.%s", r.ID, r.Package, r.Symbol))
+		if r.Doc != "" {
+			lines = append(lines, fmt.Sprintf("[%d] %s.%s\n    doc: %s", r.ID, r.Package, r.Symbol, r.Doc))
+		} else {
+			lines = append(lines, fmt.Sprintf("[%d] %s.%s (no doc)", r.ID, r.Package, r.Symbol))
+		}
 	}
 	return Result{Title: fmt.Sprintf("CallGraph: %d Nodes Upserted", len(results)), Output: strings.Join(lines, "\n")}, nil
 }

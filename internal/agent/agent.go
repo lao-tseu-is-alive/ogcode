@@ -61,6 +61,24 @@ Do NOT build the call graph when:
 - You are only running build/test commands, not reading code.
 - The graph is already populated for the area you're working on (check with "stats" first).
 
+## Populating the doc field (IMPORTANT)
+
+Every node you add to the call graph MUST have a meaningful "doc" field. The doc field is what turns the graph from a structural map into a *semantic* map — it allows future queries to understand what a function does and why it matters without re-reading the source code.
+
+When upserting a node (via upsert_node or add_nodes_batch), always include a "doc" field that contains:
+
+1. **What it does** — A concise summary of the function's behavior, drawn from its doc comment or your reading of the code. What does this function accomplish? What does it return or produce?
+
+2. **How it relates to other nodes** — Which callers or callees it connects, and what data or control flows through those edges. E.g. "Called by Run to start agent session; calls buildSystemPrompt for context assembly and processToolCalls for tool dispatch."
+
+3. **Why it exists** — The architectural purpose it serves. Why was this function created instead of inlining its logic? What role does it play in the overall system?
+
+A good example: "Executes the main agent loop, handling streaming, tool execution, and memory writes. Called by Run to start a session; calls buildSystemPrompt to assemble context and processToolCalls to dispatch tools. Exists to separate orchestration logic from per-request setup."
+
+A bad example: "processes request" — this is too vague to be useful.
+
+**Do not skip the doc field.** Without meaningful docs, the call graph captures structure but loses meaning. A future agent querying the graph cannot understand what a function does or why it matters, and must re-read source code — defeating the purpose of building the graph in the first place.
+
 ## Call graph completeness invariant
 
 When using the callgraph tool to build the call graph, you MUST follow these rules:
@@ -74,7 +92,7 @@ When using the callgraph tool to build the call graph, you MUST follow these rul
 4. **Batch when possible.** Use add_nodes_batch and add_edges_batch to upsert multiple nodes and edges in a single call. But only batch after you have traced the full depth of every function you plan to add — never batch partial knowledge.
 
 Practically, this means:
-- Read a function's source → upsert the node → read each callee's source → upsert each callee node → add edges → repeat for each callee's callees.
+- Read a function's source → upsert the node (with doc) → read each callee's source → upsert each callee node (with doc) → add edges → repeat for each callee's callees.
 - Only stop when every function in the chain either has callees already in the graph or is a leaf function.
 
 ## Post-mutation call graph sync (CRITICAL)
@@ -85,7 +103,7 @@ After every successful source code mutation (creating, editing, or deleting a fi
 
 1. **Purge stale data.** Immediately after a successful write/edit, call the callgraph tool with action "delete_nodes_by_file" for every file you just changed. This removes all nodes and edges that belonged to the old version of that file.
 
-2. **Re-read and re-populate.** Read the mutated file, identify every function/method definition and every call relationship, and upsert the affected nodes and edges back into the call graph. Follow the same completeness invariant as when building the graph initially — trace every call path to its leaf.
+2. **Re-read and re-populate.** Read the mutated file, identify every function/method definition and every call relationship, and upsert the affected nodes and edges back into the call graph. Follow the same completeness invariant as when building the graph initially — trace every call path to its leaf. **Remember to include meaningful doc fields for every re-upserted node.**
 
 3. **Check downstream impact.** After re-populating the file's own functions, check if any functions you modified are called from other files. Use "callers" to find who depends on them. If you changed a function signature, removed a function, or altered its behavior, verify that those callers still work correctly.
 
@@ -179,6 +197,24 @@ Do NOT build the call graph when:
 - The task is trivial and touches only one file with no cross-file impact.
 - The graph is already populated for the area you're working on (check with "stats" first).
 
+## Populating the doc field (IMPORTANT)
+
+Every node you add to the call graph MUST have a meaningful "doc" field. The doc field is what turns the graph from a structural map into a *semantic* map — it allows future queries to understand what a function does and why it matters without re-reading the source code.
+
+When upserting a node (via upsert_node or add_nodes_batch), always include a "doc" field that contains:
+
+1. **What it does** — A concise summary of the function's behavior, drawn from its doc comment or your reading of the code. What does this function accomplish? What does it return or produce?
+
+2. **How it relates to other nodes** — Which callers or callees it connects, and what data or control flows through those edges. E.g. "Called by Run to start agent session; calls buildSystemPrompt for context assembly and processToolCalls for tool dispatch."
+
+3. **Why it exists** — The architectural purpose it serves. Why was this function created instead of inlining its logic? What role does it play in the overall system?
+
+A good example: "Executes the main agent loop, handling streaming, tool execution, and memory writes. Called by Run to start a session; calls buildSystemPrompt to assemble context and processToolCalls to dispatch tools. Exists to separate orchestration logic from per-request setup."
+
+A bad example: "processes request" — this is too vague to be useful.
+
+**Do not skip the doc field.** Without meaningful docs, the call graph captures structure but loses meaning. A future agent querying the graph cannot understand what a function does or why it matters, and must re-read source code — defeating the purpose of building the graph in the first place.
+
 ## Call graph completeness invariant
 
 When using the callgraph tool to build the call graph, you MUST follow these rules:
@@ -192,7 +228,7 @@ When using the callgraph tool to build the call graph, you MUST follow these rul
 4. **Batch when possible.** Use add_nodes_batch and add_edges_batch to upsert multiple nodes and edges in a single call. But only batch after you have traced the full depth of every function you plan to add — never batch partial knowledge.
 
 Practically, this means:
-- Read a function's source → upsert the node → read each callee's source → upsert each callee node → add edges → repeat for each callee's callees.
+- Read a function's source → upsert the node (with doc) → read each callee's source → upsert each callee node (with doc) → add edges → repeat for each callee's callees.
 - Only stop when every function in the chain either has callees already in the graph or is a leaf function.
 
 ## Hard rules
