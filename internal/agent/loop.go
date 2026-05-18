@@ -785,6 +785,10 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 					slog.Error("get tool part", "err", perr)
 					continue
 				}
+				if part == nil {
+					slog.Error("tool part not found", "partId", tc.PartID)
+					continue
+				}
 
 				var toolData session.ToolPartData
 				if err := json.Unmarshal(part.Data, &toolData); err != nil {
@@ -867,7 +871,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 					continue
 				}
 				part, perr := lr.Store.GetPart(tc.PartID)
-				if perr != nil {
+				if perr != nil || part == nil {
 					continue
 				}
 				var toolData session.ToolPartData
