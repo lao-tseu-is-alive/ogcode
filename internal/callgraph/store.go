@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/prasenjeet-symon/ogcode/internal/db"
@@ -310,6 +311,47 @@ func (s *Store) ReachableFrom(nodeID int64, maxDepth int) ([]CallNode, error) {
 		queue = nextQueue
 	}
 	return result, nil
+}
+
+// SearchNodes searches call nodes by substring matching on symbol names, doc
+// text, and signatures. It returns nodes whose symbol, doc, or signature
+// contains the query string (case-insensitive). This enables discovery-oriented
+// queries like "find all functions related to encryption" or "where is Store
+// defined" without knowing exact package or symbol names — replacing many
+// grep + read cycles with a single call graph query.
+func (s *Store) SearchNodes(directory, query string, limit int) ([]CallNode, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	pattern := "%" + strings.ToLower(query) + "%"
+	rows, err := s.db.Query(`
+		SELECT id, directory, package, symbol, file_path, line, kind, signature, doc, created_at, updated_at
+		FROM call_node
+		WHERE directory = ?
+		  AND (LOWER(symbol) LIKE ? OR LOWER(doc) LIKE ? OR LOWER(signature) LIKE ?)
+		ORDER BY
+		  CASE
+			WHEN LOWER(symbol) = LOWER(?) THEN 0
+			WHEN LOWER(symbol) LIKE LOWER(?) THEN 1
+			ELSE 2
+		  END,
+		  package, symbol
+		LIMIT ?
+	`, directory, pattern, pattern, pattern, query, "%"+strings.ToLower(query)+"%", limit)
+	if err != nil {
+		return nil, fmt.Errorf("search call nodes: %w", err)
+	}
+	defer rows.Close()
+
+	var nodes []CallNode
+	for rows.Next() {
+		n, err := scanNodeRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, *n)
+	}
+	return nodes, rows.Err()
 }
 
 // Stats returns the count of nodes and edges for a directory.

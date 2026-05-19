@@ -394,3 +394,113 @@ func TestDeleteNodesByFile(t *testing.T) {
 		t.Errorf("expected 0 deleted for nonexistent file, got %d", deleted2)
 	}
 }
+
+func TestSearchNodes(t *testing.T) {
+	database := openTestDB(t)
+	s := NewStore(database)
+
+	// Create some nodes with docs
+	s.UpsertNode(CallNode{
+		Directory: "/project", Package: "server", Symbol: "Server.Start",
+		FilePath: "server.go", Line: 79, Kind: KindMethod,
+		Signature: "func (s *Server) Start() error",
+		Doc:       "Starts the HTTP server and begins accepting connections",
+	})
+	s.UpsertNode(CallNode{
+		Directory: "/project", Package: "server", Symbol: "Server.Stop",
+		FilePath: "server.go", Line: 120, Kind: KindMethod,
+		Signature: "func (s *Server) Stop() error",
+		Doc:       "Gracefully shuts down the HTTP server",
+	})
+	s.UpsertNode(CallNode{
+		Directory: "/project", Package: "memory", Symbol: "Open",
+		FilePath: "store.go", Line: 73, Kind: KindFunction,
+		Signature: "func Open(path string) (*Store, error)",
+		Doc:       "Opens or creates the memory SQLite database",
+	})
+	s.UpsertNode(CallNode{
+		Directory: "/project", Package: "callgraph", Symbol: "Store.SearchNodes",
+		FilePath: "store.go", Line: 321, Kind: KindMethod,
+		Signature: "func (s *Store) SearchNodes(directory, query string, limit int) ([]CallNode, error)",
+		Doc:       "Searches call nodes by substring matching on symbol, doc, and signature",
+	})
+
+	// Test: search by symbol name
+	results, err := s.SearchNodes("/project", "Server", 10)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results for 'Server', got %d", len(results))
+	}
+
+	// Test: search by doc content
+	results, err = s.SearchNodes("/project", "database", 10)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result for 'database', got %d", len(results))
+	}
+	if results[0].Symbol != "Open" {
+		t.Errorf("expected 'Open' for 'database' search, got %s", results[0].Symbol)
+	}
+
+	// Test: search by signature content
+	results, err = s.SearchNodes("/project", "SearchNodes", 10)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result for 'SearchNodes', got %d", len(results))
+	}
+
+	// Test: case-insensitive search
+	results, err = s.SearchNodes("/project", "sqlite", 10)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result for case-insensitive 'sqlite', got %d", len(results))
+	}
+
+	// Test: no results
+	results, err = s.SearchNodes("/project", "nonexistent", 10)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for 'nonexistent', got %d", len(results))
+	}
+
+	// Test: limit
+	results, err = s.SearchNodes("/project", "Server", 1)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) > 1 {
+		t.Errorf("expected at most 1 result with limit=1, got %d", len(results))
+	}
+
+	// Test: different directory returns nothing
+	results, err = s.SearchNodes("/other-project", "Server", 10)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for different directory, got %d", len(results))
+	}
+
+	// Test: exact match ranks higher (symbol = "Open" should come before "Open" in doc)
+	results, err = s.SearchNodes("/project", "Open", 10)
+	if err != nil {
+		t.Fatalf("SearchNodes: %v", err)
+	}
+	if len(results) < 1 {
+		t.Errorf("expected at least 1 result for 'Open', got %d", len(results))
+	}
+	// The exact symbol match should be first
+	if results[0].Symbol != "Open" {
+		t.Errorf("expected first result to be 'Open', got %s", results[0].Symbol)
+	}
+}

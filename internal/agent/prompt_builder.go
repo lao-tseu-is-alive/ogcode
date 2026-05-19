@@ -9,13 +9,30 @@ func callGraphPrompt(role string) string {
 
 Use the callgraph tool proactively during code exploration to build a persistent map of the codebase's function call relationships. Specifically, you SHOULD build the call graph when:
 
-1. **You start exploring a new codebase or directory** — Before diving into implementation, call "stats" to check if call graph data already exists. If it does, use "nodes" and "edges" to recall what's already known instead of re-reading files.
+1. **You start exploring a new codebase or directory** — Before diving into implementation, call "stats" to check if call graph data already exists. If it does, use "search" to find relevant functions by name or concept, then "nodes" or "callees"/"callers" to navigate the graph. If the graph is empty or sparse, build it as you explore.
 
 2. **You read a function's source to understand how it works** — When you read a function body (via the read tool) and see it calling other functions, don't just mentally note it. Upsert the function as a node, then upsert each callee and add edges. This builds the graph incrementally as you explore.
 
 3. **The task requires understanding control flow, data flow, or impact analysis** — If the task asks "what affects X", "what does X call", "who calls X", or requires understanding how a change propagates through the code, use "callers", "callees", or "reachable" queries first. If the graph is incomplete, trace and fill in the missing paths.
 
 4. **You need to plan changes that touch shared functions** — Before modifying any function that isn't private to a single file, check "callers" to understand who will be affected. This prevents breaking downstream callers.
+
+## Using search instead of grep for codebase exploration
+
+The callgraph "search" action is a **semantic code search** that can replace many grep + read cycles. It searches across symbol names, doc fields, and function signatures — all case-insensitive.
+
+**Prefer callgraph search over grep when:**
+- Looking for a function or method by name (e.g. "where is UpsertNode defined?" → call search with query "UpsertNode")
+- Exploring a concept or domain (e.g. "what handles database connections?" → call search with query "database connection")
+- Understanding what a package provides (e.g. call search with query "Store" after checking stats shows populated data)
+- Finding all methods on a type (e.g. call search with query "Server." to find all Server methods)
+
+**Still use grep when:**
+- Searching for string literals, constants, variable names, or comments that aren't in the call graph
+- The call graph is empty or sparse (check with "stats" first)
+- Searching in non-code files (configs, SQL, markdown, etc.)
+
+The key insight: search gives you the function's doc, file path, line number, and signature in one query — what would take a grep to find, a read to understand, and another grep to trace callees. When the graph is populated, search is strictly faster than grep for understanding code structure.
 
 Do NOT build the call graph when:
 - The task is trivial and touches only one file with no cross-file impact.
@@ -85,13 +102,30 @@ After every successful source code mutation (creating, editing, or deleting a fi
 
 Use the callgraph tool proactively during code exploration to build a persistent map of the codebase's function call relationships. Specifically, you SHOULD build the call graph when:
 
-1. **You start exploring a new codebase or directory** — Before diving into planning, call "stats" to check if call graph data already exists. If it does, use "nodes" and "edges" to recall what's already known instead of re-reading files.
+1. **You start exploring a new codebase or directory** — Before diving into planning, call "stats" to check if call graph data already exists. If it does, use "search" to find relevant functions by name or concept, then "nodes" or "callees"/"callers" to navigate the graph. If the graph is empty or sparse, build it as you explore.
 
 2. **You read a function's source to understand how it works** — When you read a function body (via the read tool) and see it calling other functions, don't just mentally note it. Upsert the function as a node, then upsert each callee and add edges. This builds the graph incrementally as you explore.
 
 3. **The task requires understanding control flow, data flow, or impact analysis** — If the request asks "what affects X", "what does X call", "who calls X", or requires understanding how a change propagates through the code, use "callers", "callees", or "reachable" queries first. If the graph is incomplete, trace and fill in the missing paths.
 
 4. **You need to plan changes that touch shared functions** — Before planning modifications to any function that isn't private to a single file, check "callers" to understand who will be affected. This prevents missing downstream impact in your plan.
+
+## Using search instead of grep for codebase exploration
+
+The callgraph "search" action is a **semantic code search** that can replace many grep + read cycles. It searches across symbol names, doc fields, and function signatures — all case-insensitive.
+
+**Prefer callgraph search over grep when:**
+- Looking for a function or method by name (e.g. "where is UpsertNode defined?" → call search with query "UpsertNode")
+- Exploring a concept or domain (e.g. "what handles database connections?" → call search with query "database connection")
+- Understanding what a package provides (e.g. call search with query "Store" after checking stats shows populated data)
+- Finding all methods on a type (e.g. call search with query "Server." to find all Server methods)
+
+**Still use grep when:**
+- Searching for string literals, constants, variable names, or comments that aren't in the call graph
+- The call graph is empty or sparse (check with "stats" first)
+- Searching in non-code files (configs, SQL, markdown, etc.)
+
+The key insight: search gives you the function's doc, file path, line number, and signature in one query — what would take a grep to find, a read to understand, and another grep to trace callees. When the graph is populated, search is strictly faster than grep for understanding code structure.
 
 Do NOT build the call graph when:
 - The task is trivial and touches only one file with no cross-file impact.
