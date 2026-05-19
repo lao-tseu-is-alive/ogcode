@@ -126,6 +126,60 @@ func TestNoPackageManagerDirsPrompt(t *testing.T) {
 	}
 }
 
+func TestProjectNotesPrompt_CanWrite(t *testing.T) {
+	prompt := projectNotesPrompt(true)
+
+	if !strings.Contains(prompt, "## Project notes") {
+		t.Error("expected 'Project notes' heading when canWriteFiles=true")
+	}
+	if !strings.Contains(prompt, ".ogcode/notes/*.md") {
+		t.Error("expected '.ogcode/notes/*.md' mention when canWriteFiles=true")
+	}
+	if !strings.Contains(prompt, "managed exclusively by the NoteAgent") {
+		t.Error("expected NoteAgent restriction when canWriteFiles=true")
+	}
+	if !strings.Contains(prompt, "Do not create, modify, or delete any files in .ogcode/notes/") {
+		t.Error("expected explicit read-only restriction for notes dir when canWriteFiles=true")
+	}
+	if !strings.Contains(prompt, "You may only read notes") {
+		t.Error("expected read-only permission wording when canWriteFiles=true")
+	}
+}
+
+func TestProjectNotesPrompt_ReadOnly(t *testing.T) {
+	prompt := projectNotesPrompt(false)
+
+	if !strings.Contains(prompt, "## Project notes") {
+		t.Error("expected 'Project notes' heading when canWriteFiles=false")
+	}
+	if !strings.Contains(prompt, ".ogcode/notes/*.md") {
+		t.Error("expected '.ogcode/notes/*.md' mention when canWriteFiles=false")
+	}
+	// Read-only agents should NOT see the NoteAgent restriction since they can't write anyway
+	if strings.Contains(prompt, "managed exclusively by the NoteAgent") {
+		t.Error("did not expect NoteAgent restriction when canWriteFiles=false")
+	}
+	if strings.Contains(prompt, "Do not create, modify, or delete") {
+		t.Error("did not expect write restriction wording when canWriteFiles=false (they can't write at all)")
+	}
+}
+
+func TestProjectNotesPrompt_CommonSections(t *testing.T) {
+	// Both variants should include common guidance
+	for _, canWrite := range []bool{true, false} {
+		prompt := projectNotesPrompt(canWrite)
+		for _, sub := range []string{
+			"## Project notes",
+			".ogcode/notes/",
+			"don't repeat what is already documented",
+		} {
+			if !strings.Contains(prompt, sub) {
+				t.Errorf("expected %q in projectNotesPrompt (canWrite=%v)", sub, canWrite)
+			}
+		}
+	}
+}
+
 func TestBuildAgent_HasExpectedTools(t *testing.T) {
 	if !BuildAgent.HasTool("write") {
 		t.Error("BuildAgent should have write tool")
@@ -202,6 +256,14 @@ func TestBuildAgent_SystemPrompt_ContainsSharedSections(t *testing.T) {
 	}
 	if !strings.Contains(BuildAgent.System, "Project notes") {
 		t.Error("BuildAgent system prompt should mention project notes")
+	}
+	// BuildAgent has write/edit tools, so its project notes section must include
+	// the read-only restriction for .ogcode/notes/
+	if !strings.Contains(BuildAgent.System, "managed exclusively by the NoteAgent") {
+		t.Error("BuildAgent system prompt should include NoteAgent restriction for notes directory")
+	}
+	if !strings.Contains(BuildAgent.System, "Do not create, modify, or delete any files in .ogcode/notes/") {
+		t.Error("BuildAgent system prompt should include read-only restriction for notes directory")
 	}
 }
 

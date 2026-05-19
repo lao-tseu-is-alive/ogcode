@@ -212,6 +212,24 @@ func parallelToolCallsPrompt() string {
 When you need to make multiple tool calls and they are independent of each other (i.e., the result of one does not affect the inputs of another), make all the calls in the same response block rather than making them sequentially. This significantly improves efficiency and reduces latency. For example, if you need to read three unrelated files, invoke all three read calls together rather than one after another.`
 }
 
+// projectNotesPrompt returns the project notes section, adapted for the agent's
+// capabilities. Agents with write/edit tools get an explicit read-only restriction
+// for the .ogcode/notes/ directory (notes are managed exclusively by the NoteAgent
+// through its backend flow). Read-only agents get the basic notes guidance.
+func projectNotesPrompt(canWriteFiles bool) string {
+	prompt := `## Project notes
+
+Project notes are saved in .ogcode/notes/ as markdown files. Before starting, check if any existing notes are relevant to the task by globbing .ogcode/notes/*.md and reading the ones that look relevant. Use them as context — don't repeat what is already documented.`
+
+	if canWriteFiles {
+		prompt += `
+
+The .ogcode/notes/ directory is managed exclusively by the NoteAgent. Do not create, modify, or delete any files in .ogcode/notes/. You may only read notes from this directory for context.`
+	}
+
+	return prompt
+}
+
 // noPackageManagerDirsPrompt returns the shared admonition to avoid exploring
 // dependency directories.
 func noPackageManagerDirsPrompt() string {

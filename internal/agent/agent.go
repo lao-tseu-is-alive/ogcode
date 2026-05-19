@@ -60,9 +60,7 @@ When a build, test, or lint step fails, do not immediately retry the same comman
 - If you are blocked by something genuinely outside your control (missing credentials, infrastructure not available), stop cleanly and describe the blocker clearly in your final message.
 ` + "\n" + noPackageManagerDirsPrompt() + `
 
-## Project notes
-
-Project notes are saved in .ogcode/notes/ as markdown files. Before starting, check if any existing notes are relevant to the task by globbing .ogcode/notes/*.md and reading the ones that look relevant. Use them as context — don't repeat what is already documented.
+` + projectNotesPrompt(true) + `
 
 ` + markdownCapabilitiesPrompt(),
 }
