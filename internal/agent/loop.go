@@ -1300,50 +1300,16 @@ Current date: %s`, a.System, dir, runtime.GOOS, runtime.GOARCH, now)
 		prompt += memoryMDContent
 	}
 
-	prompt += `
+	// MEMORY.md section: role-aware instructions based on whether the agent
+	// can write files. BuildAgent gets full read/write maintenance instructions;
+	// read-only agents (Plan, Note) get read-only guidance.
+	canWriteFiles := a.HasTool("write") || a.HasTool("edit")
+	prompt += "\n\n" + memoryMDPrompt(canWriteFiles)
 
-## MEMORY.md — Project Long-Term Memory
-
-`
-	if memoryMDContent != "" {
-		prompt += `The content above in the <memory-md> tag is loaded from your project's MEMORY.md file(s). This is the project's persistent, cross-session knowledge base. It survives across conversations — unlike chat history, which resets each session.
-
-`
-	} else {
-		prompt += `No MEMORY.md file was found in this project. You should create one in the project root directory. This is the project's persistent, cross-session knowledge base — it survives across conversations, unlike chat history which resets each session. Create it now using the write tool if the project has any meaningful knowledge to record.
-
-`
+	// When no MEMORY.md exists and the agent can create one, prompt it to do so.
+	if memoryMDContent == "" && canWriteFiles {
+		prompt += "\n\nNo MEMORY.md file was found in this project. You should create one in the project root directory using the write tool if the project has any meaningful knowledge to record."
 	}
-
-	prompt += `### Purpose
-MEMORY.md stores hard-won knowledge about this project that you would otherwise forget between sessions. Think of it as a lab notebook: a place to record what you've learned so your future self (and future sessions) don't have to rediscover it.
-
-### What belongs in MEMORY.md
-- **Decisions & rationale** — why a particular approach was chosen over alternatives
-- **Patterns & conventions** — naming patterns, file organization, coding style, commit message format
-- **Architecture notes** — how components connect, data flow, key abstractions
-- **Gotchas & pitfalls** — things that broke unexpectedly, non-obvious behaviors, workarounds
-- **Project-specific facts** — config values, API quirks, dependency versions, build commands
-- **Workflow notes** — how to test, deploy, debug, or reproduce issues in this project
-
-### What does NOT belong in MEMORY.md
-- Temporary or per-session state (use chat context or agentic memory recall for that)
-- Instructions or rules for how to behave (those go in AGENT.md, not MEMORY.md)
-- Verbose logs or full file contents (link or reference them, don't copy them)
-- Information that is obvious from reading the code itself
-
-### How it differs from AGENT.md and agentic memory
-- **AGENT.md** = behavioral instructions ("follow these rules", "always do X before Y"). It tells you HOW to act.
-- **MEMORY.md** = factual knowledge ("we chose PostgreSQL over MongoDB because X", "the auth middleware lives in middleware/auth.go"). It tells you WHAT you know.
-- **Agentic memory** (the <prior_context> block and memory_recall tool) = per-session conversation summaries. It provides continuity within a single session. MEMORY.md persists across all sessions.
-
-### How to maintain MEMORY.md
-- Use the read tool to inspect current contents before making changes
-- Use the edit tool for targeted updates (preferred — avoids rewriting the whole file)
-- Use the write tool only when restructuring the entire file or creating the file for the first time
-- Update MEMORY.md proactively when you learn something important — do not wait to be asked
-- Keep it concise and well-organized — future sessions must read and understand it quickly
-- Remove or update stale entries when you discover they're no longer accurate`
 
 	// Inject MCP skill descriptions (excluding memory tools)
 	if len(mcpTools) > 0 {
