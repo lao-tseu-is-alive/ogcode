@@ -15,6 +15,9 @@ func TestCallGraphPrompt_BuildRole(t *testing.T) {
 	if !strings.Contains(prompt, "When to build the call graph") {
 		t.Error("expected build role to include 'When to build' section")
 	}
+	if !strings.Contains(prompt, "Using search instead of grep") {
+		t.Error("expected build role to include search guidance section")
+	}
 	if !strings.Contains(prompt, "Populating the doc field") {
 		t.Error("expected build role to include doc field section")
 	}
@@ -32,6 +35,9 @@ func TestCallGraphPrompt_PlanRole(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "When to build the call graph") {
 		t.Error("expected plan role to include 'When to build' section")
+	}
+	if !strings.Contains(prompt, "Using search instead of grep") {
+		t.Error("expected plan role to include search guidance section")
 	}
 	if !strings.Contains(prompt, "Populating the doc field") {
 		t.Error("expected plan role to include doc field section")
@@ -277,6 +283,20 @@ func TestBreakdownAgent_SystemPrompt_ContainsCallGraphAndNotes(t *testing.T) {
 	}
 	if !strings.Contains(BreakdownAgent.System, "Verify with the call graph") {
 		t.Error("BreakdownAgent should have call graph verification step")
+	}
+	// BreakdownAgent should include the shared call graph prompt section (plan variant)
+	if !strings.Contains(BreakdownAgent.System, "When to build the call graph") {
+		t.Error("BreakdownAgent should include 'When to build the call graph' section from shared prompt")
+	}
+	if !strings.Contains(BreakdownAgent.System, "Using search instead of grep") {
+		t.Error("BreakdownAgent should include search guidance from shared call graph prompt")
+	}
+	if !strings.Contains(BreakdownAgent.System, "Populating the doc field") {
+		t.Error("BreakdownAgent should include doc field guidance from shared call graph prompt")
+	}
+	// BreakdownAgent should NOT include post-mutation sync (it's a read-only agent)
+	if strings.Contains(BreakdownAgent.System, "Post-mutation call graph sync") {
+		t.Error("BreakdownAgent should NOT include post-mutation sync section (read-only agent)")
 	}
 }
 

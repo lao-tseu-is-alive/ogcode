@@ -159,6 +159,8 @@ var BreakdownAgent = Agent{
 
 ` + parallelToolCallsPrompt() + `
 
+` + callGraphPrompt("plan") + `
+
 ## Hard rules
 
 - Dependencies use 0-based indices into the task array. Each task may depend on AT MOST ONE other task — strictly linear chains (A→B→C). Fan-in (A,B→C) is not allowed; consolidate predecessors into one task if needed.
