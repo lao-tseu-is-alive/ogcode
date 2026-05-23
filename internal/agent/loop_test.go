@@ -39,7 +39,7 @@ func TestBuildSystemPrompt_MemoryMDSection_ContainsPurposeSection(t *testing.T) 
 	agent := BuildAgent
 	dir := "/tmp/test"
 
-	prompt := buildSystemPrompt(agent, dir, false, "", "", nil)
+	prompt := buildSystemPrompt(agent, dir, false, false, "", "", nil)
 
 	// Verify key sections are always present
 	for _, sub := range []string{
@@ -59,7 +59,7 @@ func TestBuildSystemPrompt_MemoryMDSection_RoleAware(t *testing.T) {
 	dir := "/tmp/test"
 
 	// BuildAgent has write and edit tools — should get read/write instructions
-	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, "", "", nil)
+	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, false, "", "", nil)
 	if !strings.Contains(buildPrompt, "### How to maintain MEMORY.md") {
 		t.Error("expected 'How to maintain' heading for BuildAgent (has write tools)")
 	}
@@ -71,7 +71,7 @@ func TestBuildSystemPrompt_MemoryMDSection_RoleAware(t *testing.T) {
 	}
 
 	// PlanAgent has no write/edit tools — should get read-only instructions
-	planPrompt := buildSystemPrompt(PlanAgent, dir, false, "", "", nil)
+	planPrompt := buildSystemPrompt(PlanAgent, dir, false, false, "", "", nil)
 	if !strings.Contains(planPrompt, "### How to use MEMORY.md") {
 		t.Error("expected 'How to use' heading for PlanAgent (read-only)")
 	}
@@ -83,7 +83,7 @@ func TestBuildSystemPrompt_MemoryMDSection_RoleAware(t *testing.T) {
 	}
 
 	// NoteAgent has no write/edit tools — should get read-only instructions
-	notePrompt := buildSystemPrompt(NoteAgent, dir, false, "", "", nil)
+	notePrompt := buildSystemPrompt(NoteAgent, dir, false, false, "", "", nil)
 	if !strings.Contains(notePrompt, "### How to use MEMORY.md") {
 		t.Error("expected 'How to use' heading for NoteAgent (read-only)")
 	}
@@ -97,7 +97,7 @@ func TestBuildSystemPrompt_MemoryMDSection_WithContent(t *testing.T) {
 	memContent := "\n\n<memory-md path=\"MEMORY.md\">\n# Project Notes\nSome facts.\n</memory-md>"
 
 	// BuildAgent with MEMORY.md content — should show content but NOT creation prompt
-	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, "", memContent, nil)
+	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, false, "", memContent, nil)
 	if !strings.Contains(buildPrompt, "The content above in the <memory-md> tag") {
 		t.Error("expected content indicator when memoryMDContent is present for BuildAgent")
 	}
@@ -109,7 +109,7 @@ func TestBuildSystemPrompt_MemoryMDSection_WithContent(t *testing.T) {
 	}
 
 	// PlanAgent with MEMORY.md content — should show read-only version, no creation prompt
-	planPrompt := buildSystemPrompt(PlanAgent, dir, false, "", memContent, nil)
+	planPrompt := buildSystemPrompt(PlanAgent, dir, false, false, "", memContent, nil)
 	if !strings.Contains(planPrompt, "The content above in the <memory-md> tag") {
 		t.Error("expected content indicator when memoryMDContent is present for PlanAgent")
 	}

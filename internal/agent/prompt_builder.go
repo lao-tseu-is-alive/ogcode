@@ -101,7 +101,7 @@ Good examples:
 
 **Do not skip the doc field.** Without it, the graph captures structure but loses meaning.
 
-## Graph completeness invariant
+## Call graph completeness invariant
 
 1. **No partial paths.** When you add a node, trace ALL of its outgoing relationships to their targets. Each target must itself be a fully populated node. Never stop mid-chain.
 
@@ -111,7 +111,7 @@ Good examples:
 
 4. **Batch when possible.** Use add_nodes_batch and add_edges_batch. Only batch after you have traced the full depth — never batch partial knowledge.
 
-## Post-mutation sync (CRITICAL)
+## Post-mutation call graph sync (CRITICAL)
 
 After every source code mutation (create, edit, delete), keep the graph in sync:
 
@@ -211,7 +211,7 @@ Every node MUST have a meaningful "doc" field tailored to its kind:
 
 **Do not skip the doc field.** Without it, the graph captures structure but loses meaning.
 
-## Graph completeness invariant
+## Call graph completeness invariant
 
 1. **No partial paths.** Trace all outgoing relationships from every node you add, recursively to leaves.
 2. **No orphan targets.** Every target of an edge must be a fully populated node.

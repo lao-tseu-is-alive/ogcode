@@ -285,13 +285,15 @@ func TestBreakdownAgent_SystemPrompt_ContainsCallGraphAndNotes(t *testing.T) {
 		t.Error("BreakdownAgent should have call graph verification step")
 	}
 	// BreakdownAgent should include the shared call graph prompt section (plan variant)
-	if !strings.Contains(BreakdownAgent.System, "When to build the call graph") {
+	// These sections are injected dynamically by buildSystemPrompt when callGraphEnabled=true.
+	builtPrompt := buildSystemPrompt(BreakdownAgent, "/tmp/test", false, true, "", "", nil)
+	if !strings.Contains(builtPrompt, "When to build the call graph") {
 		t.Error("BreakdownAgent should include 'When to build the call graph' section from shared prompt")
 	}
-	if !strings.Contains(BreakdownAgent.System, "Using search instead of grep") {
+	if !strings.Contains(builtPrompt, "Using search instead of grep") {
 		t.Error("BreakdownAgent should include search guidance from shared call graph prompt")
 	}
-	if !strings.Contains(BreakdownAgent.System, "Populating the doc field") {
+	if !strings.Contains(builtPrompt, "Populating the doc field") {
 		t.Error("BreakdownAgent should include doc field guidance from shared call graph prompt")
 	}
 	// BreakdownAgent should NOT include post-mutation sync (it's a read-only agent)
