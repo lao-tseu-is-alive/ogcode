@@ -7,163 +7,216 @@ func callGraphPrompt(role string) string {
 	if role == "build" {
 		return `## When to build the call graph
 
-Use the callgraph tool proactively during code exploration to build a persistent map of the codebase's function call relationships. Specifically, you SHOULD build the call graph when:
+Use the callgraph tool proactively to build a persistent, language-agnostic knowledge graph of the codebase. It captures all code symbols and their relationships — not just function calls, but also type hierarchies, interface implementations, module dependencies, field composition, and more. It works the same way regardless of programming language.
 
-1. **You start exploring a new codebase or directory** — Before diving into implementation, call "stats" to check if call graph data already exists. If it does, use "search" to find relevant functions by name or concept, then "nodes" or "callees"/"callers" to navigate the graph. If the graph is empty or sparse, build it as you explore.
+Build the graph when:
 
-2. **You read a function's source to understand how it works** — When you read a function body (via the read tool) and see it calling other functions, don't just mentally note it. Upsert the function as a node, then upsert each callee and add edges. This builds the graph incrementally as you explore.
+1. **You start exploring a new codebase or directory** — Call "stats" first. If data exists, use "search" to find relevant symbols by name or concept, then navigate with "callees"/"callers". If the graph is empty or sparse, build it as you explore.
 
-3. **The task requires understanding control flow, data flow, or impact analysis** — If the task asks "what affects X", "what does X call", "who calls X", or requires understanding how a change propagates through the code, use "callers", "callees", or "reachable" queries first. If the graph is incomplete, trace and fill in the missing paths.
+2. **You read any source file** — When you read a file, extract *all* symbols in it (functions, types, interfaces, constants, modules — everything), upsert them as nodes, and record all relationships between them.
 
-4. **You need to plan changes that touch shared functions** — Before modifying any function that isn't private to a single file, check "callers" to understand who will be affected. This prevents breaking downstream callers.
+3. **The task requires impact analysis or understanding code flow** — Use "callers", "callees", or "reachable" queries first. If the graph is incomplete, trace and fill in the missing paths.
+
+4. **You plan changes that touch shared symbols** — Before modifying anything used across files, check "callers" to understand impact.
+
+## What to extract from source files
+
+When reading any source file, extract and upsert ALL of the following:
+
+**Callable symbols:**
+- 'function'    — standalone callable: Go func, Python def, JS/TS function, Rust fn, C function, Java/C# static method
+- 'method'      — instance-bound callable: Go method with receiver, Python instance method, Java/C#/Swift method
+- 'constructor' — instance creation: Python __init__, Java/C#/Swift constructor, Rust new() by convention
+- 'init'        — module/package initializer: Go init(), Python module-level setup, static initializers
+
+**Structural symbols:**
+- 'type'        — composite data type: Go struct/type alias, Python/Java/TS class, Rust struct or enum-with-data, record, data class
+- 'interface'   — behavioral contract: Go interface, Rust trait, Java/C# interface, Python ABC/Protocol, Swift protocol, TS interface
+- 'enum'        — pure named-value set: Java enum, TS enum, Python Enum, C enum, Swift enum without associated values
+
+**Value symbols (module/global scope only — not local variables):**
+- 'const'       — named constant: Go const, Rust const/static, Java static final, JS/TS const, C #define/constexpr
+- 'variable'    — mutable global state: Go package-level var, Python global, Rust static mut
+
+**Organizational symbols:**
+- 'module'      — unit of organization: Go package, Python module, JS/TS ES module, Rust mod, C++ namespace, Java package
+- 'macro'       — metaprogramming: Rust macro, C/C++ macro, Lisp macro
+
+## What relationships to record
+
+After upserting nodes, record edges between them using the correct edge type:
+
+**Call relationships:**
+- 'direct'      — explicit synchronous call: A() calls B()
+- 'dynamic'     — via function pointer, stored closure, or first-class function
+- 'interface'   — via interface/virtual/dynamic dispatch
+- 'callback'    — function passed as a callback or higher-order argument
+- 'async'       — concurrent/async invocation: goroutine spawn, JS await, Python asyncio.create_task, thread spawn
+
+**Structural relationships:**
+- 'implements'  — type → interface/trait/protocol it satisfies
+- 'extends'     — type → parent type (class inheritance, struct embedding, mixin)
+- 'overrides'   — method → parent method it overrides or shadows
+- 'instantiates'— function/method → type it constructs (new, make, literal, factory call)
+- 'contains'    — type → type of a field/property it holds (composition)
+- 'aliases'     — type → type it is an alias or typedef for
+
+**Dependency relationships:**
+- 'imports'     — module → module it imports or depends on
+- 'uses'        — function/method → type or const it references without instantiating
+- 'reads'       — function/method → module/global variable it reads
+- 'writes'      — function/method → module/global variable it writes or mutates
+- 'decorates'   — function/class → entity it wraps or transforms (Python decorator, TS decorator)
+- 'throws'      — function/method → exception/error type it can raise
 
 ## Using search instead of grep for codebase exploration
 
-The callgraph "search" action is a **semantic code search** that can replace many grep + read cycles. It searches across symbol names, doc fields, and function signatures — all case-insensitive.
+The callgraph "search" action is a **semantic code search** that replaces many grep + read cycles. It searches across symbol names, doc fields, and signatures — case-insensitive.
 
 **Prefer callgraph search over grep when:**
-- Looking for a function or method by name (e.g. "where is UpsertNode defined?" → call search with query "UpsertNode")
-- Exploring a concept or domain (e.g. "what handles database connections?" → call search with query "database connection")
-- Understanding what a package provides (e.g. call search with query "Store" after checking stats shows populated data)
-- Finding all methods on a type (e.g. call search with query "Server." to find all Server methods)
+- Looking for any symbol by name ("where is UpsertNode?" → search "UpsertNode")
+- Exploring a concept ("what handles auth?" → search "authentication")
+- Understanding what a package provides (search "Store" after stats shows populated data)
+- Finding all methods on a type (search "Server." to list all Server methods)
 
 **Still use grep when:**
-- Searching for string literals, constants, variable names, or comments that aren't in the call graph
-- The call graph is empty or sparse (check with "stats" first)
-- Searching in non-code files (configs, SQL, markdown, etc.)
-
-The key insight: search gives you the function's doc, file path, line number, and signature in one query — what would take a grep to find, a read to understand, and another grep to trace callees. When the graph is populated, search is strictly faster than grep for understanding code structure.
-
-Do NOT build the call graph when:
-- The task is trivial and touches only one file with no cross-file impact.
-- You are only running build/test commands, not reading code.
-- The graph is already populated for the area you're working on (check with "stats" first).
+- Searching string literals, comments, or config values not in the graph
+- The graph is empty or sparse (check with "stats" first)
+- Searching non-code files (SQL, markdown, config, etc.)
 
 ## Populating the doc field (IMPORTANT)
 
-Every node you add to the call graph MUST have a meaningful "doc" field. The doc field is what turns the graph from a structural map into a *semantic* map — it allows future queries to understand what a function does and why it matters without re-reading the source code.
+Every node MUST have a meaningful "doc" field. Tailor it to the node's kind:
 
-When upserting a node (via upsert_node or add_nodes_batch), always include a "doc" field that contains:
+- **function/method/constructor:** What it does, who calls it, what it calls, why it exists as a separate unit.
+- **type/interface/enum:** What concept it models, what fields/methods/variants it defines, how it is used across the system.
+- **const/variable:** What value it holds, why that constant/variable exists, where it is referenced.
+- **module:** What this package/module is responsible for, its main exports, its key dependencies.
+- **macro:** What code it generates and when to invoke it.
 
-1. **What it does** — A concise summary of the function's behavior, drawn from its doc comment or your reading of the code. What does this function accomplish? What does it return or produce?
+Good examples:
+- method: "Executes the main agent loop — streaming, tool dispatch, memory writes. Called by Run; calls buildSystemPrompt and processToolCalls. Separates orchestration from per-request setup."
+- type: "Core server struct owning the HTTP router, DB, and config. Instantiated once at startup; all HTTP handlers are methods on it. Owns the lifetime of all subsystem stores."
+- module: "Agent orchestration package — owns the run loop, tool dispatch, and prompt assembly. Depends on the tool and callgraph packages; called from the server on session start."
 
-2. **How it relates to other nodes** — Which callers or callees it connects, and what data or control flows through those edges. E.g. "Called by Run to start agent session; calls buildSystemPrompt for context assembly and processToolCalls for tool dispatch."
+**Do not skip the doc field.** Without it, the graph captures structure but loses meaning.
 
-3. **Why it exists** — The architectural purpose it serves. Why was this function created instead of inlining its logic? What role does it play in the overall system?
+## Graph completeness invariant
 
-A good example: "Executes the main agent loop, handling streaming, tool execution, and memory writes. Called by Run to start a session; calls buildSystemPrompt to assemble context and processToolCalls to dispatch tools. Exists to separate orchestration logic from per-request setup."
+1. **No partial paths.** When you add a node, trace ALL of its outgoing relationships to their targets. Each target must itself be a fully populated node. Never stop mid-chain.
 
-A bad example: "processes request" — this is too vague to be useful.
+2. **No orphan targets.** Every node referenced as a target of an edge must have its own outgoing relationships resolved.
 
-**Do not skip the doc field.** Without meaningful docs, the call graph captures structure but loses meaning. A future agent querying the graph cannot understand what a function does or why it matters, and must re-read source code — defeating the purpose of building the graph in the first place.
+3. **Leaves are the only stop.** Stop tracing only when a node has no outgoing relationships within the codebase.
 
-## Call graph completeness invariant
+4. **Batch when possible.** Use add_nodes_batch and add_edges_batch. Only batch after you have traced the full depth — never batch partial knowledge.
 
-When using the callgraph tool to build the call graph, you MUST follow these rules:
+## Post-mutation sync (CRITICAL)
 
-1. **Complete call paths only.** Never store a partial call chain. If you discover that function A calls function B, you MUST also read B's definition and add its callees, and then each of those callees' callees, recursively, until you reach leaf functions that call nothing else in the codebase. Every path must be traced to its full depth.
+After every source code mutation (create, edit, delete), keep the graph in sync:
 
-2. **No orphan callees.** Every node referenced as a callee must itself be a fully populated node with its own callees resolved. If you add an edge A→B, you are responsible for ensuring B's callees are also discovered and added.
+1. **Purge stale data.** Call "delete_nodes_by_file" for every file you just changed.
+2. **Re-read and re-populate.** Extract all symbols and relationships from the mutated file. Follow the completeness invariant. Include meaningful doc fields.
+3. **Check downstream impact.** Use "callers" to find who depends on symbols you changed. If you altered a signature, removed a symbol, or changed behavior, verify those dependents still work.
 
-3. **Leaf functions are the only termination point.** A function that does not call any other function in the codebase is a leaf. That is the only acceptable place to stop tracing. Never stop mid-chain just because the function "seems simple" or is in a different package.
+**Applies to:** every write/edit to a source file, git mv/rm, new files with symbol definitions.
+**Does not apply to:** non-code files, build/test commands, files with no symbol definitions.
 
-4. **Batch when possible.** Use add_nodes_batch and add_edges_batch to upsert multiple nodes and edges in a single call. But only batch after you have traced the full depth of every function you plan to add — never batch partial knowledge.
-
-Practically, this means:
-- Read a function's source → upsert the node (with doc) → read each callee's source → upsert each callee node (with doc) → add edges → repeat for each callee's callees.
-- Only stop when every function in the chain either has callees already in the graph or is a leaf function.
-
-## Post-mutation call graph sync (CRITICAL)
-
-After every successful source code mutation (creating, editing, or deleting a file), you MUST keep the call graph up to date. Stale graph data is worse than no graph data — it leads to wrong impact analysis and broken code changes.
-
-**For every file you mutate, follow this mandatory sequence:**
-
-1. **Purge stale data.** Immediately after a successful write/edit, call the callgraph tool with action "delete_nodes_by_file" for every file you just changed. This removes all nodes and edges that belonged to the old version of that file.
-
-2. **Re-read and re-populate.** Read the mutated file, identify every function/method definition and every call relationship, and upsert the affected nodes and edges back into the call graph. Follow the same completeness invariant as when building the graph initially — trace every call path to its leaf. **Remember to include meaningful doc fields for every re-upserted node.**
-
-3. **Check downstream impact.** After re-populating the file's own functions, check if any functions you modified are called from other files. Use "callers" to find who depends on them. If you changed a function signature, removed a function, or altered its behavior, verify that those callers still work correctly.
-
-**When this applies:**
-- After every write or edit tool call that modifies a source code file.
-- After running git mv or git rm on source files.
-- After creating a new source file with function definitions.
-
-**When this does NOT apply:**
-- Changes to non-code files (markdown, config, .gitignore, etc.).
-- Running build/test commands (these don't modify source).
-- Files that contain no function/method definitions.
-
-**Enforcement:** Do NOT proceed to the next step in your process (including committing) until the call graph is re-synced for the mutated file. This is a hard rule — skipping it means the graph becomes unreliable for future queries.`
+**Enforcement:** Do NOT proceed (including committing) until the graph is re-synced for every mutated file.`
 	}
 	// Plan agent and others: lighter version without post-mutation sync
 	return `## When to build the call graph
 
-Use the callgraph tool proactively during code exploration to build a persistent map of the codebase's function call relationships. Specifically, you SHOULD build the call graph when:
+Use the callgraph tool proactively to build a persistent, language-agnostic knowledge graph of the codebase. It captures all code symbols and their relationships — not just function calls, but also type hierarchies, interface implementations, module dependencies, field composition, and more.
 
-1. **You start exploring a new codebase or directory** — Before diving into planning, call "stats" to check if call graph data already exists. If it does, use "search" to find relevant functions by name or concept, then "nodes" or "callees"/"callers" to navigate the graph. If the graph is empty or sparse, build it as you explore.
+Build the graph when:
 
-2. **You read a function's source to understand how it works** — When you read a function body (via the read tool) and see it calling other functions, don't just mentally note it. Upsert the function as a node, then upsert each callee and add edges. This builds the graph incrementally as you explore.
+1. **You start exploring a new codebase or directory** — Call "stats" first. If data exists, use "search" to find relevant symbols by name or concept, then navigate with "callees"/"callers". If the graph is empty or sparse, build it as you explore.
 
-3. **The task requires understanding control flow, data flow, or impact analysis** — If the request asks "what affects X", "what does X call", "who calls X", or requires understanding how a change propagates through the code, use "callers", "callees", or "reachable" queries first. If the graph is incomplete, trace and fill in the missing paths.
+2. **You read any source file** — Extract all symbols (functions, types, interfaces, constants, modules — everything), upsert them as nodes, and record all relationships.
 
-4. **You need to plan changes that touch shared functions** — Before planning modifications to any function that isn't private to a single file, check "callers" to understand who will be affected. This prevents missing downstream impact in your plan.
+3. **The task requires understanding impact or code flow** — Use "callers", "callees", or "reachable" queries first. Fill in missing paths if needed.
 
-## Using search instead of grep for codebase exploration
+4. **You plan changes that touch shared symbols** — Check "callers" before planning modifications to anything used across files.
 
-The callgraph "search" action is a **semantic code search** that can replace many grep + read cycles. It searches across symbol names, doc fields, and function signatures — all case-insensitive.
+## What to extract from source files
+
+When reading any source file, extract and upsert ALL of the following:
+
+**Callable symbols:**
+- 'function'    — standalone callable: Go func, Python def, JS/TS function, Rust fn, C function, Java/C# static method
+- 'method'      — instance-bound callable: Go method with receiver, Python instance method, Java/C#/Swift method
+- 'constructor' — instance creation: Python __init__, Java/C#/Swift constructor, Rust new() by convention
+- 'init'        — module/package initializer: Go init(), Python module-level setup
+
+**Structural symbols:**
+- 'type'        — composite data type: Go struct/type alias, Python/Java/TS class, Rust struct or enum-with-data, record
+- 'interface'   — behavioral contract: Go interface, Rust trait, Java/C# interface, Python ABC/Protocol, Swift protocol, TS interface
+- 'enum'        — pure named-value set: Java enum, TS enum, Python Enum, C enum, Swift enum without associated values
+
+**Value symbols (module/global scope only):**
+- 'const'       — named constant: Go const, Rust const/static, Java static final, JS/TS const, C #define/constexpr
+- 'variable'    — mutable global state: Go package-level var, Python global, Rust static mut
+
+**Organizational symbols:**
+- 'module'      — unit of organization: Go package, Python module, JS/TS ES module, Rust mod, C++ namespace, Java package
+- 'macro'       — metaprogramming: Rust macro, C/C++ macro, Lisp macro
+
+## What relationships to record
+
+**Call relationships:**
+- 'direct'      — explicit synchronous call
+- 'dynamic'     — via function pointer, stored closure, or first-class function
+- 'interface'   — via interface/virtual/dynamic dispatch
+- 'callback'    — function passed as callback or higher-order argument
+- 'async'       — concurrent/async invocation: goroutine, JS await, Python asyncio, thread spawn
+
+**Structural relationships:**
+- 'implements'  — type → interface/trait/protocol it satisfies
+- 'extends'     — type → parent type (inheritance, embedding, mixin)
+- 'overrides'   — method → parent method it overrides
+- 'instantiates'— function/method → type it constructs
+- 'contains'    — type → type of a field/property it holds
+- 'aliases'     — type → type it is an alias for
+
+**Dependency relationships:**
+- 'imports'     — module → module it imports
+- 'uses'        — function/method → type or const it references
+- 'reads'       — function/method → global variable it reads
+- 'writes'      — function/method → global variable it mutates
+- 'decorates'   — function/class → entity it wraps/transforms
+- 'throws'      — function/method → exception/error type it can raise
+
+## Using search instead of grep
 
 **Prefer callgraph search over grep when:**
-- Looking for a function or method by name (e.g. "where is UpsertNode defined?" → call search with query "UpsertNode")
-- Exploring a concept or domain (e.g. "what handles database connections?" → call search with query "database connection")
-- Understanding what a package provides (e.g. call search with query "Store" after checking stats shows populated data)
-- Finding all methods on a type (e.g. call search with query "Server." to find all Server methods)
+- Looking for any symbol by name ("where is UpsertNode?" → search "UpsertNode")
+- Exploring a concept ("what handles auth?" → search "authentication")
+- Finding all methods on a type (search "Server." to list all Server methods)
 
 **Still use grep when:**
-- Searching for string literals, constants, variable names, or comments that aren't in the call graph
-- The call graph is empty or sparse (check with "stats" first)
-- Searching in non-code files (configs, SQL, markdown, etc.)
-
-The key insight: search gives you the function's doc, file path, line number, and signature in one query — what would take a grep to find, a read to understand, and another grep to trace callees. When the graph is populated, search is strictly faster than grep for understanding code structure.
-
-Do NOT build the call graph when:
-- The task is trivial and touches only one file with no cross-file impact.
-- The graph is already populated for the area you're working on (check with "stats" first).
+- Searching string literals, comments, or config values
+- The graph is empty or sparse (check with "stats" first)
+- Searching non-code files
 
 ## Populating the doc field (IMPORTANT)
 
-Every node you add to the call graph MUST have a meaningful "doc" field. The doc field is what turns the graph from a structural map into a *semantic* map — it allows future queries to understand what a function does and why it matters without re-reading the source code.
+Every node MUST have a meaningful "doc" field tailored to its kind:
 
-When upserting a node (via upsert_node or add_nodes_batch), always include a "doc" field that contains:
+- **function/method/constructor:** What it does, who calls it, what it calls, why it exists.
+- **type/interface/enum:** What concept it models, what fields/methods/variants it defines, how it is used.
+- **const/variable:** What value it holds, why it exists, where it is referenced.
+- **module:** What this package/module is responsible for, its main exports and key dependencies.
+- **macro:** What code it generates and when to invoke it.
 
-1. **What it does** — A concise summary of the function's behavior, drawn from its doc comment or your reading of the code. What does this function accomplish? What does it return or produce?
+**Do not skip the doc field.** Without it, the graph captures structure but loses meaning.
 
-2. **How it relates to other nodes** — Which callers or callees it connects, and what data or control flows through those edges. E.g. "Called by Run to start agent session; calls buildSystemPrompt for context assembly and processToolCalls for tool dispatch."
+## Graph completeness invariant
 
-3. **Why it exists** — The architectural purpose it serves. Why was this function created instead of inlining its logic? What role does it play in the overall system?
-
-A good example: "Executes the main agent loop, handling streaming, tool execution, and memory writes. Called by Run to start a session; calls buildSystemPrompt to assemble context and processToolCalls to dispatch tools. Exists to separate orchestration logic from per-request setup."
-
-A bad example: "processes request" — this is too vague to be useful.
-
-**Do not skip the doc field.** Without meaningful docs, the call graph captures structure but loses meaning. A future agent querying the graph cannot understand what a function does or why it matters, and must re-read source code — defeating the purpose of building the graph in the first place.
-
-## Call graph completeness invariant
-
-When using the callgraph tool to build the call graph, you MUST follow these rules:
-
-1. **Complete call paths only.** Never store a partial call chain. If you discover that function A calls function B, you MUST also read B's definition and add its callees, and then each of those callees' callees, recursively, until you reach leaf functions that call nothing else in the codebase. Every path must be traced to its full depth.
-
-2. **No orphan callees.** Every node referenced as a callee must itself be a fully populated node with its own callees resolved. If you add an edge A→B, you are responsible for ensuring B's callees are also discovered and added.
-
-3. **Leaf functions are the only termination point.** A function that does not call any other function in the codebase is a leaf. That is the only acceptable place to stop tracing. Never stop mid-chain just because the function "seems simple" or is in a different package.
-
-4. **Batch when possible.** Use add_nodes_batch and add_edges_batch to upsert multiple nodes and edges in a single call. But only batch after you have traced the full depth of every function you plan to add — never batch partial knowledge.
-
-Practically, this means:
-- Read a function's source → upsert the node (with doc) → read each callee's source → upsert each callee node (with doc) → add edges → repeat for each callee's callees.
-- Only stop when every function in the chain either has callees already in the graph or is a leaf function.`
+1. **No partial paths.** Trace all outgoing relationships from every node you add, recursively to leaves.
+2. **No orphan targets.** Every target of an edge must be a fully populated node.
+3. **Leaves are the only stop.** Stop only when a node has no outgoing relationships within the codebase.
+4. **Batch when possible.** Use add_nodes_batch and add_edges_batch — but only after tracing full depth.`
 }
 
 // memoryMDPrompt returns the MEMORY.md instructions section, adapted for the

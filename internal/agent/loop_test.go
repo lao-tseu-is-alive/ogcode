@@ -10,7 +10,7 @@ func TestBuildSystemPrompt_MemoryMDSection_AlwaysPresent(t *testing.T) {
 	dir := "/tmp/test"
 
 	// Case 1: No MEMORY.md content — section should still appear
-	prompt := buildSystemPrompt(agent, dir, false, "", "", nil)
+	prompt := buildSystemPrompt(agent, dir, false, false, "", "", nil)
 	if !strings.Contains(prompt, "## MEMORY.md — Project Long-Term Memory") {
 		t.Error("expected MEMORY.md section to appear even when memoryMDContent is empty")
 	}
@@ -20,7 +20,7 @@ func TestBuildSystemPrompt_MemoryMDSection_AlwaysPresent(t *testing.T) {
 
 	// Case 2: With MEMORY.md content — section should appear with file content indicator
 	memContent := "\n\n<memory-md path=\"MEMORY.md\">\n# Project Notes\nSome facts.\n</memory-md>"
-	prompt = buildSystemPrompt(agent, dir, false, "", memContent, nil)
+	prompt = buildSystemPrompt(agent, dir, false, false, "", memContent, nil)
 	if !strings.Contains(prompt, "## MEMORY.md — Project Long-Term Memory") {
 		t.Error("expected MEMORY.md section to appear when memoryMDContent is present")
 	}

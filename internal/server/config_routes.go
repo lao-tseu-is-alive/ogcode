@@ -160,6 +160,29 @@ func (s *Server) handleSetMemoryConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, session.MaskedMemoryConfig(&incoming))
 }
 
+func (s *Server) handleGetCallGraphAgentConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := session.GetCallGraphAgentConfig(s.globalDB)
+	if err != nil {
+		http.Error(w, "failed to read callgraph agent config", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (s *Server) handleSetCallGraphAgentConfig(w http.ResponseWriter, r *http.Request) {
+	var incoming session.CallGraphAgentConfig
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := session.SetCallGraphAgentConfig(s.globalDB, &incoming); err != nil {
+		http.Error(w, "failed to save callgraph agent config", http.StatusInternalServerError)
+		return
+	}
+	s.loopRunner.CallGraphEnabled = incoming.Enabled
+	writeJSON(w, http.StatusOK, &incoming)
+}
+
 func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
 	s.registry.RefreshModels()
 	// Return the updated model list

@@ -354,6 +354,29 @@ func (s *Store) SearchNodes(directory, query string, limit int) ([]CallNode, err
 	return nodes, rows.Err()
 }
 
+// ListEdgesByDirectory returns all call edges for a directory.
+func (s *Store) ListEdgesByDirectory(directory string) ([]CallEdge, error) {
+	rows, err := s.db.Query(`
+		SELECT id, directory, caller_id, callee_id, call_type, created_at
+		FROM call_edge WHERE directory = ?
+		ORDER BY caller_id, callee_id
+	`, directory)
+	if err != nil {
+		return nil, fmt.Errorf("list call edges: %w", err)
+	}
+	defer rows.Close()
+
+	var edges []CallEdge
+	for rows.Next() {
+		e, err := scanEdgeRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		edges = append(edges, e)
+	}
+	return edges, rows.Err()
+}
+
 // Stats returns the count of nodes and edges for a directory.
 func (s *Store) Stats(directory string) (nodes int, edges int, err error) {
 	row := s.db.QueryRow(`SELECT COUNT(*) FROM call_node WHERE directory = ?`, directory)
@@ -368,6 +391,16 @@ func (s *Store) Stats(directory string) (nodes int, edges int, err error) {
 }
 
 // ──── Internal helpers ────
+
+func scanEdgeRow(rows *sql.Rows) (CallEdge, error) {
+	var e CallEdge
+	var callType string
+	if err := rows.Scan(&e.ID, &e.Directory, &e.CallerID, &e.CalleeID, &callType, &e.CreatedAt); err != nil {
+		return CallEdge{}, err
+	}
+	e.CallType = CallType(callType)
+	return e, nil
+}
 
 func scanNode(row *sql.Row) (*CallNode, error) {
 	var n CallNode

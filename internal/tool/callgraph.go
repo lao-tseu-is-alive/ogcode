@@ -24,43 +24,60 @@ func NewCallGraphTool(s *callgraph.Store) CallGraphTool {
 
 func (CallGraphTool) ID() string { return "callgraph" }
 
+const validNodeKindList = "function, method, constructor, init, type, interface, enum, const, variable, module, macro"
+const validCallTypeList = "direct, dynamic, interface, callback, async, implements, extends, overrides, instantiates, contains, aliases, imports, uses, reads, writes, decorates, throws"
+
 func (CallGraphTool) Description() string {
-	return `Read and query the persisted call graph for the project.
+	return `Read and query the persisted code knowledge graph for the project.
 
-The call graph stores function/method definitions and their call relationships.
-Use this to recall what you've previously learned about code structure — which
-functions exist, which call which, and how code is connected.
+The graph stores all code symbols and the relationships between them. It is
+language-agnostic — the same node kinds and edge types work across Go, Python,
+TypeScript, Java, Rust, C/C++, and any other language.
 
-The "search" action is particularly powerful for codebase exploration. Instead of
-using grep to find a function and then reading its file to understand it, you can
-search the call graph to find functions by name or description, immediately seeing
-what each function does (via its doc field), where it lives, and what it connects to.
-This replaces many grep + read cycles with a single query.
+Node kinds:
+  Callable:     function, method, constructor, init
+  Structural:   type, interface, enum
+  Values:       const, variable
+  Organization: module, macro
+
+Edge types:
+  Calls:        direct, dynamic, interface, callback, async
+  Structural:   implements, extends, overrides, instantiates, contains, aliases
+  Dependency:   imports, uses, reads, writes, decorates, throws
+
+Use this to recall what you've previously learned about code structure without
+re-reading source files. The "search" action is especially powerful: it matches
+symbol names, doc text, and signatures — replacing many grep + read cycles.
 
 Actions:
-- "stats" — Get node and edge counts for a directory
-- "nodes" — List all call nodes (optionally filter by package or kind)
-- "edges" — List all call edges for a directory
-- "callees" — Given a node ID, find what functions it calls
-- "callers" — Given a node ID, find what functions call it
-- "reachable" — Find all nodes reachable from a node (transitive callers)
-- "search" — Search nodes by query string matching against symbol names, doc text, and function signatures. Use this INSTEAD of grep when looking for functions, methods, or concepts in the codebase
-- "upsert_node" — Add or update a call node (MUST include a meaningful "doc" field — see below)
-- "add_edge" — Add a call edge (caller → callee)
-- "add_nodes_batch" — Add multiple nodes at once (each MUST include a meaningful "doc" field)
-- "add_edges_batch" — Add multiple edges at once
-- "delete_nodes_by_file" — Remove all nodes and edges for a specific file (used after mutations to clear stale data before re-syncing)
-- "clear" — Remove all call graph data for a directory
+- "stats"              — Node and edge counts for a directory
+- "nodes"              — List all nodes (optionally filter by package or kind)
+- "edges"              — List all edges for a directory
+- "callees"            — Nodes this node has outgoing edges to
+- "callers"            — Nodes with edges pointing to this node
+- "reachable"          — All nodes transitively reachable via outgoing edges
+- "search"             — Case-insensitive substring search across symbol, doc, and signature. Use INSTEAD of grep for code structure exploration
+- "upsert_node"        — Add or update a node (MUST include a meaningful "doc" field)
+- "add_edge"           — Add a relationship edge between two nodes
+- "add_nodes_batch"    — Add multiple nodes at once
+- "add_edges_batch"    — Add multiple edges at once
+- "delete_nodes_by_file" — Remove all nodes and edges for a file (call before re-syncing after a mutation)
+- "clear"              — Remove all graph data for a directory
 
 IMPORTANT: The "doc" field on nodes
-Every node MUST have a meaningful "doc" field. This field transforms the call graph
-from a structural map into a semantic map — it lets future queries understand what a
-function does without re-reading source code. The doc field should contain:
-1. What it does — a concise summary of the function's behavior
-2. How it relates to other nodes — which callers/callees it connects and what flows through those edges
-3. Why it exists — the architectural purpose it serves in the overall system
-Example: "Executes the main agent loop, handling streaming, tool execution, and memory writes. Called by Run to start a session; calls buildSystemPrompt to assemble context and processToolCalls to dispatch tools. Exists to separate orchestration logic from per-request setup."
-Do NOT leave the doc field empty or set it to something vague like "processes request".`
+Every node MUST have a meaningful "doc" field. Tailor it to the node's kind:
+- function/method/constructor: what it does, who calls it, what it calls, why it exists
+- type/interface/enum: what concept it models, what fields/methods/variants it defines, where it is used in the system
+- const/variable: what value it holds, why it exists, where it is referenced
+- module: what this package/module is responsible for, its main exports and key dependencies
+- macro: what code it generates, when to invoke it
+
+Examples:
+  method: "Executes the main agent loop — streaming, tool dispatch, memory writes. Called by Run; calls buildSystemPrompt and processToolCalls. Separates orchestration from per-request setup."
+  type:   "Core server struct owning the HTTP router, DB, and config. Instantiated once at startup; all HTTP handlers are methods on it. Owns the lifetime of all subsystem stores."
+  module: "Agent orchestration package — owns the run loop, tool dispatch, and prompt assembly. Depends on the tool and callgraph packages; called from the server on session start."
+
+Do NOT leave the doc field empty or set it to something vague like "handles request".`
 }
 
 func (t CallGraphTool) Parameters() json.RawMessage {
@@ -90,7 +107,7 @@ func (t CallGraphTool) Parameters() json.RawMessage {
 					},
 					"kind": {
 						"type": "string",
-						"description": "Node kind filter (function, method) for nodes query"
+						"description": "Node kind filter for nodes query. Callable: function, method, constructor, init. Structural: type, interface, enum. Values: const, variable. Organization: module, macro."
 					},
 					"query": {
 						"type": "string",
@@ -123,7 +140,7 @@ func (t CallGraphTool) Parameters() json.RawMessage {
 						"properties": {
 							"callerId": {"type": "integer"},
 							"calleeId": {"type": "integer"},
-							"callType": {"type": "string"}
+							"callType": {"type": "string", "description": "Relationship type. Calls: direct, dynamic, interface, callback, async. Structural: implements, extends, overrides, instantiates, contains, aliases. Dependency: imports, uses, reads, writes, decorates, throws."}
 						}
 					},
 					"nodes": {
@@ -150,7 +167,7 @@ func (t CallGraphTool) Parameters() json.RawMessage {
 							"properties": {
 								"callerId": {"type": "integer"},
 								"calleeId": {"type": "integer"},
-								"callType": {"type": "string"}
+								"callType": {"type": "string", "description": "Relationship type. Calls: direct, dynamic, interface, callback, async. Structural: implements, extends, overrides, instantiates, contains, aliases. Dependency: imports, uses, reads, writes, decorates, throws."}
 							}
 						}
 					}
@@ -286,32 +303,32 @@ func (t CallGraphTool) nodes(dir, pkg, kind string) (Result, error) {
 }
 
 func (t CallGraphTool) edges(dir string) (Result, error) {
+	edges, err := t.Store.ListEdgesByDirectory(dir)
+	if err != nil {
+		return Result{}, err
+	}
+	if len(edges) == 0 {
+		return Result{Title: "CallGraph Edges", Output: "No edges found."}, nil
+	}
+
 	nodes, err := t.Store.ListNodesByDirectory(dir, "", "")
 	if err != nil {
 		return Result{}, err
 	}
-	if len(nodes) == 0 {
-		return Result{Title: "CallGraph Edges", Output: "No edges found (no nodes)."}, nil
-	}
-
 	nodeMap := make(map[int64]callgraph.CallNode, len(nodes))
 	for _, n := range nodes {
 		nodeMap[n.ID] = n
 	}
 
-	// Get all edges by iterating nodes and querying callees
 	var lines []string
-	for _, n := range nodes {
-		callees, err := t.Store.CalleesOf(n.ID)
-		if err != nil {
+	for _, e := range edges {
+		caller, callerOK := nodeMap[e.CallerID]
+		callee, calleeOK := nodeMap[e.CalleeID]
+		if !callerOK || !calleeOK {
+			lines = append(lines, fmt.Sprintf("[%d] WARN: dangling edge (caller=%d found=%v, callee=%d found=%v)", e.ID, e.CallerID, callerOK, e.CalleeID, calleeOK))
 			continue
 		}
-		for _, c := range callees {
-			lines = append(lines, fmt.Sprintf("[%d] %s.%s → %s.%s (%s)", c.Edge.ID, n.Package, n.Symbol, c.Callee.Package, c.Callee.Symbol, c.Edge.CallType))
-		}
-	}
-	if len(lines) == 0 {
-		return Result{Title: "CallGraph Edges", Output: "No edges found."}, nil
+		lines = append(lines, fmt.Sprintf("[%d] %s.%s → %s.%s (%s)", e.ID, caller.Package, caller.Symbol, callee.Package, callee.Symbol, e.CallType))
 	}
 	return Result{Title: "CallGraph Edges", Output: strings.Join(lines, "\n")}, nil
 }
@@ -435,13 +452,17 @@ func (t CallGraphTool) upsertNode(dir string, node *struct {
 	if node == nil {
 		return Result{Title: "CallGraph", Output: "node data is required for upsert_node action."}, nil
 	}
+	kind := callgraph.NodeKind(node.Kind)
+	if !callgraph.ValidNodeKind(kind) {
+		return Result{Title: "CallGraph", Output: fmt.Sprintf("invalid node kind %q; valid: "+validNodeKindList, node.Kind)}, nil
+	}
 	n := callgraph.CallNode{
 		Directory: dir,
 		Package:   node.Package,
 		Symbol:    node.Symbol,
 		FilePath:  node.FilePath,
 		Line:      node.Line,
-		Kind:      callgraph.NodeKind(node.Kind),
+		Kind:      kind,
 		Signature: node.Signature,
 		Doc:       node.Doc,
 	}
@@ -466,11 +487,15 @@ func (t CallGraphTool) addEdge(dir string, edge *struct {
 	if edge == nil {
 		return Result{Title: "CallGraph", Output: "edge data is required for add_edge action."}, nil
 	}
+	ct := callgraph.CallType(edge.CallType)
+	if !callgraph.ValidCallType(ct) {
+		return Result{Title: "CallGraph", Output: fmt.Sprintf("invalid call type %q; valid: "+validCallTypeList, edge.CallType)}, nil
+	}
 	e := callgraph.CallEdge{
 		Directory: dir,
 		CallerID:  edge.CallerID,
 		CalleeID:  edge.CalleeID,
-		CallType:  callgraph.CallType(edge.CallType),
+		CallType:  ct,
 	}
 	result, err := t.Store.AddEdge(e)
 	if err != nil {
@@ -493,13 +518,17 @@ func (t CallGraphTool) addNodesBatch(dir string, nodes []struct {
 	}
 	var results []callgraph.CallNode
 	for _, node := range nodes {
+		kind := callgraph.NodeKind(node.Kind)
+		if !callgraph.ValidNodeKind(kind) {
+			return Result{Title: "CallGraph", Output: fmt.Sprintf("invalid node kind %q for %s.%s; valid: "+validNodeKindList, node.Kind, node.Package, node.Symbol)}, nil
+		}
 		n := callgraph.CallNode{
 			Directory: dir,
 			Package:   node.Package,
 			Symbol:    node.Symbol,
 			FilePath:  node.FilePath,
 			Line:      node.Line,
-			Kind:      callgraph.NodeKind(node.Kind),
+			Kind:      kind,
 			Signature: node.Signature,
 			Doc:       node.Doc,
 		}
@@ -530,11 +559,15 @@ func (t CallGraphTool) addEdgesBatch(dir string, edges []struct {
 	}
 	var cgEdges []callgraph.CallEdge
 	for _, e := range edges {
+		ct := callgraph.CallType(e.CallType)
+		if !callgraph.ValidCallType(ct) {
+			return Result{Title: "CallGraph", Output: fmt.Sprintf("invalid call type %q for edge %d→%d; valid: "+validCallTypeList, e.CallType, e.CallerID, e.CalleeID)}, nil
+		}
 		cgEdges = append(cgEdges, callgraph.CallEdge{
 			Directory: dir,
 			CallerID:  e.CallerID,
 			CalleeID:  e.CalleeID,
-			CallType:  callgraph.CallType(e.CallType),
+			CallType:  ct,
 		})
 	}
 	if err := t.Store.AddEdgesBatch(cgEdges); err != nil {

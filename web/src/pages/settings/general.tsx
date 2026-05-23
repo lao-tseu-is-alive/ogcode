@@ -3,7 +3,7 @@ import { useNavigate } from '@solidjs/router';
 import { useServer } from '../../context/server';
 import { useSession } from '../../context/session';
 import { useTheme } from '../../context/theme';
-import { getMemoryConfig, setMemoryConfig, fetchMemoryModels } from '../../api/client';
+import { getMemoryConfig, setMemoryConfig, fetchMemoryModels, getCallGraphAgentConfig, setCallGraphAgentConfig } from '../../api/client';
 import { EMBED_PROVIDERS, CHAT_PROVIDERS } from '../../lib/providers';
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -78,6 +78,14 @@ export default function GeneralSettings() {
           description="Helps ogcode remember your past work within this session and bring back what's relevant when you need it."
         >
           <MemoryConfigForm />
+        </Card>
+
+        {/* Call graph card */}
+        <Card
+          title="Call Graph Agent Instructions"
+          description="When enabled, build and plan agents proactively map every symbol and relationship they encounter into a persistent code knowledge graph."
+        >
+          <CallGraphConfigForm />
         </Card>
 
         {/* Theme card */}
@@ -484,6 +492,69 @@ function MemoryConfigForm() {
           </button>
         </div>
 
+      </div>
+    </Show>
+  );
+}
+
+function CallGraphConfigForm() {
+  const [enabled, setEnabled] = createSignal(true);
+  const [loading, setLoading] = createSignal(true);
+  const [saving, setSaving] = createSignal(false);
+
+  onMount(async () => {
+    try {
+      const cfg = await getCallGraphAgentConfig();
+      setEnabled(cfg.enabled);
+    } catch {
+      // default stays true
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  const handleToggle = async () => {
+    const next = !enabled();
+    setEnabled(next);
+    setSaving(true);
+    try {
+      await setCallGraphAgentConfig({ enabled: next });
+    } catch {
+      setEnabled(!next); // revert on error
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Show when={!loading()} fallback={
+      <div class="py-4 flex items-center gap-2 text-[12px] text-zinc-500">
+        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
+        </svg>
+        Loading…
+      </div>
+    }>
+      <div class="flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <div class="text-[13px] text-zinc-100 font-medium">Enable call graph instructions</div>
+          <div class="text-[11.5px] text-zinc-500 mt-0.5 leading-snug">
+            Agents read and update the call graph as they explore and modify code. Takes effect immediately for new sessions.
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled()}
+          disabled={saving()}
+          onClick={handleToggle}
+          class={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+            transition-colors duration-200 focus:outline-none disabled:opacity-50
+            ${enabled() ? 'bg-[color:var(--accent)]' : 'bg-zinc-700'}`}
+        >
+          <span class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
+            transition duration-200 ${enabled() ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
       </div>
     </Show>
   );

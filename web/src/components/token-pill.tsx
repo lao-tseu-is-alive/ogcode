@@ -35,7 +35,8 @@ export default function TokenPill(props: { messages?: () => MessageWithParts[] }
       out.cacheRead  += t.cacheRead ?? 0;
       out.cacheWrite += t.cacheWrite ?? 0;
     }
-    out.total = out.input + out.output;
+    // Include cache variants so total reflects all tokens consumed, not just uncached input.
+    out.total = out.input + out.cacheRead + out.cacheWrite + out.output;
     return out;
   });
 

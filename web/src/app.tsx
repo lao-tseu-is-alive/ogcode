@@ -3,6 +3,7 @@ import { ServerProvider } from './context/server';
 import { SessionProvider } from './context/session';
 import { PlanProvider } from './context/plan';
 import { NoteProvider } from './context/note';
+import { CallGraphProvider } from './context/callgraph';
 import { NotificationProvider } from './context/notification';
 import { ThemeProvider } from './context/theme';
 import UpdateNotification from './components/update-notification';
@@ -14,6 +15,7 @@ import PlanTasksPage from './pages/plan-tasks';
 import TaskExecution from './pages/task-execution';
 import NotesPage from './pages/notes';
 import NoteDetailPage from './pages/note-detail';
+import CallGraphExplorer from './pages/callgraph';
 import SettingsLayout from './pages/settings/layout';
 import GeneralSettings from './pages/settings/general';
 import ModelsSettings from './pages/settings/models';
@@ -30,6 +32,7 @@ export default function App() {
       <Route path="/task/:id" component={TaskExecution} />
       <Route path="/notes" component={NotesPage} />
       <Route path="/notes/:id" component={NoteDetailPage} />
+      <Route path="/callgraph" component={CallGraphExplorer} />
       <Route path="/settings" component={SettingsLayout}>
         <Route path="/" component={GeneralSettings} />
         <Route path="/models" component={ModelsSettings} />
@@ -46,12 +49,14 @@ function AppWrapper(props: { children?: any }) {
         <SessionProvider>
           <PlanProvider>
             <NoteProvider>
-              <NotificationProvider>
-                <div class="flex h-screen bg-[color:var(--bg-base)] text-zinc-100 antialiased">
-                  {props.children}
-                </div>
-                <UpdateNotification />
-              </NotificationProvider>
+              <CallGraphProvider>
+                <NotificationProvider>
+                  <div class="flex h-screen bg-[color:var(--bg-base)] text-zinc-100 antialiased">
+                    {props.children}
+                  </div>
+                  <UpdateNotification />
+                </NotificationProvider>
+              </CallGraphProvider>
             </NoteProvider>
           </PlanProvider>
         </SessionProvider>

@@ -107,6 +107,19 @@ export default function SessionSidebar() {
             </svg>
           </button>
           <button
+            onClick={() => navigate('/callgraph')}
+            title="Call Graph"
+            class={`w-8 h-8 rounded-lg flex items-center justify-center transition
+              ${location.pathname.startsWith('/callgraph')
+                ? 'text-[color:var(--accent)] bg-[color:var(--accent-soft)]'
+                : 'text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)]'
+              }`}
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.81 9.06l.28.28a2.69 2.69 0 010 3.81l-5.66 5.66a2.69 2.69 0 01-3.81 0l-.28-.28a2.69 2.69 0 010-3.81l5.66-5.66a2.69 2.69 0 013.81 0zM17.19 9.06l.28.28a2.69 2.69 0 010 3.81l-.28.28" />
+            </svg>
+          </button>
+          <button
             onClick={() => navigate('/settings', { state: { from: location.pathname } })}
             title="Settings"
             class="w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)] flex items-center justify-center transition"
@@ -233,6 +246,20 @@ export default function SessionSidebar() {
             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
           </svg>
           <span>Notes</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/callgraph')}
+          class={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[13px] transition
+            ${location.pathname.startsWith('/callgraph')
+              ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
+              : 'text-zinc-500 hover:text-zinc-200 hover:bg-[color:var(--bg-hover)]/50'
+            }`}
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.81 9.06l.28.28a2.69 2.69 0 010 3.81l-5.66 5.66a2.69 2.69 0 01-3.81 0l-.28-.28a2.69 2.69 0 010-3.81l5.66-5.66a2.69 2.69 0 013.81 0zM17.19 9.06l.28.28a2.69 2.69 0 010 3.81l-.28.28" />
+          </svg>
+          <span>Call Graph</span>
         </button>
       </div>
 

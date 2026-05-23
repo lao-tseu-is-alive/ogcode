@@ -67,6 +67,9 @@ type Server struct {
 	runningToken map[session.SessionID]uint64 // prevents goroutine from deleting a newer cancel
 	nextToken    uint64
 
+	// Track the active call graph build session (protected by mu)
+	cgBuildSessID session.SessionID
+
 	// gitMu serializes all repo-level git operations (worktree add/remove/prune,
 	// branch creation) to prevent concurrent writes from corrupting .git metadata.
 	gitMu sync.Mutex
@@ -193,7 +196,6 @@ func (s *Server) Start() error {
 		registry.Register(p)
 		slog.Info("registered ollama provider")
 	}
-
 	// Initialize tools
 	toolRegistry := tool.NewRegistry()
 	toolRegistry.Register(tool.BashTool{})
@@ -320,16 +322,23 @@ func (s *Server) Start() error {
 		}
 	}
 
+	cgAgentCfg, err := session.GetCallGraphAgentConfig(globalDatabase)
+	if err != nil {
+		slog.Warn("failed to load callgraph agent config; defaulting to enabled", "err", err)
+		cgAgentCfg = &session.CallGraphAgentConfig{Enabled: true}
+	}
+
 	s.loopRunner = &agent.LoopRunner{
-		Store:           s.store,
-		Bus:             s.bus,
-		Registry:        registry,
-		DefaultProvider: defaultProvider,
-		Tools:           toolRegistry,
-		Dir:             s.dir,
-		Memory:          mem,
-		MCP:             s.mcpClient,
-		NoteStore:       s.noteStore,
+		Store:            s.store,
+		Bus:              s.bus,
+		Registry:         registry,
+		DefaultProvider:  defaultProvider,
+		Tools:            toolRegistry,
+		Dir:              s.dir,
+		Memory:           mem,
+		MCP:              s.mcpClient,
+		NoteStore:        s.noteStore,
+		CallGraphEnabled: cgAgentCfg.Enabled,
 	}
 
 	// Initialize version manager

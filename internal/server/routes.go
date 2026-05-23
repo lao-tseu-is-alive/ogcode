@@ -36,6 +36,9 @@ func (s *Server) routes() http.Handler {
 		r.Post("/memory/config", s.handleSetMemoryConfig)
 		r.Get("/memory/models", s.handleMemoryModels)
 
+		r.Get("/callgraph/agent-config", s.handleGetCallGraphAgentConfig)
+		r.Post("/callgraph/agent-config", s.handleSetCallGraphAgentConfig)
+
 		r.Get("/providers/config", s.handleGetProviderConfigs)
 		r.Post("/providers/config/{id}", s.handleSetProviderConfig)
 
@@ -98,6 +101,19 @@ func (s *Server) routes() http.Handler {
 		r.Get("/vcs", s.handleVCS)
 		r.Get("/version", s.handleVersion)
 		r.Post("/version/check", s.handleVersionCheck)
+
+		// Call graph explorer
+		r.Route("/callgraph", func(r chi.Router) {
+			r.Get("/stats", s.handleCallGraphStats)
+			r.Get("/nodes", s.handleCallGraphNodes)
+			r.Get("/edges", s.handleCallGraphEdges)
+			r.Get("/nodes/{nodeID}", s.handleCallGraphNodeDetail)
+			r.Get("/search", s.handleCallGraphSearch)
+			r.Get("/build", s.handleCallGraphBuildStatus)
+			r.Post("/build", s.handleBuildCallGraph)
+			r.Get("/model", s.handleGetCallGraphModel)
+			r.Post("/model", s.handleSetCallGraphModel)
+		})
 	})
 
 	// Serve embedded web UI (or placeholder for dev)

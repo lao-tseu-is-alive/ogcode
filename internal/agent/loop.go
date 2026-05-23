@@ -22,16 +22,17 @@ import (
 
 // LoopRunner orchestrates the agent loop for a session.
 type LoopRunner struct {
-	Store           *session.Store
-	Bus             *bus.Bus
-	Registry        *provider.Registry
-	DefaultProvider provider.Provider
-	Tools           *tool.Registry
-	Dir             string
-	MaxSteps        int
-	Memory          *memory.Memory
-	MCP             *mcp.Client
-	NoteStore       *note.Store
+	Store              *session.Store
+	Bus                *bus.Bus
+	Registry           *provider.Registry
+	DefaultProvider    provider.Provider
+	Tools              *tool.Registry
+	Dir                string
+	MaxSteps           int
+	Memory             *memory.Memory
+	MCP                *mcp.Client
+	NoteStore          *note.Store
+	CallGraphEnabled   bool
 }
 
 // RunLoop executes the core agent loop: prompt -> stream -> tools -> loop back.
@@ -75,6 +76,18 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 	}
 	agentMDContent := LoadAgentMD(workDir)
 	memoryMDContent := LoadMemoryMD(workDir)
+
+	// For callgraph sessions: publish callgraph.built when the loop exits so the frontend refreshes.
+	if sess != nil && sess.SessionType == "callgraph" {
+		capturedSessionID := string(sessionID)
+		defer func() {
+			lr.Bus.Publish("callgraph.built", map[string]string{
+				"sessionId": capturedSessionID,
+				"reason":    exitReason,
+			})
+			slog.Info("callgraph build finished", "session", capturedSessionID, "reason", exitReason)
+		}()
+	}
 
 	// For note sessions: save the final assistant message as note content when the loop exits.
 	// This defer runs before the loop.done publish (LIFO) so the note is persisted before
@@ -287,7 +300,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		if lr.MCP != nil {
 			mcpTools = lr.MCP.Tools()
 		}
-		system := buildSystemPrompt(agent, workDir, memoryEnabled, agentMDContent, memoryMDContent, mcpTools)
+		system := buildSystemPrompt(agent, workDir, memoryEnabled, lr.CallGraphEnabled, agentMDContent, memoryMDContent, mcpTools)
 
 		systemPrompts := []string{system}
 		var modelMessages []provider.ModelMessage
@@ -696,7 +709,10 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 				Reasoning:  streamUsage.ReasoningTokens,
 				CacheRead:  streamUsage.CacheReadTokens,
 				CacheWrite: streamUsage.CacheWriteTokens,
-				Total:      streamUsage.InputTokens + streamUsage.OutputTokens,
+				// CacheRead and CacheWrite are input variants with different pricing;
+				// include them so Total reflects all tokens actually consumed.
+				Total: streamUsage.InputTokens + streamUsage.CacheReadTokens +
+					streamUsage.CacheWriteTokens + streamUsage.OutputTokens,
 			}
 			assistantMsg.Tokens = &tc
 		}
@@ -1103,7 +1119,12 @@ func shouldBreak(messages []*session.MessageWithParts) bool {
 	}
 	if last.Info.Finish != nil {
 		f := *last.Info.Finish
-		return f == "stop" || f == "error" || f == "aborted"
+		// "stop" / "end_turn" — natural completion (Anthropic uses "end_turn")
+		// "length" / "max_tokens" — hit token limit, do not keep looping
+		// "error" / "aborted" — terminal states
+		return f == "stop" || f == "end_turn" ||
+			f == "length" || f == "max_tokens" ||
+			f == "error" || f == "aborted"
 	}
 	return false
 }
@@ -1284,7 +1305,7 @@ func convertMessages(messages []*session.MessageWithParts) []provider.ModelMessa
 	return result
 }
 
-func buildSystemPrompt(a Agent, dir string, memoryEnabled bool, agentMDContent string, memoryMDContent string, mcpTools map[string]mcp.ToolDef) string {
+func buildSystemPrompt(a Agent, dir string, memoryEnabled bool, callGraphEnabled bool, agentMDContent string, memoryMDContent string, mcpTools map[string]mcp.ToolDef) string {
 	now := time.Now().Format("Mon Jan 2 15:04:05 MST 2006")
 	prompt := fmt.Sprintf(`%s
 
@@ -1365,6 +1386,16 @@ Current date: %s`, a.System, dir, runtime.GOOS, runtime.GOARCH, now)
 			}
 			prompt += "\n"
 		}
+	}
+
+	// Inject callgraph instructions for agents that use the callgraph tool,
+	// but not for the dedicated callgraph builder (it has its own system prompt).
+	if callGraphEnabled && a.ID != "callgraph" && a.HasTool("callgraph") {
+		role := "plan"
+		if a.ID == "build" {
+			role = "build"
+		}
+		prompt += "\n\n" + callGraphPrompt(role)
 	}
 
 	if memoryEnabled {

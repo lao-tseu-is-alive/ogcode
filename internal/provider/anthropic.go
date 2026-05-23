@@ -252,13 +252,12 @@ func (p *AnthropicProvider) streamEvents(body io.ReadCloser, ch chan<- StreamEve
 				currentToolName = ""
 			}
 		case "message_stop":
+			// Emit usage here; finish was already emitted by message_delta.
 			if usageDirty {
 				u := usage
 				ch <- StreamEvent{Type: EventUsage, Usage: &u}
 				usageDirty = false
 			}
-			reason := "stop"
-			ch <- StreamEvent{Type: EventFinish, FinishReason: &reason}
 		case "message_delta":
 			if evt.Usage != nil {
 				// message_delta carries the final OutputTokens count.
@@ -268,7 +267,11 @@ func (p *AnthropicProvider) streamEvents(body io.ReadCloser, ch chan<- StreamEve
 				}
 			}
 			if evt.Delta != nil && evt.Delta.StopReason != "" {
+				// Normalise "max_tokens" → "length" for cross-provider consistency.
 				reason := evt.Delta.StopReason
+				if reason == "max_tokens" {
+					reason = "length"
+				}
 				ch <- StreamEvent{Type: EventFinish, FinishReason: &reason}
 			}
 		case "error":
