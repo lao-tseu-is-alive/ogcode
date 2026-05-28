@@ -23,3 +23,11 @@ type ModelPreference struct {
 	CreatedAt   int64  `json:"createdAt"`
 	UpdatedAt   int64  `json:"updatedAt"`
 }
+
+// ModelCapability is a probed/known capability record for a model, persisted so
+// the image-support probe runs at most once per model (until manually refreshed).
+type ModelCapability struct {
+	ModelID        string `json:"modelId"`
+	SupportsImages bool   `json:"supportsImages"`
+	ProbedAt       int64  `json:"probedAt"`
+}

@@ -282,9 +282,10 @@ func (p *OpenAIProvider) fetchDynamicModels(ctx context.Context) []ModelInfo {
 			name = m.ID
 		}
 		models = append(models, ModelInfo{
-			ID:         m.ID,
-			Name:       name,
-			ProviderID: p.id,
+			ID:             m.ID,
+			Name:           name,
+			ProviderID:     p.id,
+			SupportsImages: modelNameSuggestsVision(m.ID),
 		})
 	}
 	slog.Info("dynamically fetched models from endpoint", "provider", p.id, "count", len(models))
@@ -309,6 +310,28 @@ var openRouterActiveDefaults = map[string]bool{
 }
 
 // ollamaLocalFallback is used when local Ollama is not running or has no models pulled.
+// visionModelHints are substrings of model IDs from known multimodal families.
+// Used to infer image support for dynamically-fetched models (OpenRouter/Ollama)
+// that carry no capability metadata. Conservative by design — unknown models
+// stay text-only.
+var visionModelHints = []string{
+	"gpt-4o", "gpt-4.1", "gpt-5", "o1", "o3", "o4",
+	"claude", "gemini", "grok-vision", "pixtral",
+	"llava", "bakllava", "moondream", "minicpm-v",
+	"-vision", "vision-", "qwen2-vl", "qwen2.5-vl", "llama-3.2-11b", "llama-3.2-90b",
+}
+
+// modelNameSuggestsVision reports whether a model ID looks like a multimodal model.
+func modelNameSuggestsVision(modelID string) bool {
+	id := strings.ToLower(modelID)
+	for _, hint := range visionModelHints {
+		if strings.Contains(id, hint) {
+			return true
+		}
+	}
+	return false
+}
+
 var ollamaLocalFallback = []ModelInfo{
 	{ID: "qwen3", Name: "Qwen3", ProviderID: "ollama", ActiveByDefault: true},
 	{ID: "llama3.1", Name: "Llama 3.1", ProviderID: "ollama", ActiveByDefault: true},
@@ -402,6 +425,7 @@ func (p *OpenAIProvider) Models() []ModelInfo {
 				ActiveByDefault: m.ActiveByDefault,
 				InputPricePerM:  m.InputPricePerM,
 				OutputPricePerM: m.OutputPricePerM,
+				SupportsImages:  m.SupportsImages,
 			})
 		}
 	}
@@ -427,7 +451,35 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 			Content: strings.Join(req.System, "\n\n"),
 		})
 	}
+	// OpenAI-compatible APIs reject images inside a tool result. Buffer any
+	// images attached to tool results and emit them as a follow-up user message
+	// once all of the turn's consecutive tool messages have been appended.
+	var pendingImages []MessageImage
+	flushImages := func() {
+		if len(pendingImages) == 0 {
+			return
+		}
+		parts := []any{map[string]any{
+			"type": "text",
+			"text": "Rendered image(s) for the preceding tool result:",
+		}}
+		for _, img := range pendingImages {
+			parts = append(parts, map[string]any{
+				"type": "image_url",
+				"image_url": map[string]any{
+					"url": fmt.Sprintf("data:%s;base64,%s", img.MediaType, img.Data),
+				},
+			})
+		}
+		messages = append(messages, oaiMessage{Role: "user", Content: parts})
+		pendingImages = nil
+	}
+
 	for _, m := range req.Messages {
+		// A non-tool message ends the run of tool results; flush buffered images first.
+		if m.ToolCallID == "" {
+			flushImages()
+		}
 		msg := oaiMessage{Role: m.Role}
 		if m.ToolCallID != "" {
 			// Tool result message: role=tool, content=output, tool_call_id, name
@@ -438,6 +490,9 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 				content = string(m.Content)
 			}
 			msg.Content = content
+			if len(m.Images) > 0 {
+				pendingImages = append(pendingImages, m.Images...)
+			}
 		} else if len(m.ToolCalls) > 0 {
 			// Assistant message with tool calls
 			msg.ToolCalls = m.ToolCalls
@@ -452,6 +507,24 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 				// OpenAI requires content to be null (not omitted) when only tool calls
 				msg.Content = nil
 			}
+		} else if len(m.Images) > 0 {
+			// Plain message with image attachments (e.g. a capability probe or a
+			// user-supplied image): content is an array of text + image_url parts.
+			var text string
+			json.Unmarshal(m.Content, &text)
+			parts := []any{}
+			if text != "" {
+				parts = append(parts, map[string]any{"type": "text", "text": text})
+			}
+			for _, img := range m.Images {
+				parts = append(parts, map[string]any{
+					"type": "image_url",
+					"image_url": map[string]any{
+						"url": fmt.Sprintf("data:%s;base64,%s", img.MediaType, img.Data),
+					},
+				})
+			}
+			msg.Content = parts
 		} else {
 			var content any
 			if err := json.Unmarshal(m.Content, &content); err != nil {
@@ -461,6 +534,8 @@ func (p *OpenAIProvider) StreamChat(ctx context.Context, req StreamRequest) (<-c
 		}
 		messages = append(messages, msg)
 	}
+	// Flush any images from a trailing run of tool results (e.g. the current turn).
+	flushImages()
 
 	tools := make([]oaiTool, 0, len(req.Tools))
 	for _, t := range req.Tools {

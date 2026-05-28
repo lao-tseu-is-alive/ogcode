@@ -145,6 +145,10 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		p = lr.DefaultProvider
 	}
 
+	// Whether the active model accepts image input — passed to tools so they can
+	// decide to return an image (e.g. a rendered PDF page) instead of text.
+	modelSupportsImages := lr.resolveImageSupport(ctx, p, modelID)
+
 	// Restore compaction summary from a previous turn (persisted in the session row).
 	// Applied on every step so all future LLM calls stay within the context window.
 	compactionSummary := ""
@@ -786,7 +790,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 				go func(idx int) {
 					defer wg.Done()
 					tc := readyCalls[idx]
-					result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent, workDir)
+					result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent, workDir, modelSupportsImages)
 					execInfos[idx].result = result
 					execInfos[idx].err = err
 				}(i)
@@ -832,6 +836,12 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 							Start: toolData.State.Time.Start,
 							End:   session.Now(),
 						},
+					}
+					if info.result.Image != nil {
+						toolData.State.Image = &session.ToolImage{
+							MediaType: info.result.Image.MediaType,
+							Data:      info.result.Image.Data,
+						}
 					}
 				}
 
@@ -1014,7 +1024,53 @@ func buildTurnResponse(messages []*session.MessageWithParts, userMsgIdx int) str
 	return b.String()
 }
 
-func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.SessionID, messageID session.MessageID, tc pendingToolCall, a Agent, workDir string) (tool.Result, error) {
+// probeImageTimeout bounds the one-time capability probe so a slow/unreachable
+// provider can't stall the first turn for long.
+const probeImageTimeout = 15 * time.Second
+
+// resolveImageSupport determines whether modelID accepts image input, in order:
+//  1. a persisted capability record (probed once, permanent until manual refresh);
+//  2. the static catalog for Anthropic/OpenAI, which is authoritative (no probe);
+//  3. a one-time live probe for dynamic providers (OpenRouter/Ollama), cached on success;
+//  4. the name heuristic as a last resort when the probe is inconclusive (not cached).
+func (lr *LoopRunner) resolveImageSupport(ctx context.Context, p provider.Provider, modelID string) bool {
+	if modelID == "" || p == nil {
+		return false
+	}
+	database := lr.Store.DB()
+
+	if cap, ok, err := session.GetModelCapability(database, modelID); err == nil && ok {
+		return cap.SupportsImages
+	}
+
+	// Anthropic and OpenAI ship a curated catalog with known capabilities — trust
+	// it directly rather than spending a probe call. Dynamic providers fall through.
+	switch p.ID() {
+	case "anthropic", "openai":
+		return lr.Registry.ModelSupportsImages(modelID)
+	}
+
+	pctx, cancel := context.WithTimeout(ctx, probeImageTimeout)
+	defer cancel()
+	supports, definitive, err := provider.ProbeImageSupport(pctx, p, modelID)
+	if err != nil || !definitive {
+		slog.Warn("image-support probe inconclusive; using name heuristic",
+			"model", modelID, "err", err)
+		return lr.Registry.ModelSupportsImages(modelID)
+	}
+
+	if serr := session.SetModelCapability(database, &session.ModelCapability{
+		ModelID:        modelID,
+		SupportsImages: supports,
+		ProbedAt:       session.Now(),
+	}); serr != nil {
+		slog.Warn("failed to persist model capability", "model", modelID, "err", serr)
+	}
+	slog.Info("probed model image support", "model", modelID, "supportsImages", supports)
+	return supports
+}
+
+func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.SessionID, messageID session.MessageID, tc pendingToolCall, a Agent, workDir string, modelSupportsImages bool) (tool.Result, error) {
 	// Reject tools not in the agent's allowed list — guards against prompt injection
 	// or a misbehaving model calling tools it was never offered.
 	if !a.HasTool(tc.Name) {
@@ -1027,12 +1083,13 @@ func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.Session
 	if t != nil {
 		slog.Info("executing built-in tool", "tool", tc.Name)
 		tctx := tool.Context{
-			SessionID:  sessionID,
-			MessageID:  messageID,
-			Agent:      a.ID,
-			CallID:     tc.CallID,
-			Ctx:        ctx,
-			SessionDir: workDir,
+			SessionID:           sessionID,
+			MessageID:           messageID,
+			Agent:               a.ID,
+			CallID:              tc.CallID,
+			Ctx:                 ctx,
+			SessionDir:          workDir,
+			ModelSupportsImages: modelSupportsImages,
 		}
 		return t.Execute(ctx, tc.Input, tctx)
 	}
@@ -1284,12 +1341,19 @@ func convertMessages(messages []*session.MessageWithParts) []provider.ModelMessa
 					output = "Error: " + *tr.State.Error
 				}
 				content, _ := json.Marshal(output)
-				result = append(result, provider.ModelMessage{
+				msg := provider.ModelMessage{
 					Role:       "tool",
 					Content:    content,
 					ToolCallID: tr.CallID,
 					Name:       tr.Tool,
-				})
+				}
+				if tr.State.Image != nil {
+					msg.Images = []provider.MessageImage{{
+						MediaType: tr.State.Image.MediaType,
+						Data:      tr.State.Image.Data,
+					}}
+				}
+				result = append(result, msg)
 			}
 		} else {
 			// Plain text message

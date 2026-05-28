@@ -13,7 +13,7 @@ build-web:
 
 build-server:
 	$(eval VERSION := $(shell node -p "require('./web/package.json').version" 2>/dev/null || echo "dev"))
-	CGO_ENABLED=0 go build \
+	CGO_ENABLED=1 go build \
 		-ldflags "-X github.com/prasenjeet-symon/ogcode/internal/version.Version=$(VERSION) \
 		          -X github.com/prasenjeet-symon/ogcode/internal/cli.version=$(VERSION)" \
 		-o ogcode .

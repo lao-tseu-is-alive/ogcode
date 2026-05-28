@@ -27,6 +27,7 @@ func (s *Server) routes() http.Handler {
 
 		r.Post("/models/preference", s.handleSetModelPreference)
 		r.Delete("/models/preference/{id}", s.handleDeleteModelPreference)
+		r.Post("/models/capability/clear", s.handleClearModelCapability)
 
 		r.Get("/theme", s.handleGetTheme)
 		r.Post("/theme", s.handleSetTheme)
@@ -113,6 +114,13 @@ func (s *Server) routes() http.Handler {
 			r.Post("/build", s.handleBuildCallGraph)
 			r.Get("/model", s.handleGetCallGraphModel)
 			r.Post("/model", s.handleSetCallGraphModel)
+		})
+
+		// Doc index
+		r.Route("/docindex", func(r chi.Router) {
+			r.Get("/build", s.handleDocIndexBuildStatus)
+			r.Post("/build", s.handleBuildDocIndex)
+			r.Get("/docs", s.handleListIndexedDocs)
 		})
 	})
 

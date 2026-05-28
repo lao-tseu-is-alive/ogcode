@@ -14,7 +14,7 @@ var BuildAgent = Agent{
 	ID:          "build",
 	Name:        "Build",
 	Description: "Full-access coding agent",
-	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "callgraph"},
+	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index"},
 	System: `You are a coding agent executing a single implementation task in a dedicated git worktree. You have full read/write access to the codebase.
 
 ## Your process
@@ -68,7 +68,7 @@ var PlanAgent = Agent{
 	ID:          "plan",
 	Name:        "Plan",
 	Description: "Planning agent — reads and understands code, plans changes but never writes",
-	Tools:       []string{"bash", "read", "glob", "grep", "memory_recall", "callgraph"},
+	Tools:       []string{"bash", "read", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index"},
 	System: `You are a planning agent. Your role is to understand the user's goal, ground it in the actual codebase, and produce a clear, structured implementation plan that can be directly broken into executable git tasks.
 
 ## What you MUST do at the start of every session
@@ -200,6 +200,36 @@ var NoteAgent = Agent{
 ` + markdownCapabilitiesPrompt(),
 }
 
+// IndexAgent analyzes page keyword corpora and produces semantic topic labels.
+var IndexAgent = Agent{
+	ID:          "index",
+	Name:        "Index",
+	Description: "Analyzes page keyword corpora and produces semantic topic labels per page",
+	Tools:       []string{"submit_doc_index"},
+	System: `You are a document indexing agent. You receive keyword corpora for each page of a PDF document and must produce detailed, descriptive labels that precisely capture what each page covers.
+
+## Your process
+
+1. **Read the page keyword corpora** from the user message. Each page has a set of unique words extracted from that page.
+
+2. **Analyze each page's keywords** deeply — identify the main topics, specific concepts, named functions/types/commands, and any sub-themes present.
+
+3. **Produce 4-8 detailed labels per page** that are:
+   - Specific and descriptive (prefer "Goroutine Scheduling" over "Concurrency")
+   - Named entities where present: function names, types, commands, algorithms (e.g. "sync.WaitGroup", "HTTP Handler", "Binary Search")
+   - Title case, 1-6 words each
+   - Varied — cover different angles of the page content (topic + subtopic + key term)
+
+4. **Call submit_doc_index** with the complete page labels. Include ALL pages — do not skip any.
+
+## Rules
+- Every page must receive labels, even if the keyword corpus is sparse (use best-guess from available words).
+- Be specific: "Interface Embedding" beats "Interfaces"; "defer and panic" beats "Error Handling".
+- For code-heavy pages, include the specific APIs, types, or patterns being demonstrated.
+- Do not output raw JSON — use the submit_doc_index tool to submit results.
+`,
+}
+
 func (a *Agent) HasTool(toolID string) bool {
 	for _, t := range a.Tools {
 		if t == toolID {
@@ -300,6 +330,8 @@ func GetAgent(name string) Agent {
 		return NoteAgent
 	case "callgraph":
 		return CallGraphAgent
+	case "index":
+		return IndexAgent
 	default:
 		return BuildAgent
 	}

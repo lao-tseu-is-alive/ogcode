@@ -25,6 +25,10 @@ type Context struct {
 	SessionDir string
 	Ask        func(req PermissionRequest) error
 	Metadata   func(meta MetadataUpdate) error
+	// ModelSupportsImages is true when the session's active model accepts image
+	// input. Tools may use this to decide whether to return an image (e.g. a
+	// rendered PDF page) instead of text.
+	ModelSupportsImages bool
 }
 
 // PermissionRequest is sent when a tool needs user approval.
@@ -46,6 +50,17 @@ type Result struct {
 	Title    string         `json:"title"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 	Output   string         `json:"output"`
+	// Image, when non-nil, is an image the tool wants the model to see (e.g. a
+	// rendered PDF page). It is delivered to the model alongside Output, in a
+	// provider-appropriate way. Only honored for vision-capable models.
+	Image *ResultImage `json:"image,omitempty"`
+}
+
+// ResultImage is an image attachment on a tool Result.
+// Data is base64-encoded image bytes; MediaType is e.g. "image/jpeg".
+type ResultImage struct {
+	MediaType string `json:"mediaType"`
+	Data      string `json:"data"`
 }
 
 // Registry holds all registered tools.

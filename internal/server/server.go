@@ -19,6 +19,7 @@ import (
 	"github.com/prasenjeet-symon/ogcode/internal/bus"
 	"github.com/prasenjeet-symon/ogcode/internal/callgraph"
 	"github.com/prasenjeet-symon/ogcode/internal/db"
+	"github.com/prasenjeet-symon/ogcode/internal/docindex"
 	"github.com/prasenjeet-symon/ogcode/internal/git"
 	"github.com/prasenjeet-symon/ogcode/internal/mcp"
 	"github.com/prasenjeet-symon/ogcode/internal/memory"
@@ -48,9 +49,10 @@ type Server struct {
 	bus        *bus.Bus
 	store      *session.Store
 	planStore  *plan.Store
-	taskStore     *task.Store
-	noteStore     *note.Store
+	taskStore      *task.Store
+	noteStore      *note.Store
 	callgraphStore *callgraph.Store
+	docindexStore  *docindex.Store
 	registry   *provider.Registry
 	defaultProvider provider.Provider
 	loopRunner *agent.LoopRunner
@@ -73,6 +75,10 @@ type Server struct {
 	// gitMu serializes all repo-level git operations (worktree add/remove/prune,
 	// branch creation) to prevent concurrent writes from corrupting .git metadata.
 	gitMu sync.Mutex
+
+	// docindexMu protects docindexRunning.
+	docindexMu      sync.Mutex
+	docindexRunning bool
 }
 
 func New(port int, dir string, mode ServerMode) *Server {
@@ -112,6 +118,7 @@ func (s *Server) Start() error {
 	s.taskStore = task.NewStore(database)
 	s.noteStore = note.NewStore(database)
 	s.callgraphStore = callgraph.NewStore(database)
+	s.docindexStore = docindex.NewStore(database)
 
 	// Recover notes stuck in "generating" status from a previous server crash.
 	if stuck, err := s.noteStore.RecoverStuckNotes(); err != nil {
@@ -206,6 +213,9 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.GrepTool{})
 	toolRegistry.Register(tool.BreakdownTool{})
 	toolRegistry.Register(tool.NewCallGraphTool(s.callgraphStore))
+	toolRegistry.Register(tool.NewSubmitDocIndexTool(s.docindexStore))
+	toolRegistry.Register(tool.ReadPdfPageTool{})
+	toolRegistry.Register(tool.NewPdfIndexTool(s.docindexStore))
 	// memory_recall will be registered below after mem is initialized
 
 	// Determine default provider with stable priority

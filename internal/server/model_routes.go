@@ -88,3 +88,24 @@ func (s *Server) handleDeleteModelPreference(w http.ResponseWriter, r *http.Requ
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// handleClearModelCapability clears a model's cached image-support result so it
+// is re-probed on next use. The model ID is taken from the JSON body because IDs
+// can contain slashes (e.g. "openai/gpt-4o"), which path params don't handle.
+// An empty modelId clears all cached capabilities.
+func (s *Server) handleClearModelCapability(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ModelID string `json:"modelId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := session.DeleteModelCapability(s.db, input.ModelID); err != nil {
+		slog.Error("clear model capability", "err", err)
+		http.Error(w, "failed to clear capability", http.StatusInternalServerError)
+		return
+	}
+	slog.Info("cleared cached model capability", "model", input.ModelID)
+	w.WriteHeader(http.StatusNoContent)
+}

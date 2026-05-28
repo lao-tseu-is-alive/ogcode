@@ -46,12 +46,23 @@ type ContentPart struct {
 	Text string `json:"text,omitempty"`
 }
 
+// MessageImage is an image attached to a message, carried provider-neutrally.
+// Data is base64-encoded image bytes; MediaType is e.g. "image/jpeg".
+type MessageImage struct {
+	MediaType string `json:"mediaType"`
+	Data      string `json:"data"`
+}
+
 type ModelMessage struct {
 	Role       string          `json:"role"`
 	Content    json.RawMessage `json:"content,omitempty"`
 	ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
 	ToolCallID string          `json:"tool_call_id,omitempty"`
 	Name       string          `json:"name,omitempty"`
+	// Images carries image attachments for a tool-result message. Providers
+	// render these per their API: Anthropic embeds them in the tool_result
+	// content block; OpenAI-family inject a follow-up user message.
+	Images []MessageImage `json:"images,omitempty"`
 }
 
 type ToolDefinition struct {
@@ -78,6 +89,7 @@ type ModelInfo struct {
 	ActiveByDefault bool    `json:"activeByDefault"`
 	InputPricePerM  float64 `json:"inputPricePerM"`
 	OutputPricePerM float64 `json:"outputPricePerM"`
+	SupportsImages  bool    `json:"supportsImages"`
 }
 
 type Provider interface {
@@ -135,6 +147,22 @@ func (r *Registry) ListModels() []ModelInfo {
 		models = append(models, p.Models()...)
 	}
 	return models
+}
+
+// ModelSupportsImages reports whether the given model accepts image input.
+// Unknown models default to false.
+func (r *Registry) ModelSupportsImages(modelID string) bool {
+	if modelID == "" {
+		return false
+	}
+	for _, p := range r.providers {
+		for _, m := range p.Models() {
+			if m.ID == modelID {
+				return m.SupportsImages
+			}
+		}
+	}
+	return false
 }
 
 func (r *Registry) RegisterCustomModel(modelID, providerID string) {

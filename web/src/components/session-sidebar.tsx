@@ -120,6 +120,19 @@ export default function SessionSidebar() {
             </svg>
           </button>
           <button
+            onClick={() => navigate('/docindex')}
+            title="Doc Index"
+            class={`w-8 h-8 rounded-lg flex items-center justify-center transition
+              ${location.pathname.startsWith('/docindex')
+                ? 'text-[color:var(--accent)] bg-[color:var(--accent-soft)]'
+                : 'text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)]'
+              }`}
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+          </button>
+          <button
             onClick={() => navigate('/settings', { state: { from: location.pathname } })}
             title="Settings"
             class="w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-100 hover:bg-[color:var(--bg-hover)] flex items-center justify-center transition"
@@ -260,6 +273,20 @@ export default function SessionSidebar() {
             <path stroke-linecap="round" stroke-linejoin="round" d="M13.81 9.06l.28.28a2.69 2.69 0 010 3.81l-5.66 5.66a2.69 2.69 0 01-3.81 0l-.28-.28a2.69 2.69 0 010-3.81l5.66-5.66a2.69 2.69 0 013.81 0zM17.19 9.06l.28.28a2.69 2.69 0 010 3.81l-.28.28" />
           </svg>
           <span>Call Graph</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/docindex')}
+          class={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[13px] transition
+            ${location.pathname.startsWith('/docindex')
+              ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
+              : 'text-zinc-500 hover:text-zinc-200 hover:bg-[color:var(--bg-hover)]/50'
+            }`}
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+          </svg>
+          <span>Doc Index</span>
         </button>
       </div>
 

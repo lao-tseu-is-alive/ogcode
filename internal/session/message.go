@@ -98,7 +98,15 @@ type ToolState struct {
 	Error    *string         `json:"error,omitempty"`
 	Title    *string         `json:"title,omitempty"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
+	Image    *ToolImage      `json:"image,omitempty"`
 	Time     ToolTime        `json:"time"`
+}
+
+// ToolImage is an image produced by a tool, persisted so the model can be
+// re-sent the image on history replay. Data is base64-encoded image bytes.
+type ToolImage struct {
+	MediaType string `json:"mediaType"`
+	Data      string `json:"data"`
 }
 
 type ToolTime struct {

@@ -16,6 +16,10 @@ func NewStore(database *db.DB) *Store {
 	return &Store{db: database}
 }
 
+// DB returns the underlying database handle, used by helpers that operate on
+// other tables (e.g. model capability records).
+func (s *Store) DB() *db.DB { return s.db }
+
 func (s *Store) Create(session *Session) error {
 	_, err := s.db.Exec(
 		`INSERT INTO session (id, project_id, directory, title, model, session_type, permission, compaction_summary, time_created, time_updated)

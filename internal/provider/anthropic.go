@@ -42,6 +42,7 @@ func (p *AnthropicProvider) Models() []ModelInfo {
 			Default:         m.ID == p.model,
 			InputPricePerM:  m.InputPricePerM,
 			OutputPricePerM: m.OutputPricePerM,
+			SupportsImages:  m.SupportsImages,
 		})
 	}
 	return all
@@ -70,11 +71,33 @@ func (p *AnthropicProvider) StreamChat(ctx context.Context, req StreamRequest) (
 				if err := json.Unmarshal(tr.Content, &output); err != nil {
 					output = string(tr.Content)
 				}
-				blocks = append(blocks, map[string]any{
-					"type":        "tool_result",
-					"tool_use_id": tr.ToolCallID,
-					"content":     output,
-				})
+				// When the tool result carries images, the content becomes an
+				// array of blocks: the text output followed by image blocks.
+				// Anthropic supports image blocks directly inside tool_result.
+				if len(tr.Images) > 0 {
+					content := []map[string]any{{"type": "text", "text": output}}
+					for _, img := range tr.Images {
+						content = append(content, map[string]any{
+							"type": "image",
+							"source": map[string]any{
+								"type":       "base64",
+								"media_type": img.MediaType,
+								"data":       img.Data,
+							},
+						})
+					}
+					blocks = append(blocks, map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": tr.ToolCallID,
+						"content":     content,
+					})
+				} else {
+					blocks = append(blocks, map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": tr.ToolCallID,
+						"content":     output,
+					})
+				}
 				i++
 			}
 			i-- // outer loop will increment
@@ -112,6 +135,26 @@ func (p *AnthropicProvider) StreamChat(ctx context.Context, req StreamRequest) (
 				}
 			}
 			messages = append(messages, anthropicMessage{Role: "assistant", Content: blocks})
+		} else if len(m.Images) > 0 {
+			// Plain message with image attachments (e.g. a capability probe or a
+			// user-supplied image): build a content array of text + image blocks.
+			var text string
+			json.Unmarshal(m.Content, &text)
+			blocks := []map[string]any{}
+			if text != "" {
+				blocks = append(blocks, map[string]any{"type": "text", "text": text})
+			}
+			for _, img := range m.Images {
+				blocks = append(blocks, map[string]any{
+					"type": "image",
+					"source": map[string]any{
+						"type":       "base64",
+						"media_type": img.MediaType,
+						"data":       img.Data,
+					},
+				})
+			}
+			messages = append(messages, anthropicMessage{Role: m.Role, Content: blocks})
 		} else {
 			var content any
 			if err := json.Unmarshal(m.Content, &content); err != nil {

@@ -1,6 +1,10 @@
 package session
 
-import "github.com/prasenjeet-symon/ogcode/internal/db"
+import (
+	"database/sql"
+
+	"github.com/prasenjeet-symon/ogcode/internal/db"
+)
 
 func modelStore() *ModelPreferenceStore {
 	return &ModelPreferenceStore{}
@@ -55,5 +59,50 @@ func SetModelPreference(database *db.DB, p *ModelPreference) error {
 // DeleteModelPreference removes a model preference from the database.
 func DeleteModelPreference(database *db.DB, id string) error {
 	_, err := database.Exec(`DELETE FROM model_preference WHERE id = ?`, id)
+	return err
+}
+
+// GetModelCapability returns the persisted capability record for a model.
+// The second return value is false when no record exists (not yet probed).
+func GetModelCapability(database *db.DB, modelID string) (*ModelCapability, bool, error) {
+	row := database.QueryRow(
+		`SELECT model_id, supports_images, probed_at FROM model_capability WHERE model_id = ?`,
+		modelID,
+	)
+	var c ModelCapability
+	var supportsImages int
+	if err := row.Scan(&c.ModelID, &supportsImages, &c.ProbedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	c.SupportsImages = supportsImages == 1
+	return &c, true, nil
+}
+
+// SetModelCapability upserts a probed capability record for a model.
+func SetModelCapability(database *db.DB, c *ModelCapability) error {
+	supportsImages := 0
+	if c.SupportsImages {
+		supportsImages = 1
+	}
+	_, err := database.Exec(
+		`INSERT OR REPLACE INTO model_capability (model_id, supports_images, probed_at)
+		 VALUES (?, ?, ?)`,
+		c.ModelID, supportsImages, c.ProbedAt,
+	)
+	return err
+}
+
+// DeleteModelCapability clears a model's cached capability so it is re-probed on
+// next use. An empty modelID clears every cached capability. Used by the
+// manual-refresh path.
+func DeleteModelCapability(database *db.DB, modelID string) error {
+	if modelID == "" {
+		_, err := database.Exec(`DELETE FROM model_capability`)
+		return err
+	}
+	_, err := database.Exec(`DELETE FROM model_capability WHERE model_id = ?`, modelID)
 	return err
 }

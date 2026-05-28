@@ -664,3 +664,41 @@ export function buildCallGraph(directory?: string, rebuild = false, model?: stri
     body: JSON.stringify({ directory, rebuild, model }),
   });
 }
+
+// ─── Doc Index API ───
+
+export interface DocPageEntry {
+  id: string;
+  docPath: string;
+  pageNum: number;
+  keywords: string[];
+  labels: string[];
+  indexedAt: number;
+}
+
+export interface DocSummary {
+  docPath: string;
+  pageCount: number;
+  pages?: DocPageEntry[]; // omitted from the docs listing; present only when full pages are attached
+  indexedAt: number;
+}
+
+export interface DocIndexBuildStatus {
+  running: boolean;
+}
+
+export function getDocIndexBuildStatus(): Promise<DocIndexBuildStatus> {
+  return fetchAPI('/docindex/build');
+}
+
+export function buildDocIndex(directory?: string, rebuild = false, model?: string): Promise<{ running: boolean }> {
+  return fetchAPI('/docindex/build', {
+    method: 'POST',
+    body: JSON.stringify({ directory, rebuild, model }),
+  });
+}
+
+export function getIndexedDocs(directory?: string): Promise<DocSummary[]> {
+  const params = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+  return fetchAPI(`/docindex/docs${params}`);
+}

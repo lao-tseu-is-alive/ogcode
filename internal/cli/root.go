@@ -1,17 +1,28 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/prasenjeet-symon/ogcode/internal/agent"
+	"github.com/prasenjeet-symon/ogcode/internal/bus"
+	"github.com/prasenjeet-symon/ogcode/internal/db"
+	"github.com/prasenjeet-symon/ogcode/internal/docindex"
+	"github.com/prasenjeet-symon/ogcode/internal/indexer"
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/server"
+	"github.com/prasenjeet-symon/ogcode/internal/session"
+	"github.com/prasenjeet-symon/ogcode/internal/tool"
 	"github.com/spf13/cobra"
 )
 
 var port int
+var indexModel string
 
 var rootCmd = &cobra.Command{
 	Use:   "ogcode",
@@ -35,12 +46,109 @@ var planCmd = &cobra.Command{
 	},
 }
 
+var indexCmd = &cobra.Command{
+	Use:   "index",
+	Short: "Scan workspace for PDF files and index them with semantic labels",
+	RunE:  runIndex,
+}
+
 func init() {
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
 	serveCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
 	planCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
+	indexCmd.Flags().StringVar(&indexModel, "model", "", "Model to use for the IndexAgent (default: provider default)")
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(planCmd)
+	rootCmd.AddCommand(indexCmd)
+}
+
+func runIndex(cmd *cobra.Command, args []string) error {
+	dir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get working directory: %w", err)
+	}
+
+	dbPath := filepath.Join(dir, ".ogcode", "ogcode.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return fmt.Errorf("create data dir: %w", err)
+	}
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer database.Close()
+
+	b := bus.New(256)
+	sessionStore := session.NewStore(database)
+	docindexStore := docindex.NewStore(database)
+
+	// Register providers using the same priority logic as the server.
+	registry := provider.NewRegistry()
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		p, _ := provider.NewProviderWithConfig("anthropic", key, "")
+		registry.Register(p)
+	}
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		baseURL := os.Getenv("OPENAI_BASE_URL")
+		p, _ := provider.NewProviderWithConfig("openai", key, baseURL)
+		registry.Register(p)
+	}
+	if key := os.Getenv("OPENROUTER_API_KEY"); key != "" {
+		p, _ := provider.NewProviderWithConfig("openrouter", key, "")
+		registry.Register(p)
+	}
+	ollamaKey := os.Getenv("OLLAMA_API_KEY")
+	ollamaBaseURL := os.Getenv("OLLAMA_BASE_URL")
+	if ollamaKey != "" || ollamaBaseURL != "" || fileExists("/usr/local/bin/ollama") || fileExists("/opt/homebrew/bin/ollama") {
+		p, _ := provider.NewProviderWithConfig("ollama", ollamaKey, ollamaBaseURL)
+		registry.Register(p)
+	}
+
+	var defaultProvider provider.Provider
+	priority := []string{"anthropic", "openai", "openrouter", "ollama"}
+	for _, pid := range priority {
+		if p := registry.Get(pid); p != nil {
+			defaultProvider = p
+			break
+		}
+	}
+	if defaultProvider == nil {
+		return fmt.Errorf("no LLM provider configured; set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or OLLAMA_API_KEY")
+	}
+
+	toolRegistry := tool.NewRegistry()
+	toolRegistry.Register(tool.ReadTool{})
+	toolRegistry.Register(tool.GlobTool{})
+	toolRegistry.Register(tool.GrepTool{})
+	toolRegistry.Register(tool.NewSubmitDocIndexTool(docindexStore))
+
+	lr := &agent.LoopRunner{
+		Store:           sessionStore,
+		Bus:             b,
+		Registry:        registry,
+		DefaultProvider: defaultProvider,
+		Tools:           toolRegistry,
+		Dir:             dir,
+		MaxSteps:        50,
+	}
+
+	idx := indexer.New(dir, docindexStore, lr)
+	if indexModel != "" {
+		idx = idx.WithModel(indexModel)
+	}
+	ctx := context.Background()
+	if err := idx.Run(ctx); err != nil {
+		return fmt.Errorf("indexing failed: %w", err)
+	}
+
+	fmt.Println("Indexing complete")
+	return nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func setupLogging() {

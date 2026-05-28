@@ -55,6 +55,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		IsCustom        bool    `json:"isCustom"`
 		InputPricePerM  float64 `json:"inputPricePerM"`
 		OutputPricePerM float64 `json:"outputPricePerM"`
+		SupportsImages  bool    `json:"supportsImages"`
 	}
 
 	var result []ModelEntry
@@ -62,6 +63,12 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		defaultEnabled := m.ActiveByDefault
 		if pref, ok := prefMap[m.ID]; ok {
 			defaultEnabled = pref.Enabled
+		}
+		// Prefer a probed/cached capability; otherwise fall back to the catalog
+		// or heuristic value. Never probes here — this is a read-only listing.
+		supportsImages := m.SupportsImages
+		if cap, ok, err := session.GetModelCapability(s.db, m.ID); err == nil && ok {
+			supportsImages = cap.SupportsImages
 		}
 		entry := ModelEntry{
 			ID:              m.ID,
@@ -72,6 +79,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			IsCustom:        false,
 			InputPricePerM:  m.InputPricePerM,
 			OutputPricePerM: m.OutputPricePerM,
+			SupportsImages:  supportsImages,
 		}
 		result = append(result, entry)
 	}
