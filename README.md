@@ -2,7 +2,7 @@
 
 # Ogcode
 
-**The Self-Contained Agentic Coding Workbench**
+**One binary. Zero cloud. An agentic coding workbench that plans, remembers, and ships in parallel.**
 
 [![Discord](https://img.shields.io/discord/1373677337985056828?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/JQP9t8y2Zv)
 [![Release](https://img.shields.io/github/v/release/prasenjeet-symon/ogcode?label=Release&style=flat)](https://github.com/prasenjeet-symon/ogcode/releases)
