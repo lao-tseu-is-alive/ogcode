@@ -1,55 +1,51 @@
-# 🚀 Ogcode v0.4.0 Release
+# Release Notes — v0.7.0
 
-## 📋 Executive Summary
-This release introduces MEMORY.md — persistent project memory that survives across sessions — alongside parallel tool execution for faster agent runs, per-model pricing visibility in the UI, expanded model catalog support, and key reliability fixes.
+## Codebase Indexing & Source Navigation
 
----
+This release adds **full-text codebase indexing** alongside the existing PDF support, plus an **exclude patterns** system to control what gets indexed, and a new **`codebase_map` tool** that lets agents discover relevant files by topic before reading them.
 
-## 📝 Changes Summary
+### New: Text & Code File Indexing
 
-### ✨ New Features
-- **MEMORY.md — persistent project memory** — agents can now read/write a `MEMORY.md` file in your project to persist decisions, architecture notes, and hard-won knowledge across sessions. The system prompt always explains MEMORY.md's purpose and how to maintain it, even when the file doesn't yet exist.
-- **Parallel tool execution** — multiple independent tool calls are now executed concurrently via goroutines instead of sequentially, significantly reducing round-trip latency on agent turns with multiple file reads, searches, or bash commands.
-- **LLM instructed to prefer parallel tool calls** — each agent system prompt now includes an explicit section telling the LLM to batch independent tool calls in a single response block, taking full advantage of parallel execution.
-- **Per-model pricing in catalog and UI** — InputPricePerM and OutputPricePerM are now stored in the model catalog and displayed as price badges in the model selector dropdown and Settings > Models page.
-- **New models added to catalog** — Anthropic: claude-opus-4-6, claude-opus-4-5-20251101, claude-opus-4-1-20250805, claude-sonnet-4-5-20250929. OpenAI: gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano. GPT-4o/GPT-4o-mini retired from active-by-default.
+- **30+ source file extensions** — The indexer now walks PDFs **and** text/code files (`.go`, `.ts`, `.py`, `.rs`, `.java`, `.cpp`, `.html`, `.css`, `.yaml`, `.sql`, and more). Each file is treated as a single "page" and processed through the same keyword extraction + IndexAgent labelling pipeline.
+- **Improved keyword extraction** — `splitCamelCase` now decomposes identifiers like `getUserName` into `get`, `user`, `name` for richer indexing of source code symbols.
+- **Skip already-indexed docs** — The indexer checks `IsDocIndexed` before processing, so re-runs only pick up new or changed files.
 
-### 🔧 Bug Fixes
-- **Nil-safety checks for GetPart** — two places in RunLoop could dereference a nil part when GetPart returns (nil, nil), causing potential panics. Now explicitly checked.
-- **MEMORY.md instructions always injected** — previously only injected when a file already existed, meaning agents in projects without MEMORY.md never learned about the feature. Now always present.
+### New: Exclude Patterns
 
-### 🛠 Internal
-- **Version bump from 0.3.0 → 0.3.1 → 0.4.0** — version references updated across CLI and web package.
+- **`index_excludes` database table** — Stores per-directory glob patterns that the indexer should skip (e.g. `node_modules`, `vendor`, `*.min.js`).
+- **Default excludes seeded automatically** — On first index, sensible defaults are populated: `node_modules`, `vendor`, `dist`, `build`, `.git`, `__pycache__`, `.ogcode`, lock files, minified assets, and more.
+- **Full CRUD API** — `GET /docindex/excludes`, `POST /docindex/excludes`, and `DELETE /docindex/excludes/{id}` let you add, list, and remove patterns.
+- **Excludes modal in the UI** — A new dialog on the Doc Index page for managing skip patterns without touching the database directly.
 
----
+### New: `codebase_map` Tool
 
-## 📥 Installation
+- **`codebase_map`** — A new agent tool that returns a labeled JSON tree of all indexed text/code files. Agents call it to discover which files are relevant to a topic before reading them, dramatically improving navigation of large codebases.
+- **`subdir` parameter** — Scope the map to a specific directory (e.g. `"internal/auth"`) instead of loading the entire project tree.
+- **Integrated into Build & Plan agents** — Both BuildAgent and PlanAgent now have `codebase_map` in their tool suite and are instructed to prefer it as the first exploration step.
 
-**macOS/Linux:**
-```bash
-curl -fsSL http://ogcode.xyz/install.sh | sh
-```
+### Doc Index UI Redesign
 
-**Windows:**
-```powershell
-irm http://ogcode.xyz/install.ps1 | iex
-```
+- **Collapsible folder tree** — The Doc Index page now shows indexed files in an expandable folder tree instead of a flat list.
+- **Search & filter** — Quickly find files by name or label.
+- **File type badges** — Visual badges distinguish PDFs from source files.
 
-**Homebrew:**
-```bash
-brew install prasenjeet-symon/tap/ogcode
-```
+### Other Improvements
 
-**Winget:**
-```powershell
-winget install prasenjeet-symon.ogcode
-```
+- **Index sessions hidden** — Sessions created by the IndexAgent (`session_type = 'index'`) are now excluded from the session list, keeping the UI clean.
+- **Web version bumped** — Frontend package version updated to `0.7.0`.
 
-**Go Install:**
-```bash
-go install github.com/prasenjeet-symon/ogcode@latest
-```
+### Database Migrations
+
+- **`024_index_excludes.sql`** — Creates the `index_excludes` table for storing skip patterns per directory.
+
+### Full Changelog
+
+**Modified (11 files):**
+`internal/agent/agent.go`, `internal/docindex/store.go`, `internal/indexer/indexer.go`, `internal/indexer/pdf.go`, `internal/server/docindex_routes.go`, `internal/server/routes.go`, `internal/server/server.go`, `internal/session/store.go`, `internal/cli/version.go`, `internal/version/version.go`, `web/package.json`
+
+**New (4 files):**
+`internal/db/024_index_excludes.sql`, `internal/docindex/excludes.go`, `internal/indexer/text.go`, `internal/tool/project_index.go`
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.3.1...v0.4.0*
+*See also: [v0.6.0 Release Notes](#) for the Document Indexing & PDF Intelligence features that this release builds upon.*
