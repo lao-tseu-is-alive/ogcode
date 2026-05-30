@@ -29,6 +29,9 @@ type Context struct {
 	// input. Tools may use this to decide whether to return an image (e.g. a
 	// rendered PDF page) instead of text.
 	ModelSupportsImages bool
+	// Model is the model ID the parent session is using. Tools that spawn child
+	// sessions (e.g. deep_search) should inherit this so they run on the same model.
+	Model string
 }
 
 // PermissionRequest is sent when a tool needs user approval.

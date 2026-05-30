@@ -38,8 +38,12 @@ type LoopRunner struct {
 // RunLoop executes the core agent loop: prompt -> stream -> tools -> loop back.
 func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, agentName string) error {
 	agent := GetAgent(agentName)
-	if lr.MaxSteps == 0 {
-		lr.MaxSteps = 1000
+	// Read MaxSteps into a local; never mutate the shared LoopRunner field. A
+	// deep_search call runs a nested RunLoop concurrently with the parent loop,
+	// so writing lr.MaxSteps here would be a data race.
+	maxSteps := lr.MaxSteps
+	if maxSteps == 0 {
+		maxSteps = 1000
 	}
 
 	// Always notify the frontend when the loop exits, regardless of reason.
@@ -218,9 +222,9 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		}
 	}
 
-	for step := 1; step <= lr.MaxSteps; step++ {
-		if step == lr.MaxSteps {
-			slog.Warn("agent loop reached MaxSteps limit", "session", sessionID, "maxSteps", lr.MaxSteps)
+	for step := 1; step <= maxSteps; step++ {
+		if step == maxSteps {
+			slog.Warn("agent loop reached MaxSteps limit", "session", sessionID, "maxSteps", maxSteps)
 		}
 		slog.Info("agent loop step", "session", sessionID, "step", step)
 
@@ -790,7 +794,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 				go func(idx int) {
 					defer wg.Done()
 					tc := readyCalls[idx]
-					result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent, workDir, modelSupportsImages)
+					result, err := lr.executeTool(ctx, sessionID, assistantID, tc, agent, workDir, modelSupportsImages, modelID)
 					execInfos[idx].result = result
 					execInfos[idx].err = err
 				}(i)
@@ -1070,7 +1074,7 @@ func (lr *LoopRunner) resolveImageSupport(ctx context.Context, p provider.Provid
 	return supports
 }
 
-func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.SessionID, messageID session.MessageID, tc pendingToolCall, a Agent, workDir string, modelSupportsImages bool) (tool.Result, error) {
+func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.SessionID, messageID session.MessageID, tc pendingToolCall, a Agent, workDir string, modelSupportsImages bool, model string) (tool.Result, error) {
 	// Reject tools not in the agent's allowed list — guards against prompt injection
 	// or a misbehaving model calling tools it was never offered.
 	if !a.HasTool(tc.Name) {
@@ -1090,6 +1094,7 @@ func (lr *LoopRunner) executeTool(ctx context.Context, sessionID session.Session
 			Ctx:                 ctx,
 			SessionDir:          workDir,
 			ModelSupportsImages: modelSupportsImages,
+			Model:               model,
 		}
 		return t.Execute(ctx, tc.Input, tctx)
 	}
@@ -1139,14 +1144,15 @@ func toolNames(calls []pendingToolCall) []string {
 
 // extractLastAssistantText returns the text from the most recent assistant message
 // that contains text but no tool calls (i.e. a final response, not a mid-loop tool step).
-// Reasoning parts are intentionally excluded.
+// For thinking/reasoning models the synthesis may be in the reasoning part rather than
+// the text part — we fall back to reasoning when text is empty.
 func extractLastAssistantText(messages []*session.MessageWithParts) string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
 		if msg.Info.Role != session.RoleAssistant {
 			continue
 		}
-		var text string
+		var text, reasoning string
 		hasTool := false
 		for _, p := range msg.Parts {
 			switch p.Type {
@@ -1157,10 +1163,21 @@ func extractLastAssistantText(messages []*session.MessageWithParts) string {
 				if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
 					text = data.Text
 				}
+			case session.PartReasoning:
+				var data session.ReasoningPartData
+				if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
+					reasoning = data.Text
+				}
 			}
 		}
-		if text != "" && !hasTool {
+		if hasTool {
+			continue
+		}
+		if text != "" {
 			return text
+		}
+		if reasoning != "" {
+			return reasoning
 		}
 	}
 	return ""
@@ -1667,4 +1684,94 @@ func compactMessagesTruncate(messages []provider.ModelMessage) []provider.ModelM
 	result = append(result, annotated)
 	result = append(result, recent[1:]...)
 	return result
+}
+
+// RunSearchSession creates an ephemeral search-agent session, runs the full loop,
+// and returns the synthesised assistant text. The session is deleted on completion.
+// This is called by tool.DeepSearchTool via the tool.DeepSearchFunc contract.
+func (lr *LoopRunner) RunSearchSession(ctx context.Context, query, dir, model string) (string, error) {
+	if dir == "" {
+		dir = lr.Dir
+	}
+	if model == "" {
+		if lr.DefaultProvider != nil {
+			models := lr.DefaultProvider.Models()
+			if len(models) > 0 {
+				model = models[0].ID
+			}
+		}
+	}
+
+	sess := &session.Session{
+		ID:          session.NewSessionID(),
+		ProjectID:   dir,
+		Directory:   dir,
+		Title:       "Search: " + truncateText(query, 60),
+		Model:       model,
+		SessionType: "search",
+		CreatedAt:   session.Now(),
+		UpdatedAt:   session.Now(),
+	}
+	if err := lr.Store.Create(sess); err != nil {
+		return "", fmt.Errorf("create search session: %w", err)
+	}
+
+	// Always clean up the ephemeral session when done.
+	defer func() {
+		if err := lr.Store.Delete(sess.ID); err != nil {
+			slog.Warn("delete ephemeral search session", "session", sess.ID, "err", err)
+		}
+	}()
+
+	// Create the initial user message.
+	userMsg := &session.MessageInfo{
+		ID:        session.NewMessageID(),
+		SessionID: sess.ID,
+		Role:      session.RoleUser,
+		Agent:     "search",
+		CreatedAt: session.Now(),
+	}
+	if err := lr.Store.CreateMessage(userMsg); err != nil {
+		return "", fmt.Errorf("create search user message: %w", err)
+	}
+	textData, _ := json.Marshal(session.TextPartData{Text: query})
+	userPart := &session.Part{
+		ID:        session.NewPartID(),
+		MessageID: userMsg.ID,
+		SessionID: sess.ID,
+		Type:      session.PartText,
+		Data:      textData,
+		CreatedAt: session.Now(),
+		UpdatedAt: session.Now(),
+	}
+	if err := lr.Store.CreatePart(userPart); err != nil {
+		return "", fmt.Errorf("create search user part: %w", err)
+	}
+
+	// Run a capped child loop — search sessions need at most ~5 turns
+	// (decompose → web_search → fetch_page → synthesise ± one extra round).
+	// Without a cap, a misbehaving LLM could spin for 1000 steps.
+	childRunner := *lr
+	childRunner.MaxSteps = 20
+	if err := childRunner.RunLoop(ctx, sess.ID, "search"); err != nil {
+		return "", fmt.Errorf("search loop: %w", err)
+	}
+
+	// Extract the final synthesised assistant text.
+	msgs, err := lr.Store.GetMessages(sess.ID, "", 1000)
+	if err != nil {
+		return "", fmt.Errorf("load search messages: %w", err)
+	}
+	answer := extractLastAssistantText(msgs)
+	if strings.TrimSpace(answer) == "" {
+		return "The search agent did not produce a final answer (it may have run out of steps or every page fetch failed). Try a narrower query.", nil
+	}
+	return answer, nil
+}
+
+func truncateText(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }

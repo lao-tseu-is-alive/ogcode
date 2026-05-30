@@ -40,6 +40,9 @@ func (s *Server) routes() http.Handler {
 		r.Get("/callgraph/agent-config", s.handleGetCallGraphAgentConfig)
 		r.Post("/callgraph/agent-config", s.handleSetCallGraphAgentConfig)
 
+		r.Get("/search/config", s.handleGetSearchConfig)
+		r.Post("/search/config", s.handleSetSearchConfig)
+
 		r.Get("/providers/config", s.handleGetProviderConfigs)
 		r.Post("/providers/config/{id}", s.handleSetProviderConfig)
 

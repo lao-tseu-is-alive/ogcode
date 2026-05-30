@@ -6,8 +6,9 @@ ogcode
 .ogcode/
 
 # Web build artifacts
+# Dependencies
+node_modules/
 web/dist/
-web/node_modules/
 web/.solid/
 
 # Environment
@@ -19,6 +20,9 @@ manifests/
 # OS files
 .DS_Store
 *.swp
+
+# Memory (personal per-user notes)
+MEMORY.md
 
 # Claude Code CLI
 .claude/

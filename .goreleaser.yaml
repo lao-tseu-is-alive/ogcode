@@ -52,6 +52,10 @@ archives:
     files:
       - LICENSE*
       - README*
+      - src: tools/search-bridge/server.js
+        dst: search-bridge
+      - src: tools/search-bridge/package.json
+        dst: search-bridge
 
 winget:
   - name: ogcode
@@ -97,9 +101,27 @@ brews:
     license: MIT
     test: |
       system "#{bin}/ogcode", "--help"
-    caveats: "ogcode installed! Run `ogcode --help` to get started."
+    caveats: |
+      ogcode installed! Run `ogcode --help` to get started.
+
+      Web Search Agent (optional):
+        Requires Node.js. To enable after install:
+          cd #{HOMEBREW_PREFIX}/share/ogcode/search-bridge
+          npm install
+          npx playwright install chromium
+        Then enable search in ogcode Settings → General.
     install: |
       bin.install "ogcode"
+      (share/"ogcode/search-bridge").mkpath
+      (share/"ogcode/search-bridge").install "search-bridge/server.js"
+      (share/"ogcode/search-bridge").install "search-bridge/package.json"
+    post_install: |
+      bridge_dir = share/"ogcode/search-bridge"
+      if which("node") && which("npm")
+        system "npm", "install", "--legacy-peer-deps", "--prefix", bridge_dir.to_s, "--silent"
+        system "npx", "playwright", "install", "chromium"
+        ohai "Web search agent ready. Enable it in ogcode Settings → General."
+      end
 
 checksum:
   name_template: "checksums.txt"

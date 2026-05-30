@@ -125,6 +125,8 @@ func (s *Server) configPayload() map[string]any {
 		"memoryProvider": memoryProvider,
 		"mcpEnabled":     mcpEnabled,
 		"mcpProvider":    mcpProvider,
+		"searchEnabled":  s.searchBridge != nil,
+		"searchRunning":  s.searchBridge != nil,
 	}
 }
 
@@ -188,6 +190,28 @@ func (s *Server) handleSetCallGraphAgentConfig(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.loopRunner.CallGraphEnabled = incoming.Enabled
+	writeJSON(w, http.StatusOK, &incoming)
+}
+
+func (s *Server) handleGetSearchConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := session.GetSearchConfig(s.globalDB)
+	if err != nil {
+		http.Error(w, "failed to read search config", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (s *Server) handleSetSearchConfig(w http.ResponseWriter, r *http.Request) {
+	var incoming session.SearchConfig
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := session.SetSearchConfig(s.globalDB, &incoming); err != nil {
+		http.Error(w, "failed to save search config", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, &incoming)
 }
 

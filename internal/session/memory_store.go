@@ -40,6 +40,9 @@ func GetMemoryConfig(database *db.DB) (*MemoryConfig, error) {
 	}
 	c.Enabled = enabled != 0
 	c.UpdatedAt = updated
+	if c.EmbedModel == "" {
+		c.EmbedModel = "text-embedding-3-small"
+	}
 	return &c, nil
 }
 

@@ -24,6 +24,11 @@ build: build-web build-server
 install: build
 	cp ogcode /Users/admin/.local/bin/ogcode
 	@echo "Installed to /Users/admin/.local/bin/ogcode"
+	mkdir -p $(HOME)/.local/share/ogcode/search-bridge
+	cp tools/search-bridge/package.json tools/search-bridge/server.js $(HOME)/.local/share/ogcode/search-bridge/
+	cd $(HOME)/.local/share/ogcode/search-bridge && npm install --legacy-peer-deps --cache /tmp/npm-cache
+	cd $(HOME)/.local/share/ogcode/search-bridge && npx playwright install chromium
+	@echo "Search bridge installed to $(HOME)/.local/share/ogcode/search-bridge"
 
 clean:
 	rm -f ogcode

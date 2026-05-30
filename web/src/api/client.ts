@@ -603,6 +603,23 @@ export function setCallGraphAgentConfig(cfg: CallGraphAgentConfig): Promise<Call
   });
 }
 
+export interface SearchConfig {
+  enabled: boolean;
+  useRealProfile: boolean;
+  updatedAt?: number;
+}
+
+export function getSearchConfig(): Promise<SearchConfig> {
+  return fetchAPI('/search/config');
+}
+
+export function setSearchConfig(cfg: Omit<SearchConfig, 'updatedAt'>): Promise<SearchConfig> {
+  return fetchAPI('/search/config', {
+    method: 'POST',
+    body: JSON.stringify(cfg),
+  });
+}
+
 export interface CallGraphStats {
   nodes: number;
   edges: number;

@@ -13,6 +13,7 @@ interface ServerContextValue {
   connected: () => boolean;
   memoryEnabled: () => boolean;
   memoryProvider: () => string;
+  searchRunning: () => boolean;
   // Monotonically increasing counter that ticks on every relevant SSE event.
   // Consumers use this as a reactive dependency to know when to re-fetch.
   eventTick: () => number;
@@ -31,6 +32,7 @@ export const ServerProvider: ParentComponent = (props) => {
   const [connected, setConnected] = createSignal(false);
   const [memoryEnabled, setMemoryEnabled] = createSignal(false);
   const [memoryProvider, setMemoryProvider] = createSignal('');
+  const [searchRunning, setSearchRunning] = createSignal(false);
   const [eventTick, setEventTick] = createSignal(0);
   const [lastEvent, setLastEvent] = createSignal<SSEEvent | null>(null);
 
@@ -55,6 +57,7 @@ export const ServerProvider: ParentComponent = (props) => {
   getConfig().then((config) => {
     setMemoryEnabled(config.memoryEnabled);
     setMemoryProvider(config.memoryProvider ?? '');
+    setSearchRunning((config as any).searchRunning ?? false);
   }).catch(() => { /* ignore */ });
 
   // Connect to SSE
@@ -82,6 +85,7 @@ export const ServerProvider: ParentComponent = (props) => {
     connected,
     memoryEnabled,
     memoryProvider,
+    searchRunning,
     eventTick,
     lastEvent,
   };

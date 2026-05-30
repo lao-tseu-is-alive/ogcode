@@ -26,6 +26,7 @@ import (
 	"github.com/prasenjeet-symon/ogcode/internal/note"
 	"github.com/prasenjeet-symon/ogcode/internal/plan"
 	"github.com/prasenjeet-symon/ogcode/internal/provider"
+	"github.com/prasenjeet-symon/ogcode/internal/search"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 	"github.com/prasenjeet-symon/ogcode/internal/task"
 	"github.com/prasenjeet-symon/ogcode/internal/tool"
@@ -62,6 +63,9 @@ type Server struct {
 
 	// Version check manager
 	versionManager *version.Manager
+
+	// Search bridge (optional — enabled via OGCODE_SEARCH_ENABLED=true)
+	searchBridge *search.BridgeProcess
 
 	// Track running agent loops so they can be cancelled on abort
 	mu           sync.Mutex
@@ -217,6 +221,37 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.ReadPdfPageTool{})
 	toolRegistry.Register(tool.NewPdfIndexTool(s.docindexStore))
 	toolRegistry.Register(tool.NewProjectIndexTool(s.docindexStore))
+
+	// Search bridge — opt-in via OGCODE_SEARCH_ENABLED=true env var OR the settings UI.
+	// Must be started before loopRunner is built so RunSearchSession can be wired in.
+	searchEnabledEnv := strings.EqualFold(os.Getenv("OGCODE_SEARCH_ENABLED"), "true")
+	searchEnabledDB := false
+	if dbSearchCfg, err := session.GetSearchConfig(globalDatabase); err != nil {
+		slog.Warn("failed to read search config from DB", "err", err)
+	} else {
+		searchEnabledDB = dbSearchCfg.Enabled
+	}
+	if searchEnabledEnv || searchEnabledDB {
+		cfg := search.ConfigFromEnv()
+		// DB config takes precedence for UseRealProfile over env var when DB is the source of truth.
+		if searchEnabledDB {
+			if dbSearchCfg, err := session.GetSearchConfig(globalDatabase); err == nil {
+				cfg.UseRealProfile = cfg.UseRealProfile || dbSearchCfg.UseRealProfile
+			}
+		}
+		bridgeDir := os.Getenv("OGCODE_SEARCH_BRIDGE_DIR") // empty → auto-detect from binary
+		proc, err := search.StartBridge(context.Background(), cfg, bridgeDir)
+		if err != nil {
+			slog.Warn("search bridge unavailable; search tools disabled", "err", err)
+		} else {
+			s.searchBridge = proc
+			client := proc.Client()
+			toolRegistry.Register(tool.WebSearchTool{Bridge: client})
+			toolRegistry.Register(tool.FetchPageTool{Bridge: client})
+			slog.Info("search bridge started; web_search and fetch_page tools registered")
+		}
+	}
+
 	// memory_recall will be registered below after mem is initialized
 
 	// Determine default provider with stable priority
@@ -352,6 +387,12 @@ func (s *Server) Start() error {
 		CallGraphEnabled: cgAgentCfg.Enabled,
 	}
 
+	// Register deep_search after loopRunner is built (needs RunSearchSession).
+	if s.searchBridge != nil {
+		toolRegistry.Register(tool.DeepSearchTool{Run: s.loopRunner.RunSearchSession})
+		slog.Info("deep_search tool registered")
+	}
+
 	// Initialize version manager
 	s.versionManager = version.New()
 
@@ -423,6 +464,11 @@ func (s *Server) Start() error {
 		if err := s.mcpClient.Close(); err != nil {
 			slog.Warn("close mcp client", "err", err)
 		}
+	}
+
+	// Stop search bridge
+	if s.searchBridge != nil {
+		s.searchBridge.Stop()
 	}
 
 	// Close memory store
