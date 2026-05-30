@@ -319,7 +319,7 @@ func (s *Server) Start() error {
 		if err != nil {
 			slog.Warn("failed to read memory config from DB", "err", err)
 		} else if dbMemCfg.Enabled && dbMemCfg.EmbedProviderID != "" {
-			embedP, err := provider.NewEmbedProvider(dbMemCfg.EmbedProviderID, dbMemCfg.EmbedAPIKey, dbMemCfg.EmbedModel)
+			embedP, err := provider.NewEmbedProviderWithConfig(dbMemCfg.EmbedProviderID, dbMemCfg.EmbedAPIKey, dbMemCfg.EmbedModel, dbMemCfg.EmbedBaseURL)
 			if err != nil {
 				slog.Warn("memory config has unsupported embed provider; memory disabled", "err", err)
 			} else {
@@ -327,7 +327,7 @@ func (s *Server) Start() error {
 				chatP := defaultProvider
 				chatModel := ""
 				if dbMemCfg.ChatProviderID != "" {
-					cp, err := provider.NewChatProvider(dbMemCfg.ChatProviderID, dbMemCfg.ChatAPIKey, dbMemCfg.ChatModel)
+					cp, err := provider.NewChatProviderWithConfig(dbMemCfg.ChatProviderID, dbMemCfg.ChatAPIKey, dbMemCfg.ChatModel, dbMemCfg.ChatBaseURL)
 					if err != nil {
 						slog.Warn("memory config has unsupported chat provider; using default", "err", err)
 					} else {

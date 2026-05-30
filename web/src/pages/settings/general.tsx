@@ -4,7 +4,7 @@ import { useServer } from '../../context/server';
 import { useSession } from '../../context/session';
 import { useTheme } from '../../context/theme';
 import { getMemoryConfig, setMemoryConfig, fetchMemoryModels, getCallGraphAgentConfig, setCallGraphAgentConfig, getSearchConfig, setSearchConfig } from '../../api/client';
-import { EMBED_PROVIDERS, CHAT_PROVIDERS } from '../../lib/providers';
+import { EMBED_PROVIDERS, CHAT_PROVIDERS, PROVIDER_DEFS } from '../../lib/providers';
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -226,14 +226,22 @@ const CHAT_MODEL_HINTS: Record<string, string> = {
   ollama: 'qwen3',
 };
 
+const BASE_URL_HINTS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  ollama: 'http://localhost:11434/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+};
+
 function MemoryConfigForm() {
   const [enabled, setEnabled] = createSignal(false);
   const [embedProvider, setEmbedProvider] = createSignal('openai');
   const [embedModel, setEmbedModel] = createSignal('');
   const [embedApiKey, setEmbedApiKey] = createSignal('');
+  const [embedBaseUrl, setEmbedBaseUrl] = createSignal('');
   const [chatProvider, setChatProvider] = createSignal('');
   const [chatModel, setChatModel] = createSignal('');
   const [chatApiKey, setChatApiKey] = createSignal('');
+  const [chatBaseUrl, setChatBaseUrl] = createSignal('');
   const [loading, setLoading] = createSignal(true);
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
@@ -246,9 +254,11 @@ function MemoryConfigForm() {
       setEmbedProvider(cfg.embedProviderId || 'openai');
       setEmbedModel(cfg.embedModel || '');
       setEmbedApiKey(cfg.embedApiKey || '');
+      setEmbedBaseUrl(cfg.embedBaseUrl || '');
       setChatProvider(cfg.chatProviderId || '');
       setChatModel(cfg.chatModel || '');
       setChatApiKey(cfg.chatApiKey || '');
+      setChatBaseUrl(cfg.chatBaseUrl || '');
     } catch {
       setError('Failed to load memory config');
     } finally {
@@ -270,9 +280,11 @@ function MemoryConfigForm() {
         embedProviderId: embedProvider(),
         embedModel: embedModel(),
         embedApiKey: embedApiKey(),
+        embedBaseUrl: embedBaseUrl(),
         chatProviderId: chatProvider(),
         chatModel: chatModel(),
         chatApiKey: chatApiKey(),
+        chatBaseUrl: chatBaseUrl(),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -384,6 +396,24 @@ function MemoryConfigForm() {
                     class={inputClass}
                   />
                 </div>
+                {/* Base URL — only for providers that support it */}
+                <Show when={PROVIDER_DEFS.find(p => p.id === embedProvider())?.hasBaseURL}>
+                  <div>
+                    <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                      Base URL
+                      <Show when={embedBaseUrl() === '__SET__'}>
+                        <span class="text-emerald-500 font-medium">● set</span>
+                      </Show>
+                    </label>
+                    <input
+                      type="text"
+                      value={embedBaseUrl() === '__SET__' ? '' : embedBaseUrl()}
+                      onInput={e => setEmbedBaseUrl(e.currentTarget.value)}
+                      placeholder={BASE_URL_HINTS[embedProvider()] || 'leave blank to use default'}
+                      class={inputClass}
+                    />
+                  </div>
+                </Show>
               </div>
             </div>
 
@@ -438,6 +468,7 @@ function MemoryConfigForm() {
                       <ModelPicker
                         provider={chatProvider()}
                         apiKey={chatApiKey()}
+                        baseUrl={chatBaseUrl()}
                         type="chat"
                         value={chatModel()}
                         onSelect={setChatModel}
@@ -462,6 +493,24 @@ function MemoryConfigForm() {
                       value={chatApiKey() === '__SET__' ? '' : chatApiKey()}
                       onInput={e => setChatApiKey(e.currentTarget.value)}
                       placeholder={chatApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
+                      class={inputClass}
+                    />
+                  </div>
+                </Show>
+                {/* Base URL — only when chat provider supports it */}
+                <Show when={chatProvider() && PROVIDER_DEFS.find(p => p.id === chatProvider())?.hasBaseURL}>
+                  <div>
+                    <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                      Base URL
+                      <Show when={chatBaseUrl() === '__SET__'}>
+                        <span class="text-emerald-500 font-medium">● set</span>
+                      </Show>
+                    </label>
+                    <input
+                      type="text"
+                      value={chatBaseUrl() === '__SET__' ? '' : chatBaseUrl()}
+                      onInput={e => setChatBaseUrl(e.currentTarget.value)}
+                      placeholder={BASE_URL_HINTS[chatProvider()] || 'leave blank to use default'}
                       class={inputClass}
                     />
                   </div>
@@ -719,6 +768,7 @@ function SearchConfigForm() {
 interface ModelPickerProps {
   provider: string;
   apiKey: string;
+  baseUrl: string;
   type: 'embed' | 'chat';
   value: string;
   onSelect: (v: string) => void;
@@ -732,14 +782,15 @@ function ModelPicker(props: ModelPickerProps) {
   const [fetching, setFetching] = createSignal(false);
   const [fetchError, setFetchError] = createSignal('');
 
-  const doFetch = async (provider: string, apiKey: string) => {
+  const doFetch = async (provider: string, apiKey: string, baseUrl: string) => {
     if (!provider) { setModels([]); return; }
     setFetching(true);
     setFetchError('');
     try {
       // Don't forward the sentinel — backend uses the stored key.
       const key = (apiKey && apiKey !== '__SET__') ? apiKey : undefined;
-      const list = await fetchMemoryModels(provider, props.type, key);
+      const url = (baseUrl && baseUrl !== '__SET__') ? baseUrl : undefined;
+      const list = await fetchMemoryModels(provider, props.type, key, url);
       setModels(list ?? []);
       // Auto-select first model if nothing is selected yet.
       if (list?.length && !props.value) props.onSelect(list[0]);
@@ -755,7 +806,8 @@ function ModelPicker(props: ModelPickerProps) {
   createEffect(() => {
     const p = props.provider;
     const k = props.apiKey;
-    doFetch(p, k);
+    const b = props.baseUrl;
+    doFetch(p, k, b);
   });
 
   const chevron = (
@@ -811,7 +863,7 @@ function ModelPicker(props: ModelPickerProps) {
         <Show when={!fetching() && props.provider}>
           <button
             type="button"
-            onClick={() => doFetch(props.provider, props.apiKey)}
+            onClick={() => doFetch(props.provider, props.apiKey, props.baseUrl)}
             class="ml-auto text-[10.5px] text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1"
           >
             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

@@ -123,7 +123,15 @@ func isEmbeddingModel(model string) bool {
 // providerID must be "openai", "openrouter", or "ollama".
 // If apiKey is non-empty it overrides the env var key.
 // If model is non-empty it is stored as the provider model (used for embedding).
+// Deprecated: Use NewEmbedProviderWithConfig for full control over baseURL.
 func NewEmbedProvider(providerID, apiKey, model string) (*OpenAIProvider, error) {
+	return NewEmbedProviderWithConfig(providerID, apiKey, model, "")
+}
+
+// NewEmbedProviderWithConfig creates an OpenAIProvider configured for embedding with
+// optional apiKey, model, and baseURL overrides. Env-var values are used as the
+// base; non-empty parameters override them.
+func NewEmbedProviderWithConfig(providerID, apiKey, model, baseURL string) (*OpenAIProvider, error) {
 	var p *OpenAIProvider
 	switch providerID {
 	case "openai":
@@ -140,6 +148,9 @@ func NewEmbedProvider(providerID, apiKey, model string) (*OpenAIProvider, error)
 	}
 	if model != "" {
 		p.model = model
+	}
+	if baseURL != "" {
+		p.baseURL = baseURL
 	}
 	return p, nil
 }

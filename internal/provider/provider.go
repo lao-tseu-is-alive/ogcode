@@ -247,7 +247,15 @@ func NewProviderWithConfig(providerID, apiKey, baseURL string) (Provider, error)
 // providerID must be "anthropic", "openai", "openrouter", or "ollama".
 // If apiKey is non-empty it overrides the env-var key.
 // If model is non-empty it is used as the model ID for inference.
+// Deprecated: Use NewChatProviderWithConfig for full control over baseURL.
 func NewChatProvider(providerID, apiKey, model string) (Provider, error) {
+	return NewChatProviderWithConfig(providerID, apiKey, model, "")
+}
+
+// NewChatProviderWithConfig creates a Provider configured for LLM inference with
+// optional apiKey, model, and baseURL overrides. Env-var values are used as the
+// base; non-empty parameters override them.
+func NewChatProviderWithConfig(providerID, apiKey, model, baseURL string) (Provider, error) {
 	switch providerID {
 	case "anthropic":
 		p := NewAnthropicProvider()
@@ -259,7 +267,7 @@ func NewChatProvider(providerID, apiKey, model string) (Provider, error) {
 		}
 		return p, nil
 	case "openai", "openrouter", "ollama":
-		return NewEmbedProvider(providerID, apiKey, model)
+		return NewEmbedProviderWithConfig(providerID, apiKey, model, baseURL)
 	default:
 		return nil, fmt.Errorf("unknown chat provider %q; must be anthropic, openai, openrouter, or ollama", providerID)
 	}

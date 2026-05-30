@@ -13,9 +13,11 @@ type MemoryConfig struct {
 	EmbedProviderID string `json:"embedProviderId"`
 	EmbedModel      string `json:"embedModel"`
 	EmbedAPIKey     string `json:"embedApiKey"`
+	EmbedBaseURL    string `json:"embedBaseUrl"`
 	ChatProviderID  string `json:"chatProviderId"`
 	ChatModel       string `json:"chatModel"`
 	ChatAPIKey      string `json:"chatApiKey"`
+	ChatBaseURL     string `json:"chatBaseUrl"`
 	UpdatedAt       int64  `json:"updatedAt"`
 }
 
@@ -26,12 +28,12 @@ func GetMemoryConfig(database *db.DB) (*MemoryConfig, error) {
 	var enabled int
 	var updated int64
 	err := database.QueryRow(`
-		SELECT enabled, embed_provider_id, embed_model, embed_api_key,
-		       chat_provider_id, chat_model, chat_api_key, time_updated
-		FROM memory_config WHERE id = 1
-	`).Scan(
-		&enabled, &c.EmbedProviderID, &c.EmbedModel, &c.EmbedAPIKey,
-		&c.ChatProviderID, &c.ChatModel, &c.ChatAPIKey, &updated)
+			SELECT enabled, embed_provider_id, embed_model, embed_api_key, embed_base_url,
+			       chat_provider_id, chat_model, chat_api_key, chat_base_url, time_updated
+			FROM memory_config WHERE id = 1
+		`).Scan(
+		&enabled, &c.EmbedProviderID, &c.EmbedModel, &c.EmbedAPIKey, &c.EmbedBaseURL,
+		&c.ChatProviderID, &c.ChatModel, &c.ChatAPIKey, &c.ChatBaseURL, &updated)
 	if err == sql.ErrNoRows {
 		return &MemoryConfig{}, nil
 	}
@@ -53,20 +55,22 @@ func SetMemoryConfig(database *db.DB, c *MemoryConfig) error {
 		enabled = 1
 	}
 	_, err := database.Exec(`
-		INSERT INTO memory_config (id, enabled, embed_provider_id, embed_model, embed_api_key,
-		                           chat_provider_id, chat_model, chat_api_key, time_updated)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			enabled = excluded.enabled,
-			embed_provider_id = excluded.embed_provider_id,
-			embed_model = excluded.embed_model,
-			embed_api_key = excluded.embed_api_key,
-			chat_provider_id = excluded.chat_provider_id,
-			chat_model = excluded.chat_model,
-			chat_api_key = excluded.chat_api_key,
-			time_updated = excluded.time_updated
-	`, enabled, c.EmbedProviderID, c.EmbedModel, c.EmbedAPIKey,
-		c.ChatProviderID, c.ChatModel, c.ChatAPIKey, Now())
+			INSERT INTO memory_config (id, enabled, embed_provider_id, embed_model, embed_api_key, embed_base_url,
+			                           chat_provider_id, chat_model, chat_api_key, chat_base_url, time_updated)
+			VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				enabled = excluded.enabled,
+				embed_provider_id = excluded.embed_provider_id,
+				embed_model = excluded.embed_model,
+				embed_api_key = excluded.embed_api_key,
+				embed_base_url = excluded.embed_base_url,
+				chat_provider_id = excluded.chat_provider_id,
+				chat_model = excluded.chat_model,
+				chat_api_key = excluded.chat_api_key,
+				chat_base_url = excluded.chat_base_url,
+				time_updated = excluded.time_updated
+	`, enabled, c.EmbedProviderID, c.EmbedModel, c.EmbedAPIKey, c.EmbedBaseURL,
+		c.ChatProviderID, c.ChatModel, c.ChatAPIKey, c.ChatBaseURL, Now())
 	if err != nil {
 		return fmt.Errorf("set memory config: %w", err)
 	}

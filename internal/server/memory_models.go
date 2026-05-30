@@ -14,11 +14,13 @@ import (
 )
 
 // handleMemoryModels returns available model IDs for a given provider and type (embed|chat).
-// Query params: provider, type, apiKey (optional — backend falls back to stored DB key).
+// Query params: provider, type, apiKey (optional — backend falls back to stored DB key),
+// baseUrl (optional — backend falls back to stored DB config or env var).
 func (s *Server) handleMemoryModels(w http.ResponseWriter, r *http.Request) {
 	providerID := r.URL.Query().Get("provider")
 	modelType := r.URL.Query().Get("type")
 	apiKey := r.URL.Query().Get("apiKey")
+	baseURL := r.URL.Query().Get("baseUrl")
 
 	if providerID == "" {
 		writeError(w, http.StatusBadRequest, "provider is required")
@@ -30,17 +32,25 @@ func (s *Server) handleMemoryModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use stored key as fallback when none is sent (means "keep existing").
-	if apiKey == "" {
-		if cfg, err := session.GetMemoryConfig(s.db); err == nil {
-			if modelType == "embed" {
+	if cfg, err := session.GetMemoryConfig(s.db); err == nil {
+		if modelType == "embed" {
+			if apiKey == "" {
 				apiKey = cfg.EmbedAPIKey
-			} else {
+			}
+			if baseURL == "" {
+				baseURL = cfg.EmbedBaseURL
+			}
+		} else {
+			if apiKey == "" {
 				apiKey = cfg.ChatAPIKey
+			}
+			if baseURL == "" {
+				baseURL = cfg.ChatBaseURL
 			}
 		}
 	}
 
-	models, err := fetchProviderModels(r.Context(), providerID, modelType, apiKey)
+	models, err := fetchProviderModels(r.Context(), providerID, modelType, apiKey, baseURL)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -49,7 +59,8 @@ func (s *Server) handleMemoryModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchProviderModels dispatches to the right fetcher for the given provider.
-func fetchProviderModels(ctx context.Context, providerID, modelType, apiKey string) ([]string, error) {
+// baseURL overrides the env-var default when non-empty.
+func fetchProviderModels(ctx context.Context, providerID, modelType, apiKey, baseURL string) ([]string, error) {
 	switch providerID {
 	case "anthropic":
 		if modelType == "embed" {
@@ -64,7 +75,9 @@ func fetchProviderModels(ctx context.Context, providerID, modelType, apiKey stri
 		}, nil
 
 	case "openai":
-		baseURL := os.Getenv("OPENAI_BASE_URL")
+		if baseURL == "" {
+			baseURL = os.Getenv("OPENAI_BASE_URL")
+		}
 		if baseURL == "" {
 			baseURL = "https://api.openai.com/v1"
 		}
@@ -74,7 +87,9 @@ func fetchProviderModels(ctx context.Context, providerID, modelType, apiKey stri
 		return fetchOpenAIStyleModels(ctx, "https://openrouter.ai/api/v1", apiKey, modelType)
 
 	case "ollama":
-		baseURL := os.Getenv("OLLAMA_BASE_URL")
+		if baseURL == "" {
+			baseURL = os.Getenv("OLLAMA_BASE_URL")
+		}
 		if baseURL == "" {
 			baseURL = "http://localhost:11434/v1"
 		}
