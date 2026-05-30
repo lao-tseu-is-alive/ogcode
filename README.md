@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧠 Ogcode
+# Ogcode
 
 **The Self-Contained Agentic Coding Workbench**
 
@@ -25,66 +25,67 @@ Unlike IDE-locked assistants (Cursor, Copilot) or cloud-only services (Claude Co
 
 ---
 
-## ✨ What Makes Ogcode Different
+## What Makes Ogcode Different
 
 | | Ogcode | Cursor | Claude Code | Copilot | Aider |
 |---|---|---|---|---|---|
-| **Interface** | 🌐 Web UI (any editor) | VS Code fork | Terminal | IDE extension | Terminal |
-| **Self-Hosted** | ✅ Single binary, zero deps | ❌ Cloud-required | ❌ Cloud-only | ❌ Cloud-only | ✅ Open source |
-| **Parallel Tasks** | ✅ Git worktrees, auto-PRs | ✅ Cloud agents | 🟡 Subagents | 🟡 Single agent | ❌ Sequential |
-| **Plan Mode** | ✅ Kanban + effort estimates | 🟡 Agents window | 🟡 Architect mode | 🟡 Prompt-based | 🟡 /architect |
-| **Persistent Memory** | ✅ Knowledge graph + Call graph | ❌ Session-only | 🟡 CLAUDE.md | ❌ None | ❌ None |
-| **Model Choice** | ✅ Claude, GPT, OpenRouter, Ollama | 🟡 Built-in + custom | ❌ Claude only | 🟡 MS-managed | ✅ Any endpoint |
+| **Interface** | Web UI (any editor) | VS Code fork | Terminal | IDE extension | Terminal |
+| **Self-Hosted** | Single binary, zero deps | Cloud-required | Cloud-only | Cloud-only | Open source |
+| **Parallel Tasks** | Git worktrees, auto-PRs | Cloud agents | Subagents | Single agent | Sequential |
+| **Plan Mode** | Kanban + effort estimates | Agents window | Architect mode | Prompt-based | /architect |
+| **Persistent Memory** | Knowledge graph + Call graph | Session-only | CLAUDE.md | None | None |
+| **Model Choice** | Claude, GPT, OpenRouter, Ollama | Built-in + custom | Claude only | MS-managed | Any endpoint |
 | **Cost** | BYOK (tokens only) | $20–$40/mo | $20–$100/mo | $19–$39/mo | Free (BYOK) |
 | **License** | **MIT** | Proprietary | Proprietary | Proprietary | Apache-2.0 |
 
 **Ogcode is the only agentic coding assistant that combines:**
-- 🌐 **Browser-native UI** — works with Vim, Emacs, VS Code, JetBrains, or any editor
-- 🏗️ **Plan Mode with Kanban** — collaboratively plan features, lock them into tasks, watch them execute in parallel
-- 🔀 **Git-native parallel execution** — each task gets its own isolated branch. Auto-commits. Auto-PRs. Zero merge conflicts.
-- 🧠 **Agentic Knowledge Graph** — persistent Topic→Concept→Fact memory with ~70% token savings and infinite context
-- 🔍 **Deep Research Agent** — built-in web search that fetches docs, changelogs, and security advisories for your agent
-- 📦 **Single binary deployment** — one `ogcode` executable. No Docker. No Node server. No external DB.
+
+- **Browser-native UI** — works with Vim, Emacs, VS Code, JetBrains, or any editor
+- **Plan Mode with Kanban** — collaboratively plan features, lock them into tasks, watch them execute in parallel
+- **Git-native parallel execution** — each task gets its own isolated branch. Auto-commits. Auto-PRs. Zero merge conflicts.
+- **Agentic Knowledge Graph** — persistent Topic→Concept→Fact memory with ~70% token savings and infinite context
+- **Deep Research Agent** — built-in web search that fetches docs, changelogs, and security advisories for your agent
+- **Single binary deployment** — one `ogcode` executable. No Docker. No Node server. No external DB.
 
 ---
 
-## 🚀 Features
+## Features
 
-- 🏗️ **Build Mode + Plan Mode** — Chat with a coding agent in real-time, or collaboratively plan complex features with effort estimates and dependency graphs
-- 🔀 **Parallel Task Execution** — Multiple independent tasks run simultaneously across isolated git worktree branches. Ship entire features in parallel.
-- 📊 **Agentic Session Memory** — Infinite context via a persistent knowledge graph. ~70% token savings on long sessions. Never lose context.
-- 🧠 **Knowledge Graph + Call Graph** — Semantic memory of your codebase (Topic→Concept→Fact) plus function-level call relationships for intelligent navigation
-- 🔌 **Multi-Provider LLM Support** — Anthropic Claude, OpenAI GPT, OpenRouter, or local Ollama models. Switch anytime from the UI.
-- 🔍 **Deep Research Agent (v0.8.0)** — Built-in `deep_search` tool searches the web, fetches pages, and synthesizes cited research for your agent
-- 📋 **Kanban Board** — Visual task board with S/M/L/XL effort estimates, complexity scores, and dependency chains
-- 🔐 **Permission-Based Safety** — Destructive operations (write, edit, bash) require explicit approval per-tool; read-only tools auto-approve
-- 📄 **PDF Support** — Read and index PDF documentation directly in the agent
-- 🗺️ **Codebase Map** — Semantic index of your entire project for intelligent file discovery
-- 💻 **Single Binary, Self-Contained** — One Go binary with embedded React frontend. Zero external server dependencies.
-- 🔧 **MCP Extensibility** — Model Context Protocol support for custom tools and integrations
-
----
-
-## 📋 Table of Contents
-
-- [Quick Start](#-quick-start)
-- [Why Ogcode?](#-why-ogcode)
-- [System Requirements](#-system-requirements)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Usage](#-usage)
-- [The Plan Mode Workflow](#-the-plan-mode-workflow)
-- [Agentic Session Memory](#-agentic-session-memory-)
-- [Architecture](#-architecture)
-- [Roadmap](#-roadmap)
-- [Community](#-community)
-- [Contributing](#-contributing)
-- [Security](#-security)
-- [License](#-license)
+- **Build Mode + Plan Mode** — Chat with a coding agent in real-time, or collaboratively plan complex features with effort estimates and dependency graphs
+- **Parallel Task Execution** — Multiple independent tasks run simultaneously across isolated git worktree branches. Ship entire features in parallel.
+- **Agentic Session Memory** — Infinite context via a persistent knowledge graph. ~70% token savings on long sessions. Never lose context.
+- **Knowledge Graph + Call Graph** — Semantic memory of your codebase (Topic→Concept→Fact) plus function-level call relationships for intelligent navigation
+- **Multi-Provider LLM Support** — Anthropic Claude, OpenAI GPT, OpenRouter, or local Ollama models. Switch anytime from the UI.
+- **Deep Research Agent (v0.8.0)** — Built-in `deep_search` tool searches the web, fetches pages, and synthesizes cited research for your agent
+- **Kanban Board** — Visual task board with S/M/L/XL effort estimates, complexity scores, and dependency chains
+- **Permission-Based Safety** — Destructive operations (write, edit, bash) require explicit approval per-tool; read-only tools auto-approve
+- **PDF Support** — Read and index PDF documentation directly in the agent
+- **Codebase Map** — Semantic index of your entire project for intelligent file discovery
+- **Single Binary, Self-Contained** — One Go binary with embedded React frontend. Zero external server dependencies.
+- **MCP Extensibility** — Model Context Protocol support for custom tools and integrations
 
 ---
 
-## ⚡ Quick Start
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Why Ogcode?](#why-ogcode)
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [The Plan Mode Workflow](#the-plan-mode-workflow)
+- [Agentic Session Memory](#agentic-session-memory)
+- [Architecture](#architecture)
+- [Roadmap](#roadmap)
+- [Community](#community)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+
+---
+
+## Quick Start
 
 ```bash
 # macOS / Linux — one-line install
@@ -101,7 +102,7 @@ Opens at `http://localhost:8080`. That's it. No config files. No Docker. No IDE 
 
 ---
 
-## 🤔 Why Ogcode?
+## Why Ogcode?
 
 ### "I already use Cursor / Copilot / Claude Code..."
 
@@ -114,6 +115,7 @@ Opens at `http://localhost:8080`. That's it. No config files. No Docker. No IDE 
 **Aider** is excellent — but it's terminal-only, sequential-only, and has no persistent memory graph or visual planning board.
 
 **Ogcode gives you what none of the above do:**
+
 - A **web UI** that works with *any* editor
 - **Formal Plan Mode** with visual Kanban and parallel execution
 - **Persistent knowledge graph** that survives across sessions
@@ -122,7 +124,7 @@ Opens at `http://localhost:8080`. That's it. No config files. No Docker. No IDE 
 
 ---
 
-## 🖥️ System Requirements
+## System Requirements
 
 | Platform | Minimum |
 |----------|---------|
@@ -136,7 +138,7 @@ Opens at `http://localhost:8080`. That's it. No config files. No Docker. No IDE 
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### macOS / Linux
 
@@ -183,7 +185,7 @@ docker run -p 8080:8080 -v $(pwd):/workspace -w /workspace ghcr.io/prasenjeet-sy
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 Ogcode auto-detects available AI providers from environment variables. No config files required.
 
@@ -230,7 +232,7 @@ export OGCODE_SEARCH_ENABLED=true
 
 ---
 
-## 🎮 Usage
+## Usage
 
 ### Start in Build Mode (default)
 
@@ -257,7 +259,7 @@ ogcode plan -p 3000
 
 ---
 
-## 🗺️ The Plan Mode Workflow
+## The Plan Mode Workflow
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
@@ -284,7 +286,7 @@ Plans are archived as markdown in `.ogcode/archives/` once complete.
 
 ---
 
-## 🧠 Agentic Session Memory
+## Agentic Session Memory
 
 ![Agentic Memory Demo](assets/agentic_memory.gif)
 
@@ -327,7 +329,7 @@ export OGCODE_AGENTIC_MEMORY_MODE=true
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 Ogcode is a single Go binary that embeds a React web UI and runs its own HTTP server.
 
@@ -354,6 +356,7 @@ Ogcode is a single Go binary that embeds a React web UI and runs its own HTTP se
 ```
 
 Key components:
+
 - **Agent Loop** — Streaming LLM chat with tool execution (bash, read, write, edit, glob, grep, memory_recall, callgraph, deep_search)
 - **Session Store** — SQLite database for conversations, plans, tasks, and permissions
 - **Git Worktrees** — Each task gets an isolated branch so multiple agents work in parallel
@@ -363,7 +366,7 @@ Key components:
 
 ---
 
-## 🛣️ Roadmap
+## Roadmap
 
 - [ ] **Advanced Task Planning & Parallel Execution** — Enhanced plan decomposition with manual/automatic agent assignment to tasks
 - [ ] **AI Daily Standups** — Voice-enabled meetings where agents report progress and discuss their work
@@ -372,21 +375,21 @@ Key components:
 
 ---
 
-## 💬 Community
+## Community
 
 Join the Ogcode community on Discord:
 
-- 💡 Ask questions and get help
-- 🚀 Share feedback and feature ideas
-- 📢 Stay up to date with releases and announcements
+- Ask questions and get help
+- Share feedback and feature ideas
+- Stay up to date with releases and announcements
 
 [**Join us on Discord →**](https://discord.gg/JQP9t8y2Zv)
 
-**Star us on GitHub** ⭐ — it helps more developers discover Ogcode!
+**Star us on GitHub** — it helps more developers discover Ogcode!
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Whether it's bug fixes, features, or documentation:
 
@@ -399,7 +402,7 @@ Please ensure your code follows the existing Go style and passes `go test ./...`
 
 ---
 
-## 🔒 Security
+## Security
 
 - **Destructive operations require approval** — The agent cannot write files or run shell commands without your explicit permission. Approve once or always per tool.
 - **Git worktree isolation** — Each task runs in a separate git worktree, preventing accidental contamination of your working branch.
@@ -410,7 +413,7 @@ For security concerns, please open an issue or reach out on Discord.
 
 ---
 
-## 📄 License
+## License
 
 MIT License — see [LICENSE](LICENSE) for details.
 
@@ -418,8 +421,8 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**Made with ❤️ by the Ogcode team and contributors**
+**Made with care by the Ogcode team and contributors**
 
-[⭐ Star on GitHub](https://github.com/prasenjeet-symon/ogcode) · [💬 Discord](https://discord.gg/JQP9t8y2Zv) · [📖 Docs](docs/OUTLINE.md)
+[Star on GitHub](https://github.com/prasenjeet-symon/ogcode) · [Discord](https://discord.gg/JQP9t8y2Zv) · [Docs](docs/OUTLINE.md)
 
 </div>
