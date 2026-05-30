@@ -121,6 +121,44 @@ func (s *Store) ListDocsSummary(dirPrefix string) ([]*DocSummary, error) {
 	return summaries, rows.Err()
 }
 
+// ListTextFiles returns all indexed non-PDF entries whose doc_path starts with dirPrefix,
+// ordered by path. Each text/code file has exactly one entry (page 1).
+func (s *Store) ListTextFiles(dirPrefix string) ([]*PageEntry, error) {
+	rows, err := s.db.Query(
+		`SELECT id, doc_path, page_num, keywords, labels, indexed_at
+		 FROM doc_page_index
+		 WHERE doc_path LIKE ? AND LOWER(doc_path) NOT LIKE '%.pdf'
+		 ORDER BY doc_path ASC`,
+		dirPrefix+"%",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list text files: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []*PageEntry
+	for rows.Next() {
+		e, err := scanEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
+// IsDocIndexed reports whether any pages for the given document path exist in the index.
+func (s *Store) IsDocIndexed(docPath string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM doc_page_index WHERE doc_path = ?`, docPath,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check doc indexed: %w", err)
+	}
+	return count > 0, nil
+}
+
 // DeleteAllByPrefix deletes all entries for docs whose path starts with dirPrefix.
 func (s *Store) DeleteAllByPrefix(dirPrefix string) error {
 	_, err := s.db.Exec(`DELETE FROM doc_page_index WHERE doc_path LIKE ?`, dirPrefix+"%")

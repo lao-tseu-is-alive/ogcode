@@ -1,6 +1,7 @@
-import { createSignal, Show, For } from 'solid-js';
+import { createSignal, Show, For, onMount, createMemo } from 'solid-js';
 import { useServer } from '../context/server';
 import { useDocIndex } from '../context/docindex';
+import { type DocSummary } from '../api/client';
 import SessionSidebar from '../components/session-sidebar';
 import PlanSidebar from '../components/plan-sidebar';
 
@@ -25,22 +26,77 @@ function docExt(docPath: string): string {
 
 function formatDate(ms: number): string {
   if (!ms) return '';
-  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function DocTypeTag(props: { ext: string }) {
-  const colors: Record<string, string> = {
-    pdf: 'text-red-400 bg-red-400/10 border-red-400/20',
-    docx: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
-    doc: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
-    html: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
-    md: 'text-zinc-300 bg-zinc-300/10 border-zinc-300/20',
-  };
-  const cls = colors[props.ext] || 'text-zinc-400 bg-zinc-400/10 border-zinc-400/20';
+// Find the longest common directory prefix across all doc paths.
+function commonPrefix(docs: DocSummary[]): string {
+  if (docs.length === 0) return '';
+  const parts = docs.map(d => d.docPath.split('/').slice(0, -1));
+  const minLen = Math.min(...parts.map(p => p.length));
+  let len = 0;
+  for (let i = 0; i < minLen; i++) {
+    if (parts.every(p => p[i] === parts[0][i])) len = i + 1;
+    else break;
+  }
+  return parts[0].slice(0, len).join('/');
+}
+
+interface FolderGroup {
+  relPath: string; // relative to project root, '' = root
+  files: DocSummary[];
+}
+
+function buildFolderGroups(docs: DocSummary[]): FolderGroup[] {
+  if (docs.length === 0) return [];
+  const prefix = commonPrefix(docs);
+  const map = new Map<string, DocSummary[]>();
+  for (const doc of docs) {
+    const dir = doc.docPath.split('/').slice(0, -1).join('/');
+    let rel = dir === prefix ? '' : dir.startsWith(prefix + '/') ? dir.slice(prefix.length + 1) : dir;
+    if (!map.has(rel)) map.set(rel, []);
+    map.get(rel)!.push(doc);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([relPath, files]) => ({ relPath, files }));
+}
+
+const extColors: Record<string, string> = {
+  pdf:  'text-red-400 bg-red-400/10 border-red-400/20',
+  md:   'text-zinc-300 bg-zinc-300/10 border-zinc-300/20',
+  html: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
+  go:   'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
+  ts:   'text-blue-400 bg-blue-400/10 border-blue-400/20',
+  tsx:  'text-blue-400 bg-blue-400/10 border-blue-400/20',
+  js:   'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  jsx:  'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  py:   'text-green-400 bg-green-400/10 border-green-400/20',
+  rs:   'text-orange-500 bg-orange-500/10 border-orange-500/20',
+  sql:  'text-purple-400 bg-purple-400/10 border-purple-400/20',
+};
+
+function ExtBadge(props: { ext: string }) {
+  const cls = () => extColors[props.ext] || 'text-zinc-500 bg-zinc-500/10 border-zinc-500/20';
   return (
-    <span class={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${cls}`}>
-      {props.ext || 'doc'}
+    <span class={`shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border font-mono ${cls()}`}>
+      {props.ext || 'file'}
     </span>
+  );
+}
+
+function FileIcon(props: { ext: string }) {
+  if (props.ext === 'pdf') {
+    return (
+      <svg class="w-3.5 h-3.5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+      </svg>
+    );
+  }
+  return (
+    <svg class="w-3.5 h-3.5 text-zinc-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+    </svg>
   );
 }
 
@@ -48,6 +104,12 @@ export default function DocIndexPage() {
   const docIndex = useDocIndex();
   const [showBuildModal, setShowBuildModal] = createSignal(false);
   const [isRebuild, setIsRebuild] = createSignal(false);
+  const [showExcludesModal, setShowExcludesModal] = createSignal(false);
+  const [newPattern, setNewPattern] = createSignal('');
+  const [search, setSearch] = createSignal('');
+  const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
+
+  onMount(() => docIndex.loadExcludes());
 
   const openBuildModal = (rebuild: boolean) => {
     setIsRebuild(rebuild);
@@ -59,7 +121,36 @@ export default function DocIndexPage() {
     docIndex.build(isRebuild());
   };
 
+  const handleAddPattern = async () => {
+    const p = newPattern().trim();
+    if (!p) return;
+    await docIndex.addExclude(p);
+    setNewPattern('');
+  };
+
+  const filteredDocs = createMemo(() => {
+    const q = search().toLowerCase().trim();
+    if (!q) return docIndex.docs();
+    return docIndex.docs().filter(d => d.docPath.toLowerCase().includes(q));
+  });
+
+  const folderGroups = createMemo(() => buildFolderGroups(filteredDocs()));
+
   const totalPages = () => docIndex.docs().reduce((s, d) => s + d.pageCount, 0);
+  const lastIndexed = () => {
+    const dates = docIndex.docs().map(d => d.indexedAt).filter(Boolean);
+    if (!dates.length) return null;
+    return Math.max(...dates);
+  };
+
+  const toggleCollapse = (path: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
 
   return (
     <div class="flex h-screen w-full">
@@ -75,12 +166,6 @@ export default function DocIndexPage() {
             <h1 class="text-[14px] font-semibold text-zinc-100">Doc Index</h1>
           </div>
 
-          <Show when={docIndex.docs().length > 0}>
-            <span class="text-[11px] text-zinc-500 bg-[color:var(--bg-elevated)] px-2 py-0.5 rounded border border-[color:var(--border-subtle)]">
-              {docIndex.docs().length} docs · {totalPages()} pages
-            </span>
-          </Show>
-
           <Show when={docIndex.building()}>
             <div class="flex items-center gap-1.5 text-[11px] text-zinc-400">
               <div class="w-2 h-2 rounded-full bg-[color:var(--accent)] animate-pulse" />
@@ -89,6 +174,21 @@ export default function DocIndexPage() {
           </Show>
 
           <div class="flex-1" />
+
+          <button
+            onClick={() => setShowExcludesModal(true)}
+            class="h-7 px-2.5 rounded-md text-[12px] bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] text-zinc-400 hover:text-zinc-200 hover:border-[color:var(--border-default)] transition flex items-center gap-1.5"
+          >
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+            Excludes
+            <Show when={docIndex.excludes().length > 0}>
+              <span class="text-[10px] bg-[color:var(--bg-base)] px-1.5 py-0.5 rounded text-zinc-500">
+                {docIndex.excludes().length}
+              </span>
+            </Show>
+          </button>
 
           <Show when={docIndex.docs().length > 0}>
             <button
@@ -136,6 +236,7 @@ export default function DocIndexPage() {
 
         {/* Content */}
         <div class="flex-1 overflow-y-auto">
+
           {/* Loading */}
           <Show when={docIndex.loading() && docIndex.docs().length === 0}>
             <div class="flex items-center justify-center h-full">
@@ -154,7 +255,7 @@ export default function DocIndexPage() {
               </svg>
               <p class="text-[14px] font-semibold text-zinc-300">No documents indexed</p>
               <p class="text-[12px] text-zinc-500 mt-1.5 max-w-[280px] leading-relaxed">
-                Index your documents so agents can search and navigate them intelligently.
+                Index your workspace so agents can search and navigate files intelligently.
               </p>
               <Show when={!docIndex.building()}>
                 <button
@@ -173,58 +274,176 @@ export default function DocIndexPage() {
             </div>
           </Show>
 
-          {/* Doc table */}
+          {/* Folder tree */}
           <Show when={docIndex.docs().length > 0}>
-            <table class="w-full text-[12px]">
-              <thead>
-                <tr class="border-b border-[color:var(--border-subtle)] text-left">
-                  <th class="px-5 py-2.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider w-8" />
-                  <th class="px-3 py-2.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Name</th>
-                  <th class="px-3 py-2.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider text-right">Pages</th>
-                  <th class="px-3 py-2.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider text-right">Indexed</th>
-                  <th class="px-5 py-2.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={docIndex.docs()}>
-                  {(doc) => {
-                    const ext = docExt(doc.docPath);
+            <div class="max-w-3xl mx-auto px-6 py-5">
+
+              {/* Stats + search row */}
+              <div class="flex items-center gap-3 mb-5">
+                <div class="flex items-center gap-2 text-[11px] text-zinc-500">
+                  <span class="text-zinc-300 font-medium">{docIndex.docs().length}</span> files
+                  <span class="text-zinc-700">·</span>
+                  <span class="text-zinc-300 font-medium">{totalPages()}</span> pages
+                  <Show when={lastIndexed()}>
+                    <span class="text-zinc-700">·</span>
+                    <span>last indexed {formatDate(lastIndexed()!)}</span>
+                  </Show>
+                </div>
+                <div class="flex-1" />
+                <div class="relative">
+                  <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Filter files…"
+                    value={search()}
+                    onInput={e => setSearch(e.currentTarget.value)}
+                    class="h-7 pl-7 pr-3 w-44 rounded-md text-[12px] bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-[color:var(--accent)] transition"
+                  />
+                </div>
+              </div>
+
+              {/* No results */}
+              <Show when={search() && folderGroups().length === 0}>
+                <p class="text-[12px] text-zinc-600 text-center py-12">No files match "{search()}"</p>
+              </Show>
+
+              {/* Folder groups */}
+              <div class="space-y-1">
+                <For each={folderGroups()}>
+                  {(group) => {
+                    const isCollapsed = () => collapsed().has(group.relPath);
                     return (
-                      <tr class="border-b border-[color:var(--border-subtle)]/50 hover:bg-[color:var(--bg-surface)] transition-colors">
-                        <td class="pl-5 pr-2 py-3">
-                          <DocTypeTag ext={ext} />
-                        </td>
-                        <td class="px-3 py-3">
-                          <span class="text-zinc-200 font-medium truncate max-w-[360px] block" title={doc.docPath}>
-                            {docBasename(doc.docPath)}
+                      <div class="rounded-xl border border-[color:var(--border-subtle)] overflow-hidden">
+                        {/* Folder header */}
+                        <button
+                          onClick={() => toggleCollapse(group.relPath)}
+                          class="w-full flex items-center gap-2.5 px-4 py-2.5 bg-[color:var(--bg-surface)] hover:bg-[color:var(--bg-elevated)] transition-colors text-left"
+                        >
+                          <svg
+                            class={`w-3 h-3 text-zinc-500 transition-transform shrink-0 ${isCollapsed() ? '-rotate-90' : ''}`}
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+                          >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                          <svg class="w-3.5 h-3.5 text-yellow-500/80 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19.5 21a3 3 0 003-3v-4.5a3 3 0 00-3-3h-15a3 3 0 00-3 3V18a3 3 0 003 3h15zM1.5 10.146V6a3 3 0 013-3h5.379a2.25 2.25 0 011.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 013 3v1.146A4.483 4.483 0 0019.5 9h-15a4.483 4.483 0 00-3 1.146z" />
+                          </svg>
+                          <span class="text-[12px] font-medium text-zinc-300 truncate flex-1">
+                            {group.relPath || <span class="text-zinc-500 italic">project root</span>}
                           </span>
-                          <span class="text-[10px] text-zinc-600 truncate max-w-[360px] block" title={doc.docPath}>
-                            {doc.docPath}
+                          <span class="text-[10px] text-zinc-600 shrink-0">
+                            {group.files.length} {group.files.length === 1 ? 'file' : 'files'}
                           </span>
-                        </td>
-                        <td class="px-3 py-3 text-right text-zinc-400 font-mono tabular-nums">
-                          {doc.pageCount}
-                        </td>
-                        <td class="px-3 py-3 text-right text-zinc-500 whitespace-nowrap">
-                          {formatDate(doc.indexedAt)}
-                        </td>
-                        <td class="pl-3 pr-5 py-3 text-right">
-                          <span class="inline-flex items-center gap-1 text-[11px] text-emerald-500">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                            Indexed
-                          </span>
-                        </td>
-                      </tr>
+                        </button>
+
+                        {/* File rows */}
+                        <Show when={!isCollapsed()}>
+                          <div class="bg-[color:var(--bg-base)]">
+                            <For each={group.files}>
+                              {(doc, i) => {
+                                const ext = docExt(doc.docPath);
+                                const name = docBasename(doc.docPath);
+                                const isLast = () => i() === group.files.length - 1;
+                                return (
+                                  <div class={`flex items-center gap-3 px-4 py-2 hover:bg-[color:var(--bg-surface)] transition-colors ${!isLast() ? 'border-b border-[color:var(--border-subtle)]/40' : ''}`}>
+                                    <div class="w-4 shrink-0 flex justify-center">
+                                      <FileIcon ext={ext} />
+                                    </div>
+                                    <span class="flex-1 text-[12px] text-zinc-300 truncate font-mono" title={doc.docPath}>
+                                      {name}
+                                    </span>
+                                    <ExtBadge ext={ext} />
+                                    <Show when={doc.pageCount > 1}>
+                                      <span class="text-[11px] text-zinc-600 font-mono tabular-nums shrink-0">
+                                        {doc.pageCount}p
+                                      </span>
+                                    </Show>
+                                    <span class="text-[11px] text-zinc-600 w-14 text-right shrink-0">
+                                      {formatDate(doc.indexedAt)}
+                                    </span>
+                                  </div>
+                                );
+                              }}
+                            </For>
+                          </div>
+                        </Show>
+                      </div>
                     );
                   }}
                 </For>
-              </tbody>
-            </table>
+              </div>
+            </div>
           </Show>
         </div>
       </div>
+
+      {/* Excludes modal */}
+      <Show when={showExcludesModal()}>
+        <div
+          class="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowExcludesModal(false); }}
+        >
+          <div class="w-full max-w-[480px] bg-[color:var(--bg-surface)] border border-[color:var(--border-default)] rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden max-h-[80vh]">
+            <div class="px-6 pt-6 pb-4 border-b border-[color:var(--border-subtle)] flex items-start justify-between gap-3">
+              <div>
+                <h2 class="text-[15px] font-semibold text-zinc-100">Exclude Patterns</h2>
+                <p class="text-[12px] text-zinc-500 mt-1 leading-relaxed">
+                  Folders and files matching these patterns are skipped during indexing.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowExcludesModal(false)}
+                class="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-[color:var(--bg-elevated)] transition shrink-0"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="px-6 py-3 border-b border-[color:var(--border-subtle)] flex gap-2">
+              <input
+                type="text"
+                placeholder="e.g. logs, *.test.js, coverage"
+                value={newPattern()}
+                onInput={(e) => setNewPattern(e.currentTarget.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddPattern(); }}
+                class="flex-1 h-8 px-3 rounded-lg text-[12px] bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-[color:var(--accent)] transition"
+              />
+              <button
+                onClick={handleAddPattern}
+                disabled={!newPattern().trim()}
+                class="h-8 px-3 rounded-lg text-[12px] font-medium bg-[color:var(--accent)] text-[color:var(--on-primary)] hover:bg-[color:var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                Add
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-3 py-2">
+              <Show when={docIndex.excludes().length === 0}>
+                <p class="text-[12px] text-zinc-600 text-center py-6">No exclude patterns yet.</p>
+              </Show>
+              <For each={docIndex.excludes()}>
+                {(entry) => (
+                  <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-[color:var(--bg-elevated)] group transition">
+                    <span class="text-[12px] font-mono text-zinc-300">{entry.pattern}</span>
+                    <button
+                      onClick={() => docIndex.deleteExclude(entry.id)}
+                      class="w-6 h-6 rounded flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition"
+                    >
+                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </div>
+      </Show>
 
       {/* Build modal */}
       <Show when={showBuildModal()}>

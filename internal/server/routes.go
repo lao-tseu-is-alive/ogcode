@@ -121,6 +121,9 @@ func (s *Server) routes() http.Handler {
 			r.Get("/build", s.handleDocIndexBuildStatus)
 			r.Post("/build", s.handleBuildDocIndex)
 			r.Get("/docs", s.handleListIndexedDocs)
+			r.Get("/excludes", s.handleListExcludes)
+			r.Post("/excludes", s.handleAddExclude)
+			r.Delete("/excludes/{id}", s.handleDeleteExclude)
 		})
 	})
 

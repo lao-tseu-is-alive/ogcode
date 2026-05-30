@@ -1,8 +1,9 @@
 import { createContext, useContext, type ParentComponent } from 'solid-js';
 import { createSignal, createEffect, on } from 'solid-js';
 import {
-  type DocSummary, type ModelInfo,
+  type DocSummary, type ModelInfo, type ExcludeEntry,
   getDocIndexBuildStatus, buildDocIndex, getIndexedDocs, getModels,
+  getExcludes, addExclude, deleteExclude,
 } from '../api/client';
 import { useServer } from './server';
 
@@ -15,6 +16,10 @@ interface DocIndexContextValue {
   selectModel: (id: string) => void;
   refresh: () => Promise<void>;
   build: (rebuild?: boolean) => Promise<void>;
+  excludes: () => ExcludeEntry[];
+  loadExcludes: () => Promise<void>;
+  addExclude: (pattern: string) => Promise<void>;
+  deleteExclude: (id: string) => Promise<void>;
 }
 
 const DocIndexContext = createContext<DocIndexContextValue>();
@@ -26,6 +31,7 @@ export const DocIndexProvider: ParentComponent = (props) => {
   const [building, setBuilding] = createSignal(false);
   const [models, setModels] = createSignal<ModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = createSignal<string>('');
+  const [excludes, setExcludes] = createSignal<ExcludeEntry[]>([]);
 
   // Load models whenever the directory changes
   createEffect(on(server.directory, () => {
@@ -55,6 +61,37 @@ export const DocIndexProvider: ParentComponent = (props) => {
       console.error('docindex refresh failed:', e);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadExcludes() {
+    const dir = server.directory();
+    if (!dir) return;
+    try {
+      const list = await getExcludes(dir);
+      setExcludes(list || []);
+    } catch (e) {
+      console.error('load excludes failed:', e);
+    }
+  }
+
+  async function handleAddExclude(pattern: string) {
+    const dir = server.directory();
+    if (!dir || !pattern.trim()) return;
+    try {
+      const entry = await addExclude(dir, pattern.trim());
+      setExcludes((prev) => [...prev, entry].sort((a, b) => a.pattern.localeCompare(b.pattern)));
+    } catch (e) {
+      console.error('add exclude failed:', e);
+    }
+  }
+
+  async function handleDeleteExclude(id: string) {
+    try {
+      await deleteExclude(id);
+      setExcludes((prev) => prev.filter((e) => e.id !== id));
+    } catch (e) {
+      console.error('delete exclude failed:', e);
     }
   }
 
@@ -106,6 +143,10 @@ export const DocIndexProvider: ParentComponent = (props) => {
     selectModel,
     refresh,
     build,
+    excludes,
+    loadExcludes,
+    addExclude: handleAddExclude,
+    deleteExclude: handleDeleteExclude,
   };
 
   return (

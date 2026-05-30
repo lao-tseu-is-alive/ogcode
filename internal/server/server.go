@@ -216,6 +216,7 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.NewSubmitDocIndexTool(s.docindexStore))
 	toolRegistry.Register(tool.ReadPdfPageTool{})
 	toolRegistry.Register(tool.NewPdfIndexTool(s.docindexStore))
+	toolRegistry.Register(tool.NewProjectIndexTool(s.docindexStore))
 	// memory_recall will be registered below after mem is initialized
 
 	// Determine default provider with stable priority

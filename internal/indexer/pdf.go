@@ -96,28 +96,49 @@ func BuildCorpora(pages []PageText) []PageCorpus {
 	return corpora
 }
 
-// extractKeywords lowercases text, splits on whitespace and punctuation,
-// removes stop words and non-alpha tokens, and deduplicates the result.
+// extractKeywords splits text into tokens, expands camelCase identifiers,
+// removes stop words and short tokens, and deduplicates the result.
 func extractKeywords(text string) []string {
-	text = strings.ToLower(text)
 	seen := make(map[string]struct{})
 	var keywords []string
 
-	for _, word := range strings.FieldsFunc(text, func(r rune) bool {
+	for _, token := range strings.FieldsFunc(text, func(r rune) bool {
 		return !unicode.IsLetter(r)
 	}) {
-		if len(word) < 2 {
-			continue
+		for _, word := range splitCamelCase(token) {
+			if len(word) < 2 {
+				continue
+			}
+			if isStopWord(word) {
+				continue
+			}
+			if _, dup := seen[word]; dup {
+				continue
+			}
+			seen[word] = struct{}{}
+			keywords = append(keywords, word)
 		}
-		if isStopWord(word) {
-			continue
-		}
-		if _, dup := seen[word]; dup {
-			continue
-		}
-		seen[word] = struct{}{}
-		keywords = append(keywords, word)
 	}
 
 	return keywords
+}
+
+// splitCamelCase splits a camelCase or PascalCase token into lowercase parts.
+// Non-camelCase tokens are returned as a single lowercase element.
+// e.g. "getUserName" → ["get", "user", "name"], "simple" → ["simple"]
+func splitCamelCase(word string) []string {
+	runes := []rune(word)
+	if len(runes) == 0 {
+		return nil
+	}
+	var parts []string
+	start := 0
+	for i := 1; i < len(runes); i++ {
+		if unicode.IsUpper(runes[i]) {
+			parts = append(parts, strings.ToLower(string(runes[start:i])))
+			start = i
+		}
+	}
+	parts = append(parts, strings.ToLower(string(runes[start:])))
+	return parts
 }

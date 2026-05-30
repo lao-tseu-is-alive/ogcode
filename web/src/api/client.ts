@@ -702,3 +702,26 @@ export function getIndexedDocs(directory?: string): Promise<DocSummary[]> {
   const params = directory ? `?directory=${encodeURIComponent(directory)}` : '';
   return fetchAPI(`/docindex/docs${params}`);
 }
+
+export interface ExcludeEntry {
+  id: string;
+  directory: string;
+  pattern: string;
+  createdAt: number;
+}
+
+export function getExcludes(directory?: string): Promise<ExcludeEntry[]> {
+  const params = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+  return fetchAPI(`/docindex/excludes${params}`);
+}
+
+export function addExclude(directory: string, pattern: string): Promise<ExcludeEntry> {
+  return fetchAPI('/docindex/excludes', {
+    method: 'POST',
+    body: JSON.stringify({ directory, pattern }),
+  });
+}
+
+export function deleteExclude(id: string): Promise<void> {
+  return fetchAPI(`/docindex/excludes/${id}`, { method: 'DELETE' });
+}

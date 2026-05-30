@@ -48,7 +48,7 @@ func (s *Store) Get(id SessionID) (*Session, error) {
 func (s *Store) List(directory string) ([]*Session, error) {
 	rows, err := s.db.Query(
 		`SELECT id, project_id, directory, title, model, session_type, permission, compaction_summary, memory_tokens_saved, time_created, time_updated
-		 FROM session WHERE directory = ? AND session_type != 'note' ORDER BY time_updated DESC`, directory,
+		 FROM session WHERE directory = ? AND session_type NOT IN ('note', 'index') ORDER BY time_updated DESC`, directory,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
