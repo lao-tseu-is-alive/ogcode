@@ -541,7 +541,7 @@ export const SessionProvider: ParentComponent = (props) => {
     setMessages((prev) => [...prev, tempUserMsg]);
 
     try {
-      await sendPrompt(session.id, content, selectedModel());
+      await sendPrompt(session.id, content, selectedModel(), window.innerWidth, window.innerHeight);
       // Immediately fetch to get the real user message + start seeing assistant
       const msgs = await getMessages(session.id);
       setMessages(msgs);

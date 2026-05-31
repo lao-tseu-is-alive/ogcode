@@ -22,21 +22,21 @@ import (
 
 // LoopRunner orchestrates the agent loop for a session.
 type LoopRunner struct {
-	Store              *session.Store
-	Bus                *bus.Bus
-	Registry           *provider.Registry
-	DefaultProvider    provider.Provider
-	Tools              *tool.Registry
-	Dir                string
-	MaxSteps           int
-	Memory             *memory.Memory
-	MCP                *mcp.Client
-	NoteStore          *note.Store
-	CallGraphEnabled   bool
+	Store            *session.Store
+	Bus              *bus.Bus
+	Registry         *provider.Registry
+	DefaultProvider   provider.Provider
+	Tools            *tool.Registry
+	Dir              string
+	MaxSteps         int
+	Memory           *memory.Memory
+	MCP              *mcp.Client
+	NoteStore        *note.Store
+	CallGraphEnabled bool
 }
 
 // RunLoop executes the core agent loop: prompt -> stream -> tools -> loop back.
-func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, agentName string) error {
+func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, agentName string, viewportWidth int, viewportHeight int) error {
 	agent := GetAgent(agentName)
 	// Read MaxSteps into a local; never mutate the shared LoopRunner field. A
 	// deep_search call runs a nested RunLoop concurrently with the parent loop,
@@ -308,7 +308,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 		if lr.MCP != nil {
 			mcpTools = lr.MCP.Tools()
 		}
-		system := buildSystemPrompt(agent, workDir, memoryEnabled, lr.CallGraphEnabled, agentMDContent, memoryMDContent, mcpTools)
+		system := buildSystemPrompt(agent, workDir, memoryEnabled, lr.CallGraphEnabled, agentMDContent, memoryMDContent, mcpTools, viewportWidth, viewportHeight)
 
 		systemPrompts := []string{system}
 		var modelMessages []provider.ModelMessage
@@ -1386,7 +1386,7 @@ func convertMessages(messages []*session.MessageWithParts) []provider.ModelMessa
 	return result
 }
 
-func buildSystemPrompt(a Agent, dir string, memoryEnabled bool, callGraphEnabled bool, agentMDContent string, memoryMDContent string, mcpTools map[string]mcp.ToolDef) string {
+func buildSystemPrompt(a Agent, dir string, memoryEnabled bool, callGraphEnabled bool, agentMDContent string, memoryMDContent string, mcpTools map[string]mcp.ToolDef, viewportWidth int, viewportHeight int) string {
 	now := time.Now().Format("Mon Jan 2 15:04:05 MST 2006")
 	prompt := fmt.Sprintf(`%s
 
@@ -1486,6 +1486,9 @@ You have access to agentic memory. Prior conversation context is provided in <pr
 
 To retrieve specific past facts, decisions, or details, use the memory_recall tool with a precise question. Use it proactively whenever the current query references past context, prior decisions, or earlier work — do not guess or hallucinate past details.`
 	}
+
+	// Inject viewport dimensions so agents can make responsive design decisions.
+	prompt += viewportPrompt(viewportWidth, viewportHeight)
 
 	return prompt
 }
@@ -1753,7 +1756,7 @@ func (lr *LoopRunner) RunSearchSession(ctx context.Context, query, dir, model st
 	// Without a cap, a misbehaving LLM could spin for 1000 steps.
 	childRunner := *lr
 	childRunner.MaxSteps = 20
-	if err := childRunner.RunLoop(ctx, sess.ID, "search"); err != nil {
+	if err := childRunner.RunLoop(ctx, sess.ID, "search", 0, 0); err != nil {
 		return "", fmt.Errorf("search loop: %w", err)
 	}
 

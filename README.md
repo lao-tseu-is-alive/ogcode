@@ -63,6 +63,7 @@ Unlike IDE-locked assistants (Cursor, Copilot) or cloud-only services (Claude Co
 - **Codebase Map** — Semantic index of your entire project for intelligent file discovery
 - **Single Binary, Self-Contained** — One Go binary with embedded React frontend. Zero external server dependencies.
 - **MCP Extensibility** — Model Context Protocol support for custom tools and integrations
+- **Rich Visual Output** — Agents can render Mermaid diagrams, LaTeX math, Plotly charts, and full HTML/CSS/JS interactive content directly in the chat. Viewport-aware responsive design adapts to your screen size.
 
 ---
 
@@ -263,6 +264,20 @@ ogcode plan -p 3000
 ## Remote Deployment
 
 Ogcode is just an HTTP server — host it on a remote machine and access it from anywhere via a browser.
+
+### Rich Output Capabilities
+
+Ogcode agents can produce rich visual content directly in the chat — not just plain text:
+
+| Format | Syntax | Use For |
+|--------|--------|---------|
+| **Mermaid diagrams** | ` ```mermaid ` | Flows, architectures, sequences, ER diagrams |
+| **LaTeX math** | `$...$` or `$$...$$` | Mathematical formulas and equations |
+| **Plotly charts** | ` ```plotly ` | Bar, line, scatter, pie, heatmap, and more |
+| **Rough diagrams** | ` ```rough ` | Hand-drawn style 2D diagrams |
+| **HTML/CSS/JS** | ` ```html ` | Interactive dashboards, styled tables, custom visualizations, animations |
+
+HTML blocks render in a **sandboxed iframe** — scripts run in isolation with no access to the parent page. The agent is told your viewport dimensions so it can design responsive content that fits your screen.
 
 ### Quick Start — Expose the Port
 

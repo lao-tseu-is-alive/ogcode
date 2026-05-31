@@ -784,7 +784,7 @@ export const PlanProvider: ParentComponent = (props) => {
       setMessages((prev) => [...prev, tempUserMsg]);
 
       try {
-        await sendPlanPrompt(plan.id, content, selectedModel());
+        await sendPlanPrompt(plan.id, content, selectedModel(), window.innerWidth, window.innerHeight);
         const msgs = await getPlanMessages(plan.id);
         setMessages(msgs);
         startBgPoll(plan.id);

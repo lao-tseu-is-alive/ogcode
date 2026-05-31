@@ -120,10 +120,14 @@ export function getMessages(sessionId: string): Promise<MessageWithParts[]> {
   return fetchAPI(`/session/${sessionId}/message`);
 }
 
-export function sendPrompt(sessionId: string, content: string, model?: string): Promise<void> {
+export function sendPrompt(sessionId: string, content: string, model?: string, viewportWidth?: number, viewportHeight?: number): Promise<void> {
+  const body: Record<string, unknown> = { content };
+  if (model) body.model = model;
+  if (viewportWidth) body.viewportWidth = viewportWidth;
+  if (viewportHeight) body.viewportHeight = viewportHeight;
   return fetchAPI(`/session/${sessionId}/prompt`, {
     method: 'POST',
-    body: JSON.stringify({ content, model }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -373,10 +377,14 @@ export function lockPlan(id: string): Promise<Plan> {
   return fetchAPI(`/plans/${id}/lock`, { method: 'POST' });
 }
 
-export function sendPlanPrompt(id: string, content: string, model?: string): Promise<void> {
+export function sendPlanPrompt(id: string, content: string, model?: string, viewportWidth?: number, viewportHeight?: number): Promise<void> {
+  const body: Record<string, unknown> = { content };
+  if (model) body.model = model;
+  if (viewportWidth) body.viewportWidth = viewportWidth;
+  if (viewportHeight) body.viewportHeight = viewportHeight;
   return fetchAPI(`/plans/${id}/prompt`, {
     method: 'POST',
-    body: JSON.stringify({ content, model }),
+    body: JSON.stringify(body),
   });
 }
 

@@ -267,7 +267,7 @@ func (s *Server) generateFinalPlanSummary(p *plan.Plan) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	return s.loopRunner.RunLoop(ctx, sessionID, "plan")
+	return s.loopRunner.RunLoop(ctx, sessionID, "plan", 0, 0)
 }
 
 func (s *Server) handleAbortPlan(w http.ResponseWriter, r *http.Request) {
@@ -435,7 +435,7 @@ func (s *Server) runBreakdown(p *plan.Plan) {
 	defer cancel()
 
 	slog.Info("starting breakdown agent loop", "plan", p.ID, "session", breakdownSession.ID)
-	if err := s.loopRunner.RunLoop(ctx, breakdownSession.ID, "breakdown"); err != nil {
+	if err := s.loopRunner.RunLoop(ctx, breakdownSession.ID, "breakdown", 0, 0); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			slog.Error("breakdown agent loop timed out", "plan", p.ID, "timeout", breakdownTimeout)
 			s.failBreakdown(p, fmt.Sprintf("breakdown timed out after %s — try locking the plan again", breakdownTimeout))
@@ -701,8 +701,10 @@ func (s *Server) handlePlanPrompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Content string `json:"content"`
-		Model   string `json:"model,omitempty"`
+		Content        string `json:"content"`
+		Model          string `json:"model,omitempty"`
+		ViewportWidth  int    `json:"viewportWidth,omitempty"`
+		ViewportHeight int    `json:"viewportHeight,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -807,7 +809,7 @@ func (s *Server) handlePlanPrompt(w http.ResponseWriter, r *http.Request) {
 			}
 			s.mu.Unlock()
 		}()
-		if err := s.loopRunner.RunLoop(ctx, sessionID, "plan"); err != nil {
+		if err := s.loopRunner.RunLoop(ctx, sessionID, "plan", input.ViewportWidth, input.ViewportHeight); err != nil {
 			slog.Error("plan agent loop error", "plan", planID, "err", err)
 		}
 	}()

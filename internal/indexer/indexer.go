@@ -223,7 +223,7 @@ func (idx *Indexer) indexBatch(ctx context.Context, filePath string, batch []Pag
 		return fmt.Errorf("create user part: %w", err)
 	}
 
-	if err := idx.loopRunner.RunLoop(ctx, sess.ID, "index"); err != nil {
+	if err := idx.loopRunner.RunLoop(ctx, sess.ID, "index", 0, 0); err != nil {
 		return fmt.Errorf("run index agent: %w", err)
 	}
 	return nil

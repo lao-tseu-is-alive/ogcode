@@ -230,7 +230,7 @@ func runPrompt(cmd *cobra.Command, args []string) error {
 
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- lr.RunLoop(ctx, sess.ID, runAgentName)
+		loopDone <- lr.RunLoop(ctx, sess.ID, runAgentName, 0, 0)
 	}()
 
 	// Collect and stream text output from bus events

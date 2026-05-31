@@ -1,5 +1,7 @@
 package agent
 
+import "fmt"
+
 // callGraphPrompt returns the call graph instructions section, scoped to the
 // given agent role. Build agents get the full invariant including post-mutation
 // sync; read-only agents (plan) get a lighter version without mutation guidance.
@@ -288,7 +290,21 @@ The chat interface natively renders the following — use them when they add gen
 - **Mermaid diagrams** (triple-backtick mermaid blocks) — flows, architectures, sequences, entity relationships.
 - **LaTeX math** — inline with $...$ and display block with $$...$$ — for mathematical formulas and equations.
 - **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.
-- **Rough diagrams** (triple-backtick rough blocks) — hand-drawn style 2D diagrams. The block must contain a valid JSON object with an "elements" array and optional "width"/"height"/"options" fields. Each element has a "type" (rectangle, circle, ellipse, line, arrow, path, linearPath, polygon, text) plus type-specific coordinates and optional RoughJS style options (stroke, fill, roughness, bowing, fillStyle, etc.).`
+- **Rough diagrams** (triple-backtick rough blocks) — hand-drawn style 2D diagrams. The block must contain a valid JSON object with an "elements" array and optional "width"/"height"/"options" fields. Each element has a "type" (rectangle, circle, ellipse, line, arrow, path, linearPath, polygon, text) plus type-specific coordinates and optional RoughJS style options (stroke, fill, roughness, bowing, fillStyle, etc.).
+- **HTML/CSS/JS** (triple-backtick html blocks) — full interactive content rendered in a sandboxed iframe. Use this for rich visualizations, custom dashboards, interactive widgets, styled tables, animated content, or any presentation that goes beyond static markdown. The block should contain a complete HTML document (or fragment with inline <style> and <script>). CSS is fully supported. JavaScript runs in a sandbox with no access to the parent page. Use the viewport dimensions provided below to make your content responsive — design for the available width and height.`
+}
+
+// viewportPrompt returns a section telling the agent about the user's
+// rendering viewport so it can make responsive design decisions.
+func viewportPrompt(width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(`
+
+## Rendering viewport
+
+The user's chat viewport is approximately %d×%d pixels (width × height). Design your visual output — HTML content, Plotly charts, Mermaid diagrams, Rough diagrams, and any other rendered content — to fit within these dimensions. Use responsive CSS (flexbox, grid, percentage widths, max-width) when creating HTML content so it adapts gracefully to different screen sizes.`, width, height)
 }
 
 // parallelToolCallsPrompt returns the shared section about making parallel

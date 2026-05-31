@@ -169,7 +169,7 @@ func (s *Server) handleBuildCallGraph(w http.ResponseWriter, r *http.Request) {
 			s.mu.Unlock()
 		}()
 
-		if err := s.loopRunner.RunLoop(ctx, sess.ID, "callgraph"); err != nil {
+		if err := s.loopRunner.RunLoop(ctx, sess.ID, "callgraph", 0, 0); err != nil {
 			slog.Error("callgraph build loop error", "session", sess.ID, "err", err)
 		}
 	}()

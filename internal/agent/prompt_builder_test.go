@@ -110,6 +110,41 @@ func TestMarkdownCapabilitiesPrompt(t *testing.T) {
 	if !strings.Contains(prompt, "LaTeX math") {
 		t.Error("expected LaTeX mention in markdown capabilities prompt")
 	}
+	if !strings.Contains(prompt, "HTML/CSS/JS") {
+		t.Error("expected HTML/CSS/JS mention in markdown capabilities prompt")
+	}
+	if !strings.Contains(prompt, "sandboxed iframe") {
+		t.Error("expected sandboxed iframe mention in markdown capabilities prompt")
+	}
+}
+
+func TestViewportPrompt(t *testing.T) {
+	// With valid dimensions
+	prompt := viewportPrompt(1920, 1080)
+	if !strings.Contains(prompt, "1920") {
+		t.Error("expected width 1920 in viewport prompt")
+	}
+	if !strings.Contains(prompt, "1080") {
+		t.Error("expected height 1080 in viewport prompt")
+	}
+	if !strings.Contains(prompt, "Rendering viewport") {
+		t.Error("expected 'Rendering viewport' heading")
+	}
+	if !strings.Contains(prompt, "responsive") {
+		t.Error("expected responsive design guidance in viewport prompt")
+	}
+
+	// With zero dimensions (should return empty)
+	prompt = viewportPrompt(0, 0)
+	if prompt != "" {
+		t.Error("expected empty prompt when dimensions are zero")
+	}
+
+	// With negative dimensions (should return empty)
+	prompt = viewportPrompt(-1, 100)
+	if prompt != "" {
+		t.Error("expected empty prompt when dimensions are negative")
+	}
 }
 
 func TestParallelToolCallsPrompt(t *testing.T) {
@@ -286,7 +321,7 @@ func TestBreakdownAgent_SystemPrompt_ContainsCallGraphAndNotes(t *testing.T) {
 	}
 	// BreakdownAgent should include the shared call graph prompt section (plan variant)
 	// These sections are injected dynamically by buildSystemPrompt when callGraphEnabled=true.
-	builtPrompt := buildSystemPrompt(BreakdownAgent, "/tmp/test", false, true, "", "", nil)
+	builtPrompt := buildSystemPrompt(BreakdownAgent, "/tmp/test", false, true, "", "", nil, 0, 0)
 	if !strings.Contains(builtPrompt, "When to build the call graph") {
 		t.Error("BreakdownAgent should include 'When to build the call graph' section from shared prompt")
 	}

@@ -260,9 +260,11 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	sessionID := session.SessionID(chi.URLParam(r, "sessionID"))
 
 	var input struct {
-		Content string `json:"content"`
-		Agent   string `json:"agent,omitempty"`
-		Model   string `json:"model,omitempty"`
+		Content        string `json:"content"`
+		Agent          string `json:"agent,omitempty"`
+		Model          string `json:"model,omitempty"`
+		ViewportWidth  int    `json:"viewportWidth,omitempty"`
+		ViewportHeight int    `json:"viewportHeight,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -362,7 +364,7 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 			}
 			s.mu.Unlock()
 		}()
-		if err := s.loopRunner.RunLoop(ctx, sessionID, input.Agent); err != nil {
+		if err := s.loopRunner.RunLoop(ctx, sessionID, input.Agent, input.ViewportWidth, input.ViewportHeight); err != nil {
 			slog.Error("agent loop error", "session", sessionID, "err", err)
 		}
 	}()

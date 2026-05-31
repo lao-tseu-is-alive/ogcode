@@ -130,7 +130,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 			s.mu.Unlock()
 		}()
 
-		if err := s.loopRunner.RunLoop(ctx, sess.ID, "note"); err != nil {
+		if err := s.loopRunner.RunLoop(ctx, sess.ID, "note", 0, 0); err != nil {
 			slog.Error("note agent loop error", "session", sess.ID, "err", err)
 		}
 	}()
