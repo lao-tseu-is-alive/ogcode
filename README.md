@@ -74,6 +74,7 @@ Unlike IDE-locked assistants (Cursor, Copilot) or cloud-only services (Claude Co
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Remote Deployment](#remote-deployment)
 - [The Plan Mode Workflow](#the-plan-mode-workflow)
 - [Agentic Session Memory](#agentic-session-memory)
 - [Architecture](#architecture)
@@ -256,6 +257,79 @@ Describe what you want to build. The planning agent reads your codebase, discuss
 ogcode -p 3000
 ogcode plan -p 3000
 ```
+
+---
+
+## Remote Deployment
+
+Ogcode is just an HTTP server — host it on a remote machine and access it from anywhere via a browser.
+
+### Quick Start — Expose the Port
+
+```bash
+docker run -p 8080:8080 \
+  -v ~/.ogcode:/root/.ogcode \
+  -v $(pwd):/workspace -w /workspace \
+  ghcr.io/prasenjeet-symon/ogcode:latest
+```
+
+Then open `http://<your-server-ip>:8080` from any browser.
+
+### Production — Behind a Reverse Proxy with HTTPS
+
+```nginx
+# nginx config
+server {
+    listen 443 ssl;
+    server_name ogcode.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Upgrade $http_upgrade;     # WebSocket support
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Access via `https://ogcode.yourdomain.com` — encrypted and clean.
+
+### Docker Compose (Production-Friendly)
+
+```yaml
+services:
+  ogcode:
+    image: ghcr.io/prasenjeet-symon/ogcode:latest
+    volumes:
+      - ~/.ogcode:/root/.ogcode
+    ports:
+      - "127.0.0.1:8080:8080"   # only localhost — nginx handles public access
+    restart: unless-stopped
+```
+
+### ⚠️ Security Considerations
+
+Ogcode is a coding agent that can execute shell commands, read/write files, and modify your system. **Never expose it to the public internet without authentication.**
+
+| Risk | Mitigation |
+|------|-----------|
+| Anyone can hit port 8080 | Bind to `127.0.0.1` + use a reverse proxy |
+| No auth on the web UI | Add HTTP Basic Auth in nginx or use a VPN |
+| Full shell access via the agent | Run in a restricted environment (Docker, VM) |
+
+Recommended approaches:
+
+1. **SSH tunnel** — Most secure, zero config:
+   ```bash
+   # On your laptop:
+   ssh -L 8080:localhost:8080 user@your-server
+   # Then open http://localhost:8080 in your browser
+   ```
+2. **nginx + HTTP Basic Auth** — Simple password gate:
+   ```bash
+   htpasswd -c /etc/nginx/.htpasswd your_username
+   ```
+3. **Cloudflare Tunnel** — Zero open ports, add Cloudflare Access for auth
+4. **VPN (WireGuard / Tailscale)** — Private network, no public exposure
 
 ---
 
