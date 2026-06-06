@@ -37,9 +37,9 @@ func NewBridgeClient(baseURL string) *BridgeClient {
 		baseURL: baseURL,
 		// Timeout balanced for parallel search: the bridge queues requests when
 		// MAX_CONCURRENCY is reached, so this must accommodate a full queue.
-		// 90s allows up to ~3 queued rounds at MAX_CONCURRENCY=8 with 8s/page fetches
+		// 150s allows up to ~2 queued rounds at MAX_CONCURRENCY=15 with 8s/page fetches
 		// plus search overhead, while still bounding runaway requests.
-		http: &http.Client{Timeout: 90 * time.Second},
+		http: &http.Client{Timeout: 150 * time.Second},
 	}
 }
 

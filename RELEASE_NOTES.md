@@ -21,7 +21,7 @@ This release adds a **deep research agent** that can search the web, fetch pages
 - **Playwright-based bridge** — A Node.js/Express server (`tools/search-bridge/server.js`) manages a headless Chromium instance for search and fetch operations. Capable of handling JavaScript-heavy pages.
 - **Automatic startup** — When search is enabled, the Go server starts the bridge as a subprocess and waits up to 30 seconds for it to become healthy.
 - **Profile modes** — Isolated profile (safe default, no shared cookies) or real Chrome profile (uses your cookies/logins for authenticated sites; Chrome must be fully closed).
-- **Concurrency control** — Maximum 4 concurrent tabs by default (`OGCODE_SEARCH_MAX_CONCURRENCY`).
+- **Concurrency control** — Maximum 15 concurrent tabs by default (`OGCODE_SEARCH_MAX_CONCURRENCY`).
 
 ### New: Search Configuration UI
 

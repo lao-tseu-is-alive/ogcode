@@ -13,7 +13,7 @@ const USE_REAL_PROFILE = process.env.OGCODE_SEARCH_USE_REAL_PROFILE === 'true';
 // faster overall than many contending for the browser's main thread.
 // 8 is a good balance: enough parallelism to keep network utilization high,
 // but low enough to avoid Chrome Memory/JS-heap pressure.
-const MAX_CONCURRENCY = parseInt(process.env.OGCODE_SEARCH_MAX_CONCURRENCY || '8', 10);
+const MAX_CONCURRENCY = parseInt(process.env.OGCODE_SEARCH_MAX_CONCURRENCY || '15', 10);
 
 // Real Chrome profile — user's actual Chrome data directory (cookies, logins).
 // Chrome must be fully closed before ogcode starts when this is enabled.
