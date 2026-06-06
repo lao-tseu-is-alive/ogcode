@@ -1751,11 +1751,14 @@ func (lr *LoopRunner) RunSearchSession(ctx context.Context, query, dir, model st
 		return "", fmt.Errorf("create search user part: %w", err)
 	}
 
-	// Run a capped child loop — search sessions need at most ~5 turns
+	// Run a capped child loop — search sessions need at most 5 turns
 	// (decompose → web_search → fetch_page → synthesise ± one extra round).
 	// Without a cap, a misbehaving LLM could spin for 1000 steps.
+	// The search agent prompt instructs the model to combine search and
+	// fetch into 2 LLM rounds where possible, so 8 steps gives ample
+	// room (each round = 1 user + 1 assistant + potential tool-result msg).
 	childRunner := *lr
-	childRunner.MaxSteps = 20
+	childRunner.MaxSteps = 8
 	if err := childRunner.RunLoop(ctx, sess.ID, "search", 0, 0); err != nil {
 		return "", fmt.Errorf("search loop: %w", err)
 	}

@@ -4,12 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // DeepSearchFunc is a function that runs a child search-agent session and returns
 // the synthesised answer. Implemented by agent.LoopRunner.RunSearchSession and
 // wired in from server.go to avoid the tool→agent import cycle.
 type DeepSearchFunc func(ctx context.Context, query, dir, model string) (string, error)
+
+// deepSearchTimeout bounds the total time a deep search can run. This prevents
+// a misbehaving search agent from burning tokens forever. The search agent is
+// designed to complete in ~2 LLM rounds (search + fetch + synthesise), so 90s
+// is generous enough for slow models while preventing runaway sessions.
+const deepSearchTimeout = 90 * time.Second
 
 // DeepSearchTool lets any agent delegate a research query to the SearchAgent.
 // It creates an ephemeral child session, runs the full search loop, and returns
@@ -56,7 +63,14 @@ func (t DeepSearchTool) Execute(ctx context.Context, args json.RawMessage, tctx 
 		fullQuery = input.Query + "\n\nAdditional context: " + input.Context
 	}
 
-	answer, err := t.Run(ctx, fullQuery, tctx.SessionDir, tctx.Model)
+	// Bound the search session with its own timeout so it doesn't inherit an
+	// unbounded context from the parent loop. A well-structured search completes
+	// in ~2 tool-call rounds (~30-60s for LLM + ~5s for search/fetch), so 90s
+	// is generous.
+	searchCtx, cancel := context.WithTimeout(ctx, deepSearchTimeout)
+	defer cancel()
+
+	answer, err := t.Run(searchCtx, fullQuery, tctx.SessionDir, tctx.Model)
 	if err != nil {
 		return Result{Output: fmt.Sprintf("Search agent error: %s", err)}, nil
 	}

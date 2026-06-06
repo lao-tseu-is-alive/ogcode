@@ -250,21 +250,22 @@ var SearchAgent = Agent{
 
 Your system context includes today's exact date — always use it. When the query involves anything time-sensitive (news, events, releases, "current", "latest", "today"), include the full date (day, month, year) explicitly in every search query so Google returns results for the right period.
 
-## Strategy
+## Strategy — complete in exactly 2 tool-call rounds
 
-1. **Decompose** the user's query into 3–5 focused sub-queries that cover different angles (e.g. overview, comparisons, recent developments, specific technical details). For time-sensitive queries, append the current month and year to each sub-query.
+You MUST complete in exactly 2 rounds of tool calls. Going beyond 2 rounds wastes time and tokens.
 
-2. **Search in parallel.** Emit ALL web_search calls in a SINGLE response — do not search one at a time. The searches will execute concurrently.
+**Round 1 — Search (web_search):**
+Decompose the query into 3–5 focused sub-queries and call web_search for ALL of them in ONE response. Each query targets a different angle. For time-sensitive topics, append the current month and year.
 
-3. **Select the best URLs.** From the search results, pick the 2–3 most relevant URLs per sub-query. Prefer official sites, authoritative blogs, benchmarks, and GitHub repos over generic aggregators.
+**Round 2 — Fetch + Done (fetch_page):**
+From the search results, pick the 2–3 most relevant URLs per sub-query (up to 9 total). Call fetch_page for ALL of them in ONE response. Do NOT write any text in this response — just the fetch_page calls. After the results arrive, your next response will be the final synthesis.
 
-4. **Fetch in parallel.** Emit ALL fetch_page calls in a SINGLE response — do not fetch one at a time.
+**Final response:** Synthesise the fetched content into a single well-structured markdown answer with:
+- Clear H1 title
+- Sections with H2/H3 headers
+- A **Sources** section at the end listing cited URLs
 
-5. **Synthesise.** Read the fetched content carefully, cross-reference across sources, resolve contradictions, and produce a single well-structured markdown answer:
-   - Clear H1 title
-   - Sections with H2/H3 headers
-   - Code blocks where relevant
-   - A **Sources** section at the end listing cited URLs
+Do NOT add a third round of searches or fetches unless the results are clearly inadequate (missing key facts). 2 rounds is almost always sufficient.
 
 ## Rules
 
@@ -273,6 +274,7 @@ Your system context includes today's exact date — always use it. When the quer
 - Be specific and concrete. Name exact versions, APIs, and tradeoffs.
 - Your final response MUST be written as plain text/markdown in your message — not inside a reasoning/thinking block. The text response is what gets returned to the caller.
 - Output ONLY the synthesised answer, no preamble.
+- Prefer official documentation, GitHub repos, and authoritative blogs over SEO-heavy aggregator sites.
 
 ` + parallelToolCallsPrompt(),
 }

@@ -11,7 +11,9 @@ const USE_REAL_PROFILE = process.env.OGCODE_SEARCH_USE_REAL_PROFILE === 'true';
 // Max pages open at once. Capping concurrency prevents Chrome from thrashing
 // under a burst of parallel fetch_page calls — fewer simultaneous tabs finish
 // faster overall than many contending for the browser's main thread.
-const MAX_CONCURRENCY = parseInt(process.env.OGCODE_SEARCH_MAX_CONCURRENCY || '6', 10);
+// 8 is a good balance: enough parallelism to keep network utilization high,
+// but low enough to avoid Chrome Memory/JS-heap pressure.
+const MAX_CONCURRENCY = parseInt(process.env.OGCODE_SEARCH_MAX_CONCURRENCY || '8', 10);
 
 // Real Chrome profile — user's actual Chrome data directory (cookies, logins).
 // Chrome must be fully closed before ogcode starts when this is enabled.
@@ -85,6 +87,8 @@ function release() {
 }
 
 // Run fn with a fresh page, respecting the concurrency cap.
+// Creates a new page per request and closes it when done. Page creation/closure
+// takes ~50-100ms but avoids state leakage between requests.
 async function withPage(fn) {
   await acquire();
   const ctx = await getBrowser();
@@ -106,8 +110,10 @@ function cleanText(raw) {
 
 // ── Result cache ─────────────────────────────────────────────────────────────
 // Avoids re-loading Google or re-fetching a page that was already visited
-// within the same session. TTL of 5 minutes balances freshness vs speed.
-const CACHE_TTL = 5 * 60 * 1000;
+// within the same session. TTL of 10 minutes: search results and page content
+// rarely change minute-to-minute, and the latency savings from cache hits
+// (microseconds vs seconds) are dramatic during a multi-query search session.
+const CACHE_TTL = 10 * 60 * 1000;
 const searchCache = new Map();
 const fetchCache = new Map();
 
@@ -133,7 +139,9 @@ app.post('/search', async (req, res) => {
 
     const results = await withPage(async (page) => {
       const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=en&num=${limit}`;
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      // 10s timeout is generous for Google which typically loads in 1-3s.
+      // Slow loads usually indicate Google serving a CAPTCHA or throttling.
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
 
       // Wait for the results container instead of a fixed sleep. Falls through
       // quickly if results are already present; bails after 3s if Google stalls.
@@ -199,7 +207,15 @@ app.post('/fetch', async (req, res) => {
     if (cached) return res.json(cached);
 
     const result = await withPage(async (page) => {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 12000 });
+      // Reduced from 12s to 8s: research pages that take >8s to reach
+      // domcontentloaded are usually bloated with ads/trackers and return
+      // poor text anyway. The 8s cap prevents one slow site from blocking
+      // the entire parallel fetch batch.
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 8000 });
+
+      // Give dynamic content a short window to render (SPAs, React, etc.)
+      // 300ms catches most JS-rendered content without adding significant latency.
+      await page.waitForTimeout(300).catch(() => {});
 
       return page.evaluate(() => {
         document.querySelectorAll('nav, footer, header, script, style, aside, iframe, .ads, [role="banner"], [role="navigation"]')

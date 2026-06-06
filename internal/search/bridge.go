@@ -35,10 +35,11 @@ type BridgeClient struct {
 func NewBridgeClient(baseURL string) *BridgeClient {
 	return &BridgeClient{
 		baseURL: baseURL,
-		// Generous timeout: the bridge caps concurrency, so a burst of parallel
-		// fetches queues server-side while this client's clock runs. 120s leaves
-		// room for several queued rounds of slow (up to 25s) page loads.
-		http: &http.Client{Timeout: 120 * time.Second},
+		// Timeout balanced for parallel search: the bridge queues requests when
+		// MAX_CONCURRENCY is reached, so this must accommodate a full queue.
+		// 90s allows up to ~3 queued rounds at MAX_CONCURRENCY=8 with 8s/page fetches
+		// plus search overhead, while still bounding runaway requests.
+		http: &http.Client{Timeout: 90 * time.Second},
 	}
 }
 
