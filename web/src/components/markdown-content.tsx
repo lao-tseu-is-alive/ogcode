@@ -81,20 +81,27 @@ function decodeHtmlFromSrcdoc(encoded: string): string {
 
 export default function MarkdownContent(props: { text: string; class?: string }) {
   let containerRef: HTMLDivElement | undefined;
+  // Holds encoded HTML blocks from the latest memo run. The memo always
+  // executes before the effect (memo is a dependency), so this is always
+  // current by the time the effect reads it.
+  let currentHtmlBlocks: string[] = [];
 
   const html = createMemo(() => {
     const raw = marked.parse(props.text, { async: false }) as string;
 
-    // Extract HTML code blocks and replace them with data-attributes placeholders
-    // BEFORE DOMPurify runs, so that <script> tags and event handlers are preserved
-    // intact (they will be rendered in a sandboxed iframe, not in the main page).
+    // Extract HTML code blocks and replace them with placeholder divs BEFORE
+    // DOMPurify runs, preserving <script> tags and event handlers for the
+    // sandboxed iframe. Blocks are stored in currentHtmlBlocks (closure) so
+    // the effect can access them directly — no DOM-based data transfer needed.
     const htmlBlocks: string[] = [];
     const withPlaceholders = raw.replace(
       /<pre><code class="hljs language-html">([\s\S]*?)<\/code><\/pre>/g,
       (_match, codeContent: string) => {
-        // The code content is HTML-escaped by highlight.js. We need to unescape it
-        // to get the raw HTML that the user wrote.
+        // highlight.js wraps tokens in <span> tags before HTML-escaping, so
+        // we must strip those span wrappers first. Otherwise <<span>html</span>>
+        // reaches the iframe and the browser misparsed it as garbled markup.
         const rawHtml = codeContent
+          .replace(/<[^>]+>/g, '')
           .replace(/&amp;/g, '&')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
@@ -106,6 +113,8 @@ export default function MarkdownContent(props: { text: string; class?: string })
         return `<div class="html-render" data-srcdoc-idx="${idx}"></div>`;
       }
     );
+
+    currentHtmlBlocks = htmlBlocks;
 
     const wrapped = withPlaceholders
       .replace(/<table\b([^>]*)>/g, '<div class="overflow-auto max-w-full"><table$1>')
@@ -123,30 +132,17 @@ export default function MarkdownContent(props: { text: string; class?: string })
         '<div class="rough-diagram" style="min-height:200px">$1</div>'
       );
 
-    // Store the HTML blocks data on a module-level variable so the effect can
-    // access the decoded content. We attach it to the container element.
-    const sanitized = DOMPurify.sanitize(wrapped, {
+    return DOMPurify.sanitize(wrapped, {
       USE_PROFILES: { html: true, svg: true },
       ADD_ATTR: ['style', 'aria-hidden', 'data-srcdoc-idx'],
     });
-
-    // Embed the encoded block data as a script tag that we'll strip before
-    // setting innerHTML. We use a JSON array stored in a data attribute.
-    const blocksJson = JSON.stringify(htmlBlocks);
-    const dataTag = `<template class="html-blocks-data" data-blocks='${blocksJson.replace(/'/g, "&#39;")}'></template>`;
-    return dataTag + sanitized;
   });
 
   createEffect(() => {
     const _ = html();
     if (!containerRef) return;
 
-    // Extract and remove the embedded HTML blocks data
-    const dataTemplate = containerRef.querySelector('.html-blocks-data');
-    const blocksData: string[] = dataTemplate
-      ? JSON.parse((dataTemplate as HTMLElement).getAttribute('data-blocks') || '[]')
-      : [];
-    dataTemplate?.remove();
+    const blocksData = currentHtmlBlocks;
 
     // Render mermaid diagrams
     const mermaidNodes = containerRef.querySelectorAll('.mermaid');

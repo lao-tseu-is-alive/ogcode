@@ -11,7 +11,7 @@ const USE_REAL_PROFILE = process.env.OGCODE_SEARCH_USE_REAL_PROFILE === 'true';
 // Max pages open at once. Capping concurrency prevents Chrome from thrashing
 // under a burst of parallel fetch_page calls — fewer simultaneous tabs finish
 // faster overall than many contending for the browser's main thread.
-const MAX_CONCURRENCY = parseInt(process.env.OGCODE_SEARCH_MAX_CONCURRENCY || '4', 10);
+const MAX_CONCURRENCY = parseInt(process.env.OGCODE_SEARCH_MAX_CONCURRENCY || '6', 10);
 
 // Real Chrome profile — user's actual Chrome data directory (cookies, logins).
 // Chrome must be fully closed before ogcode starts when this is enabled.
@@ -104,12 +104,33 @@ function cleanText(raw) {
     .slice(0, 14000);
 }
 
+// ── Result cache ─────────────────────────────────────────────────────────────
+// Avoids re-loading Google or re-fetching a page that was already visited
+// within the same session. TTL of 5 minutes balances freshness vs speed.
+const CACHE_TTL = 5 * 60 * 1000;
+const searchCache = new Map();
+const fetchCache = new Map();
+
+function cacheGet(map, key) {
+  const entry = map.get(key);
+  if (!entry || Date.now() > entry.expiresAt) { map.delete(key); return null; }
+  return entry.value;
+}
+
+function cacheSet(map, key, value) {
+  map.set(key, { value, expiresAt: Date.now() + CACHE_TTL });
+}
+
 // POST /search  { query, limit? }
 app.post('/search', async (req, res) => {
   const { query, limit = 8 } = req.body || {};
   if (!query) return res.status(400).json({ error: 'query is required' });
 
   try {
+    const cacheKey = `${query}::${limit}`;
+    const cached = cacheGet(searchCache, cacheKey);
+    if (cached) return res.json({ results: cached });
+
     const results = await withPage(async (page) => {
       const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=en&num=${limit}`;
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -160,6 +181,7 @@ app.post('/search', async (req, res) => {
       }, limit);
     });
 
+    cacheSet(searchCache, cacheKey, results);
     res.json({ results });
   } catch (err) {
     console.error('search error:', err.message);
@@ -173,27 +195,30 @@ app.post('/fetch', async (req, res) => {
   if (!url) return res.status(400).json({ error: 'url is required' });
 
   try {
+    const cached = cacheGet(fetchCache, url);
+    if (cached) return res.json(cached);
+
     const result = await withPage(async (page) => {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 12000 });
 
       return page.evaluate(() => {
-        // Remove noise elements
         document.querySelectorAll('nav, footer, header, script, style, aside, iframe, .ads, [role="banner"], [role="navigation"]')
           .forEach(el => el.remove());
 
         const title = document.title || '';
-        const raw = document.body ? document.body.innerText : '';
+        // Prefer focused content containers over the entire body — less noise,
+        // less likely to hit the 14K truncation cap on content-heavy pages.
+        const el = document.querySelector('main, article, [role="main"], #main, .main-content')
+                   || document.body;
+        const raw = el ? el.innerText : '';
         return { title, raw };
       });
     });
 
     const text = cleanText(result.raw);
-    res.json({
-      url,
-      title: result.title,
-      text,
-      truncated: result.raw.length > 14000,
-    });
+    const payload = { url, title: result.title, text, truncated: result.raw.length > 14000 };
+    cacheSet(fetchCache, url, payload);
+    res.json(payload);
   } catch (err) {
     console.error('fetch error:', err.message);
     res.status(500).json({ error: err.message });
