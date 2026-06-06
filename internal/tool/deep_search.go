@@ -14,9 +14,12 @@ type DeepSearchFunc func(ctx context.Context, query, dir, model string) (string,
 
 // deepSearchTimeout bounds the total time a deep search can run. This prevents
 // a misbehaving search agent from burning tokens forever. The search agent is
-// designed to complete in ~2 LLM rounds (search + fetch + synthesise), so 90s
-// is generous enough for slow models while preventing runaway sessions.
-const deepSearchTimeout = 90 * time.Second
+// designed to complete in ~2 LLM rounds (search + fetch + synthesise), but
+// realistic timings are: ~15s LLM inference × 3 rounds + ~10s searches + ~30s
+// parallel fetches (bridged, may queue) = ~85s on a good day. Slow models (Claude
+// Opus, o3) or queued bridge requests can push this well past 90s. 180s gives
+// comfortable headroom while still preventing runaway sessions.
+const deepSearchTimeout = 180 * time.Second
 
 // DeepSearchTool lets any agent delegate a research query to the SearchAgent.
 // It creates an ephemeral child session, runs the full search loop, and returns
