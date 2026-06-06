@@ -42,8 +42,11 @@ function getBrowser() {
         '--no-sandbox',
         '--disable-blink-features=AutomationControlled',
         '--disable-dev-shm-usage',
+        // New headless mode (Chrome 112+) is far harder for bot-detection
+        // scripts to fingerprint than the legacy headless mode.
+        '--headless=new',
       ],
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     }).then(async (ctx) => {
       // Block images, media, fonts, and stylesheets for every page in this
       // context. We only extract text, so these bytes are pure waste — skipping
@@ -61,6 +64,13 @@ function getBrowser() {
   }
   return browserPromise;
 }
+
+// Anti-detection: applied to every new page to make the headless browser
+// harder to fingerprint. Overrides navigator.webdriver (the most common
+// headless check) and removes Chrome automation property markers.
+const stealthInitScript = () => {
+  Object.defineProperty(navigator, 'webdriver', { get: () => false });
+};
 
 // ── Concurrency limiter ──────────────────────────────────────────────────────
 // JavaScript is single-threaded at the event-loop level: no two callbacks run
@@ -94,6 +104,8 @@ async function withPage(fn) {
   const ctx = await getBrowser();
   const page = await ctx.newPage();
   try {
+    // Apply anti-detection script before any navigation.
+    await page.addInitScript(stealthInitScript);
     return await fn(page);
   } finally {
     await page.close().catch(() => {});
@@ -137,57 +149,17 @@ app.post('/search', async (req, res) => {
     const cached = cacheGet(searchCache, cacheKey);
     if (cached) return res.json({ results: cached });
 
-    const results = await withPage(async (page) => {
-      const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=en&num=${limit}`;
-      // 10s timeout is generous for Google which typically loads in 1-3s.
-      // Slow loads usually indicate Google serving a CAPTCHA or throttling.
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    // Primary: Google Search
+    let results = await searchGoogle(query, limit);
 
-      // Wait for the results container instead of a fixed sleep. Falls through
-      // quickly if results are already present; bails after 3s if Google stalls.
-      await page.waitForSelector('#search h3, #rso h3', { timeout: 3000 }).catch(() => {});
-
-      return page.evaluate((maxResults) => {
-        // Google rotates result-block class names (.g is long gone), so we anchor
-        // on the stable bits: every organic result has an <h3> title inside a
-        // link. Walk from each h3 up to its result container, pull the URL and a
-        // nearby snippet. Dedup by URL and skip Google's own links.
-        const root = document.querySelector('#rso') || document.querySelector('#search') || document.body;
-        const h3s = Array.from(root.querySelectorAll('h3'));
-        const seen = new Set();
-        const results = [];
-
-        for (const h3 of h3s) {
-          // Find the result's anchor: the h3 is usually wrapped in <a>, else the
-          // closest ancestor containing an http link.
-          let anchor = h3.closest('a[href]');
-          let container = h3;
-          for (let i = 0; i < 6 && container; i++) {
-            if (!anchor) anchor = container.querySelector('a[href^="http"]');
-            // A result block is the first ancestor with both the title and a snippet.
-            if (container.querySelector('h3') && container.innerText.length > h3.innerText.length + 40) break;
-            container = container.parentElement;
-          }
-          const url = anchor ? anchor.href : '';
-          if (!url || !url.startsWith('http')) continue;
-          if (url.includes('google.com') || url.includes('/search?')) continue;
-          if (seen.has(url)) continue;
-          seen.add(url);
-
-          // Snippet: longest text node in the container that isn't the title.
-          let snippet = '';
-          if (container) {
-            const title = h3.innerText.trim();
-            const full = container.innerText.replace(/\s+/g, ' ').trim();
-            snippet = full.replace(title, '').trim().slice(0, 300);
-          }
-
-          results.push({ title: h3.innerText.trim(), url, snippet });
-          if (results.length >= maxResults) break;
-        }
-        return results;
-      }, limit);
-    });
+    // Fallback: Bing Search when Google returns 0 results (typically means
+    // CAPTCHA or rate-limit — Google serves a bot-check page with no <h3>
+    // elements). Bing is less aggressive about headless-browser detection
+    // and returns organic results reliably even for automated requests.
+    if (results.length === 0) {
+      console.log('search bridge: Google returned 0 results, falling back to Bing');
+      results = await searchBing(query, limit);
+    }
 
     cacheSet(searchCache, cacheKey, results);
     res.json({ results });
@@ -196,6 +168,119 @@ app.post('/search', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// searchGoogle scrapes Google Search results using the headless browser.
+async function searchGoogle(query, limit) {
+  return withPage(async (page) => {
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=en&num=${limit}`;
+    // 10s timeout is generous for Google which typically loads in 1-3s.
+    // Slow loads usually indicate Google serving a CAPTCHA or throttling.
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+
+    // Wait for the results container instead of a fixed sleep. Falls through
+    // quickly if results are already present; bails after 3s if Google stalls.
+    await page.waitForSelector('#search h3, #rso h3', { timeout: 3000 }).catch(() => {});
+
+    return page.evaluate((maxResults) => {
+      // Google rotates result-block class names (.g is long gone), so we anchor
+      // on the stable bits: every organic result has an <h3> title inside a
+      // link. Walk from each h3 up to its result container, pull the URL and a
+      // nearby snippet. Dedup by URL and skip Google's own links.
+      const root = document.querySelector('#rso') || document.querySelector('#search') || document.body;
+      const h3s = Array.from(root.querySelectorAll('h3'));
+      const seen = new Set();
+      const results = [];
+
+      for (const h3 of h3s) {
+        // Find the result's anchor: the h3 is usually wrapped in <a>, else the
+        // closest ancestor containing an http link.
+        let anchor = h3.closest('a[href]');
+        let container = h3;
+        for (let i = 0; i < 6 && container; i++) {
+          if (!anchor) anchor = container.querySelector('a[href^="http"]');
+          // A result block is the first ancestor with both the title and a snippet.
+          if (container.querySelector('h3') && container.innerText.length > h3.innerText.length + 40) break;
+          container = container.parentElement;
+        }
+        const url = anchor ? anchor.href : '';
+        if (!url || !url.startsWith('http')) continue;
+        if (url.includes('google.com') || url.includes('/search?')) continue;
+        if (seen.has(url)) continue;
+        seen.add(url);
+
+        // Snippet: longest text node in the container that isn't the title.
+        let snippet = '';
+        if (container) {
+          const title = h3.innerText.trim();
+          const full = container.innerText.replace(/\s+/g, ' ').trim();
+          snippet = full.replace(title, '').trim().slice(0, 300);
+        }
+
+        results.push({ title: h3.innerText.trim(), url, snippet });
+        if (results.length >= maxResults) break;
+      }
+      return results;
+    }, limit);
+  });
+}
+
+// searchBing scrapes Bing Search results as a fallback when Google returns
+// empty (typically CAPTCHA or rate-limit). Bing is far less aggressive about
+// headless-browser detection and reliably returns organic results.
+async function searchBing(query, limit) {
+  return withPage(async (page) => {
+    const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`;
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+    // Bing renders quickly; 2s is enough for JS-rendered results to appear.
+    await page.waitForTimeout(2000).catch(() => {});
+
+    return page.evaluate((maxResults) => {
+      const results = [];
+      const seen = new Set();
+      // Bing organic results live in <li class="b_algo"> elements.
+      const items = document.querySelectorAll('li.b_algo');
+
+      for (const item of items) {
+        const anchor = item.querySelector('h2 a');
+        if (!anchor) continue;
+
+        // Extract the actual URL. Bing wraps some links through a redirect
+        // (bing.com/ck/a?...&u=a1BASE64). The real URL is base64-encoded
+        // in the 'u' parameter after the 'a1' prefix.
+        let href = anchor.getAttribute('href') || '';
+        if (href.includes('bing.com/ck/')) {
+          try {
+            const match = href.match(/u=a1([a-zA-Z0-9+/=_-]+)/);
+            if (match) href = atob(match[1]);
+          } catch (_) {}
+        }
+        // Second attempt: Bing sometimes uses <cite> to display the
+        // readable URL even when the href is a redirect.
+        if (href.includes('bing.com')) {
+          const cite = item.querySelector('cite');
+          if (cite) {
+            const citeText = cite.textContent.trim();
+            if (citeText && citeText.includes('.')) {
+              href = citeText.startsWith('http') ? citeText : 'https://' + citeText;
+            }
+          }
+        }
+        if (!href || !href.startsWith('http')) continue;
+        if (href.includes('bing.com')) continue;
+        if (seen.has(href)) continue;
+        seen.add(href);
+
+        const title = anchor.textContent.trim().replace(/\s+/g, ' ');
+        const snippetEl = item.querySelector('.b_caption p, p');
+        const snippet = snippetEl ? snippetEl.textContent.trim().slice(0, 300) : '';
+
+        results.push({ title, url: href, snippet });
+        if (results.length >= maxResults) break;
+      }
+      return results;
+    }, limit);
+  });
+}
 
 // POST /fetch  { url }
 app.post('/fetch', async (req, res) => {
