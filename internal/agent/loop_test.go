@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
 func TestBuildSystemPrompt_MemoryMDSection_AlwaysPresent(t *testing.T) {
@@ -141,4 +144,258 @@ func TestBuildSystemPrompt_ViewportPrompt(t *testing.T) {
 	if !strings.Contains(prompt, "responsive") {
 		t.Error("expected responsive design guidance in viewport prompt")
 	}
+}
+
+func TestExtractSearchSources(t *testing.T) {
+	inputJSON := func(v any) json.RawMessage {
+		b, _ := json.Marshal(v)
+		return b
+	}
+
+	outputStr := func(s string) *string { return &s }
+
+	tests := []struct {
+		name     string
+		messages []*session.MessageWithParts
+		want     []sourceEntry
+	}{
+		{
+			name:     "empty messages",
+			messages: nil,
+			want:     nil,
+		},
+		{
+			name: "fetch_page extracts URL from input",
+			messages: []*session.MessageWithParts{
+				{
+					Info: session.MessageInfo{Role: session.RoleAssistant},
+					Parts: []session.Part{{
+						Type: session.PartTool,
+						Data: mustMarshalToolData(session.ToolPartData{
+							Tool:   "fetch_page",
+							CallID: "call1",
+							State: session.ToolState{
+								Status: session.ToolCompleted,
+								Input:  inputJSON(map[string]string{"url": "https://example.com/page1"}),
+								Output: outputStr("# Example\nURL: https://example.com/page1\n\nContent here"),
+								Title:  outputStr("Example Page"),
+							},
+						}),
+					}},
+				},
+			},
+			want: []sourceEntry{
+				{URL: "https://example.com/page1", Title: "Example Page"},
+			},
+		},
+		{
+			name: "web_search extracts URLs from output",
+			messages: []*session.MessageWithParts{
+				{
+					Info: session.MessageInfo{Role: session.RoleAssistant},
+					Parts: []session.Part{{
+						Type: session.PartTool,
+						Data: mustMarshalToolData(session.ToolPartData{
+							Tool:   "web_search",
+							CallID: "call2",
+							State: session.ToolState{
+								Status: session.ToolCompleted,
+								Input:  inputJSON(map[string]string{"query": "test query"}),
+								Output: outputStr("Search results for: test\n\n1. **Result 1**\n   URL: https://example.com/result1\n   Snippet here\n\n2. **Result 2**\n   URL: https://example.com/result2\n   Another snippet"),
+								Title:  outputStr("test query"),
+							},
+						}),
+					}},
+				},
+			},
+			want: []sourceEntry{
+				{URL: "https://example.com/result1", Title: ""},
+				{URL: "https://example.com/result2", Title: ""},
+			},
+		},
+		{
+			name: "deduplicates URLs",
+			messages: []*session.MessageWithParts{
+				{
+					Info: session.MessageInfo{Role: session.RoleAssistant},
+					Parts: []session.Part{
+						{
+							Type: session.PartTool,
+							Data: mustMarshalToolData(session.ToolPartData{
+								Tool:   "fetch_page",
+								CallID: "call1",
+								State: session.ToolState{
+									Status: session.ToolCompleted,
+									Input:  inputJSON(map[string]string{"url": "https://example.com/page1"}),
+									Output: outputStr("Content"),
+									Title:  outputStr("Page 1"),
+								},
+							}),
+						},
+						{
+							Type: session.PartTool,
+							Data: mustMarshalToolData(session.ToolPartData{
+								Tool:   "web_search",
+								CallID: "call2",
+								State: session.ToolState{
+									Status: session.ToolCompleted,
+									Input:  inputJSON(map[string]string{"query": "test"}),
+									Output: outputStr("1. **Page 1**\n   URL: https://example.com/page1\n   Snippet"),
+								},
+							}),
+						},
+					},
+				},
+			},
+			want: []sourceEntry{
+				{URL: "https://example.com/page1", Title: "Page 1"},
+				// URL https://example.com/page1 is already seen, so not repeated from web_search
+			},
+		},
+		{
+			name: "ignores other tools",
+			messages: []*session.MessageWithParts{
+				{
+					Info: session.MessageInfo{Role: session.RoleAssistant},
+					Parts: []session.Part{{
+						Type: session.PartTool,
+						Data: mustMarshalToolData(session.ToolPartData{
+							Tool:   "bash",
+							CallID: "call3",
+							State: session.ToolState{
+								Status: session.ToolCompleted,
+								Input:  inputJSON(map[string]string{"command": "ls"}),
+								Output: outputStr("file1.go file2.go"),
+							},
+						}),
+					}},
+				},
+			},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractSearchSources(tt.messages)
+			if len(got) != len(tt.want) {
+				t.Fatalf("expected %d sources, got %d: %+v", len(tt.want), len(got), got)
+			}
+			for i, want := range tt.want {
+				if got[i].URL != want.URL {
+					t.Errorf("source %d: expected URL %q, got %q", i, want.URL, got[i].URL)
+				}
+				if got[i].Title != want.Title {
+					t.Errorf("source %d: expected Title %q, got %q", i, want.Title, got[i].Title)
+				}
+			}
+		})
+	}
+}
+
+func TestExtractURLsFromText(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want []string
+	}{
+		{
+			name: "extracts URLs from search format",
+			text: "1. **Title**\n   URL: https://example.com/page\n   Snippet",
+			want: []string{"https://example.com/page"},
+		},
+		{
+			name: "extracts multiple URLs",
+			text: "1. **A**\n   URL: https://a.com\n   Snippet\n\n2. **B**\n   URL: https://b.com\n   Snippet",
+			want: []string{"https://a.com", "https://b.com"},
+		},
+		{
+			name: "ignores non-URL lines",
+			text: "Some text\nMore text without URLs",
+			want: nil,
+		},
+		{
+			name: "ignores URL lines without http",
+			text: "URL: not-a-url",
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractURLsFromText(tt.text)
+			if len(got) != len(tt.want) {
+				t.Fatalf("expected %d URLs, got %d: %v", len(tt.want), len(got), got)
+			}
+			for i, want := range tt.want {
+				if got[i] != want {
+					t.Errorf("URL %d: expected %q, got %q", i, want, got[i])
+				}
+			}
+		})
+	}
+}
+
+func TestHasSourcesSection(t *testing.T) {
+	tests := []struct {
+		name   string
+		answer string
+		want   bool
+	}{
+		{
+			name:   "has ## Sources",
+			answer: "Some answer\n\n## Sources\n\n1. URL",
+			want:   true,
+		},
+		{
+			name:   "has ### Sources",
+			answer: "Some answer\n\n### Sources\n\n1. URL",
+			want:   true,
+		},
+		{
+			name:   "has **Sources**",
+			answer: "Some answer\n\n**Sources**\n\n1. URL",
+			want:   true,
+		},
+		{
+			name:   "no sources section",
+			answer: "Some answer without sources",
+			want:   false,
+		},
+		{
+			name:   "sources in lowercase",
+			answer: "## sources\n\n1. URL",
+			want:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hasSourcesSection(tt.answer)
+			if got != tt.want {
+				t.Errorf("hasSourcesSection(%q) = %v, want %v", tt.answer, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatSources(t *testing.T) {
+	sources := []sourceEntry{
+		{URL: "https://example.com/page1", Title: "Page One"},
+		{URL: "https://example.com/page2", Title: ""},
+	}
+
+	result := formatSources(sources)
+
+	if !strings.Contains(result, "1. [Page One](https://example.com/page1)") {
+		t.Errorf("expected titled source link, got: %s", result)
+	}
+	if !strings.Contains(result, "2. https://example.com/page2") {
+		t.Errorf("expected plain URL source, got: %s", result)
+	}
+}
+
+func mustMarshalToolData(d session.ToolPartData) json.RawMessage {
+	b, _ := json.Marshal(d)
+	return b
 }

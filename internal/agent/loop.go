@@ -1183,6 +1183,104 @@ func extractLastAssistantText(messages []*session.MessageWithParts) string {
 	return ""
 }
 
+// sourceEntry represents a collected URL with its title, used to build the
+// Sources section for search results.
+type sourceEntry struct {
+	URL   string
+	Title string
+}
+
+// extractSearchSources scans all messages in a search session and collects
+// unique source URLs from web_search and fetch_page tool calls.
+// - fetch_page: extracts URL from the tool input ({"url": "..."})
+// - web_search: extracts URLs from the tool output (which lists result URLs)
+func extractSearchSources(messages []*session.MessageWithParts) []sourceEntry {
+	seen := make(map[string]bool)
+	var sources []sourceEntry
+
+	for _, msg := range messages {
+		for _, p := range msg.Parts {
+			if p.Type != session.PartTool {
+				continue
+			}
+			var data session.ToolPartData
+			if json.Unmarshal(p.Data, &data) != nil {
+				continue
+			}
+
+			switch data.Tool {
+			case "fetch_page":
+				// Extract URL from input
+				var input struct {
+					URL string `json:"url"`
+				}
+				if json.Unmarshal(data.State.Input, &input) == nil && input.URL != "" {
+					if !seen[input.URL] {
+						seen[input.URL] = true
+						title := ""
+						if data.State.Title != nil {
+							title = *data.State.Title
+						}
+						sources = append(sources, sourceEntry{URL: input.URL, Title: title})
+					}
+				}
+
+			case "web_search":
+				// Extract URLs from the output text (which contains "URL: https://..." lines)
+				if data.State.Output != nil {
+					for _, u := range extractURLsFromText(*data.State.Output) {
+						if !seen[u] {
+							seen[u] = true
+							sources = append(sources, sourceEntry{URL: u})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return sources
+}
+
+// extractURLsFromText finds all URLs in text that appear after "URL: " markers
+// in the web_search tool output format.
+func extractURLsFromText(text string) []string {
+	var urls []string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		// Match "URL: https://..." pattern from search results
+		if after, ok := strings.CutPrefix(line, "URL:"); ok {
+			u := strings.TrimSpace(after)
+			if strings.HasPrefix(u, "http") {
+				urls = append(urls, u)
+			}
+		}
+	}
+	return urls
+}
+
+// hasSourcesSection checks whether the answer already contains a Sources section
+// (so we don't duplicate it if the LLM included one).
+func hasSourcesSection(answer string) bool {
+	lower := strings.ToLower(answer)
+	return strings.Contains(lower, "## sources") ||
+		strings.Contains(lower, "**sources**") ||
+		strings.Contains(lower, "### sources")
+}
+
+// formatSources builds a markdown bullet list of sources with titles when available.
+func formatSources(sources []sourceEntry) string {
+	var sb strings.Builder
+	for i, s := range sources {
+		if s.Title != "" {
+			fmt.Fprintf(&sb, "%d. [%s](%s)\n", i+1, s.Title, s.URL)
+		} else {
+			fmt.Fprintf(&sb, "%d. %s\n", i+1, s.URL)
+		}
+	}
+	return sb.String()
+}
+
 func shouldBreak(messages []*session.MessageWithParts) bool {
 	if len(messages) == 0 {
 		return false
@@ -1772,6 +1870,15 @@ func (lr *LoopRunner) RunSearchSession(ctx context.Context, query, dir, model st
 	if strings.TrimSpace(answer) == "" {
 		return "The search agent did not produce a final answer (it may have run out of steps or every page fetch failed). Try a narrower query.", nil
 	}
+
+	// Collect source URLs from all web_search and fetch_page tool calls in the
+	// session. This guarantees a Sources section even if the LLM forgets to
+	// include one in its final text.
+	sources := extractSearchSources(msgs)
+	if len(sources) > 0 && !hasSourcesSection(answer) {
+		answer += "\n\n## Sources\n\n" + formatSources(sources)
+	}
+
 	return answer, nil
 }
 

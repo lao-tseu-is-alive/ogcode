@@ -263,7 +263,7 @@ From the search results, pick the 2–3 most relevant URLs per sub-query (up to 
 **Final response:** Synthesise the fetched content into a single well-structured markdown answer with:
 - Clear H1 title
 - Sections with H2/H3 headers
-- A **Sources** section at the end listing cited URLs
+- A **Sources** section at the very bottom listing every URL you fetched or cited, formatted as numbered links. This section is mandatory — never omit it.
 
 Do NOT add a third round of searches or fetches unless the results are clearly inadequate (missing key facts). 2 rounds is almost always sufficient.
 
