@@ -39,15 +39,28 @@ function ToolPartDisplay(props: { data: ToolPartData }) {
   const [expanded, setExpanded] = createSignal(props.data.state.status === 'running');
   const status = () => props.data.state.status;
   const title = () => props.data.state.title || props.data.tool;
-  const summary = () => summarizeInput(props.data.tool, props.data.state.input);
+  const summary = () => {
+    if (isDeepSearch() && props.data.state.status === 'completed') return 'Search results';
+    return summarizeInput(props.data.tool, props.data.state.input);
+  };
   const hasOutput = () => !!props.data.state.output;
   const outputLineCount = () => (props.data.state.output || '').split('\n').length;
 
+  // Deep search results contain the full synthesised answer (markdown with
+  // Sources section). Render them as markdown instead of a code block, and
+  // auto-expand on completion so the user sees the answer immediately.
+  const isDeepSearch = () => props.data.tool === 'deep_search';
+
   // Auto-collapse when tool finishes (running/completed -> completed/error)
+  // Exception: deep_search auto-expands so the user sees the answer.
   createEffect(() => {
     const s = status();
     if (s === 'completed' || s === 'error') {
-      setExpanded(false);
+      if (isDeepSearch()) {
+        setExpanded(true);
+      } else {
+        setExpanded(false);
+      }
     }
   });
 
@@ -127,11 +140,15 @@ function ToolPartDisplay(props: { data: ToolPartData }) {
 
       <Show when={expanded()}>
         <div class="mt-1.5 ml-2 space-y-1.5 min-w-0 overflow-hidden">
-          <Show when={props.data.state.input && Object.keys(props.data.state.input).length > 0}>
+          <Show when={props.data.state.input && Object.keys(props.data.state.input).length > 0 && !(isDeepSearch() && status() === 'completed')}>
             <CodeBlock label="input" maxHeight={160} text={safeStringify(props.data.state.input)} />
           </Show>
           <Show when={props.data.state.output}>
-            <CodeBlock label="output" maxHeight={280} text={props.data.state.output || ''} />
+            <Show when={isDeepSearch()} fallback={<CodeBlock label="output" maxHeight={280} text={props.data.state.output || ''} />}>
+              <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-3 max-h-[600px] overflow-y-auto">
+                <MarkdownContent text={props.data.state.output || ''} />
+              </div>
+            </Show>
           </Show>
           <Show when={props.data.state.error}>
             <CodeBlock label="error" maxHeight={160} text={props.data.state.error || ''} />
