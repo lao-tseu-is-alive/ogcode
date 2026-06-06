@@ -53,9 +53,9 @@ var indexCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
-	serveCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
-	planCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
+	rootCmd.Flags().IntVarP(&port, "port", "p", 9595, "Port to listen on")
+	serveCmd.Flags().IntVarP(&port, "port", "p", 9595, "Port to listen on")
+	planCmd.Flags().IntVarP(&port, "port", "p", 9595, "Port to listen on")
 	indexCmd.Flags().StringVar(&indexModel, "model", "", "Model to use for the IndexAgent (default: provider default)")
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(planCmd)

@@ -1,8 +1,8 @@
 .PHONY: dev build clean
 
 dev:
-	@echo "Starting Go server on :8080..."
-	go run . serve --port 8080
+	@echo "Starting Go server on :9595..."
+	go run . serve --port 9595
 
 dev-web:
 	@echo "Starting Vite dev server on :5173..."

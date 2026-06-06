@@ -13,7 +13,7 @@
 
 ### 1.2 Quick Start
 - Installation options: `go install`, Homebrew, curl script, Docker
-- First run: `ogcode` or `ogcode serve` starts on port 8080
+- First run: `ogcode` or `ogcode serve` starts on port 9595
 - Required env vars: at least one LLM API key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or Ollama)
 - Optional: `OGCODE_AGENTIC_MEMORY_MODE=true` + embed config for infinite-context memory
 
@@ -45,7 +45,7 @@ graph LR
 ### 2.1 Commands
 | Command | Description | Flags |
 |---------|-------------|-------|
-| `ogcode` | Start in Build Mode (default) | `-p, --port` (default 8080) |
+| `ogcode` | Start in Build Mode (default) | `-p, --port` (default 9595) |
 | `ogcode serve` | Same as default | `-p, --port` |
 | `ogcode plan` | Start in Plan Mode | `-p, --port` |
 | `ogcode version` | Print version info | — |

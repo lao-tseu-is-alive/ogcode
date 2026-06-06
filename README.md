@@ -100,7 +100,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ogcode
 ```
 
-Opens at `http://localhost:8080`. That's it. No config files. No Docker. No IDE extension.
+Opens at `http://localhost:9595`. That's it. No config files. No Docker. No IDE extension.
 
 ---
 
@@ -182,7 +182,7 @@ go install github.com/prasenjeet-symon/ogcode@latest
 ### Docker
 
 ```bash
-docker run -p 8080:8080 -v $(pwd):/workspace -w /workspace ghcr.io/prasenjeet-symon/ogcode:latest
+docker run -p 9595:9595 -v $(pwd):/workspace -w /workspace ghcr.io/prasenjeet-symon/ogcode:latest
 ```
 
 ---
@@ -282,13 +282,13 @@ HTML blocks render in a **sandboxed iframe** — scripts run in isolation with n
 ### Quick Start — Expose the Port
 
 ```bash
-docker run -p 8080:8080 \
+docker run -p 9595:9595 \
   -v ~/.ogcode:/root/.ogcode \
   -v $(pwd):/workspace -w /workspace \
   ghcr.io/prasenjeet-symon/ogcode:latest
 ```
 
-Then open `http://<your-server-ip>:8080` from any browser.
+Then open `http://<your-server-ip>:9595` from any browser.
 
 ### Production — Behind a Reverse Proxy with HTTPS
 
@@ -299,7 +299,7 @@ server {
     server_name ogcode.yourdomain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:9595;
         proxy_set_header Upgrade $http_upgrade;     # WebSocket support
         proxy_set_header Connection "upgrade";
     }
@@ -317,7 +317,7 @@ services:
     volumes:
       - ~/.ogcode:/root/.ogcode
     ports:
-      - "127.0.0.1:8080:8080"   # only localhost — nginx handles public access
+      - "127.0.0.1:9595:9595"   # only localhost — nginx handles public access
     restart: unless-stopped
 ```
 
@@ -327,7 +327,7 @@ Ogcode is a coding agent that can execute shell commands, read/write files, and 
 
 | Risk | Mitigation |
 |------|-----------|
-| Anyone can hit port 8080 | Bind to `127.0.0.1` + use a reverse proxy |
+| Anyone can hit port 9595 | Bind to `127.0.0.1` + use a reverse proxy |
 | No auth on the web UI | Add HTTP Basic Auth in nginx or use a VPN |
 | Full shell access via the agent | Run in a restricted environment (Docker, VM) |
 
@@ -336,8 +336,8 @@ Recommended approaches:
 1. **SSH tunnel** — Most secure, zero config:
    ```bash
    # On your laptop:
-   ssh -L 8080:localhost:8080 user@your-server
-   # Then open http://localhost:8080 in your browser
+   ssh -L 9595:localhost:9595 user@your-server
+   # Then open http://localhost:9595 in your browser
    ```
 2. **nginx + HTTP Basic Auth** — Simple password gate:
    ```bash
@@ -425,7 +425,7 @@ Ogcode is a single Go binary that embeds a React web UI and runs its own HTTP se
 ```
 ┌─────────────┐     REST + SSE      ┌──────────────┐
 │  Web UI     │ ◄────────────────► │  Go Server   │
-│  (React)    │                    │  (port 8080) │
+│  (React)    │                    │  (port 9595) │
 └─────────────┘                    └──────┬───────┘
                                           │
                     ┌─────────────────────┼─────────────────────┐
