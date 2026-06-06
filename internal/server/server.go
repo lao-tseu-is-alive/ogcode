@@ -398,10 +398,10 @@ func (s *Server) Start() error {
 
 	r := s.routes()
 
-	// Try ports starting from the configured port, up to 10 attempts.
+	// Try ports starting from the configured port, up to 50 attempts.
 	var listener net.Listener
 	tryPort := s.port
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 50; i++ {
 		l, err := net.Listen("tcp", fmt.Sprintf(":%d", tryPort))
 		if err == nil {
 			listener = l
