@@ -356,3 +356,41 @@ func TestGetAgent(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectIndexPrompt(t *testing.T) {
+	prompt := projectIndexPrompt()
+
+	for _, sub := range []string{
+		"Mandatory: Use Project Index Before Exploration",
+		"codebase_map",
+		"MANDATORY FIRST STEP",
+		"Faster navigation",
+		"Better context",
+		"Fewer mistakes",
+		"subdir",
+	} {
+		if !strings.Contains(prompt, sub) {
+			t.Errorf("expected %q in projectIndexPrompt", sub)
+		}
+	}
+}
+
+func TestBuildAgent_SystemPrompt_ContainsProjectIndex(t *testing.T) {
+	// BuildAgent should contain the project index prompt since it has the codebase_map tool
+	if !strings.Contains(BuildAgent.System, "Mandatory: Use Project Index Before Exploration") {
+		t.Error("BuildAgent system prompt should include project index section")
+	}
+	if !strings.Contains(BuildAgent.System, "codebase_map") {
+		t.Error("BuildAgent system prompt should reference codebase_map tool")
+	}
+}
+
+func TestPlanAgent_SystemPrompt_ContainsProjectIndex(t *testing.T) {
+	// PlanAgent should contain the project index prompt since it has the codebase_map tool
+	if !strings.Contains(PlanAgent.System, "Mandatory: Use Project Index Before Exploration") {
+		t.Error("PlanAgent system prompt should include project index section")
+	}
+	if !strings.Contains(PlanAgent.System, "codebase_map") {
+		t.Error("PlanAgent system prompt should reference codebase_map tool")
+	}
+}

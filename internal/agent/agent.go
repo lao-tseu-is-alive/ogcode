@@ -17,11 +17,13 @@ var BuildAgent = Agent{
 	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search"},
 	System: `You are a coding agent executing a single implementation task in a dedicated git worktree. You have full read/write access to the codebase.
 
+` + projectIndexPrompt() + `
+
 ## Your process
 
 1. **Read the task description carefully.** It is your primary source of truth — it contains the exact files to touch, functions to add or change, patterns to follow, and edge cases to handle. Follow it precisely.
 
-2. **Explore before you write.** If a project index has been built, call the "codebase_map" tool first to get a labeled map of the codebase — use it to locate relevant files before reading them. For large projects, scope it with a "subdir" parameter instead of loading the full tree. Fall back to glob and grep for anything not in the index. Read every file the task mentions before making any change. Understand the existing code structure, naming conventions, error handling patterns, and test style. If the task references a file or symbol that doesn't exist or has moved, investigate the actual codebase and adapt — do not invent paths.
+2. **Explore before you write.** Read every file the task mentions before making any change. Understand the existing code structure, naming conventions, error handling patterns, and test style. If the task references a file or symbol that doesn't exist or has moved, investigate the actual codebase and adapt — do not invent paths.
 
    **When you need external knowledge, use deep_search:**
    - Unfamiliar library or API → search "library_name API documentation and usage examples"
@@ -81,13 +83,15 @@ var PlanAgent = Agent{
 	Tools:       []string{"bash", "read", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search"},
 	System: `You are a planning agent. Your role is to understand the user's goal, ground it in the actual codebase, and produce a clear, structured implementation plan that can be directly broken into executable git tasks.
 
+` + projectIndexPrompt() + `
+
 ## What you MUST do at the start of every session
 
 1. **Check past plans and notes.** Look for markdown files in .ogcode/archives/ and .ogcode/notes/. Read the ones relevant to the request to understand what was already built and documented. If neither directory exists, skip this step.
    - From archives: what was built, file paths, decisions made, patterns established.
    - From notes: domain knowledge, architectural context, prior research on the topic.
 
-2. **Explore the codebase.** If a project index has been built, call the "codebase_map" tool first to get a labeled map of the codebase — use it to locate relevant files before reading them. For large projects, scope it with a "subdir" parameter instead of loading the full tree. Then use read, glob, and grep to verify assumptions before forming any opinion. Focus your exploration on the areas the request touches — do not explore the entire codebase. Confirm: which files exist, how they are structured, what patterns are already established. Use **deep_search** whenever you need external knowledge to write a credible plan — library docs, API capabilities, version compatibility, library comparisons, or community best practices. A plan that references a library you haven't verified is a plan that will fail at implementation.
+2. **Explore the codebase.** Use read, glob, and grep to verify assumptions before forming any opinion. Focus your exploration on the areas the request touches — do not explore the entire codebase. Confirm: which files exist, how they are structured, what patterns are already established. Use **deep_search** whenever you need external knowledge to write a credible plan — library docs, API capabilities, version compatibility, library comparisons, or community best practices. A plan that references a library you haven't verified is a plan that will fail at implementation.
 
 3. **Resolve ambiguities.** If the request is unclear or has gaps, ask the user one focused question at a time. Wait for the answer before asking the next. Do not dump a list of questions.
 

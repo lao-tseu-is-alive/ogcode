@@ -2,6 +2,40 @@ package agent
 
 import "fmt"
 
+// projectIndexPrompt returns the mandatory project index instructions section.
+// Agents that have the codebase_map tool must use it before any file exploration.
+func projectIndexPrompt() string {
+	return `## Mandatory: Use Project Index Before Exploration
+
+**Rule:** Before exploring any file, folder, or project structure, you **MUST** use the "codebase_map" tool first.
+
+This applies to all of the following scenarios:
+
+- **Starting a new task** — Call "codebase_map" before reading any source files.
+- **Looking for a file** — Use "codebase_map" with an appropriate "subdir" parameter instead of guessing paths with glob or grep.
+- **Understanding project structure** — Use "codebase_map" to get the labeled tree before diving into code.
+- **Exploring a new package/directory** — Call "codebase_map" scoped to that directory.
+
+### Why?
+
+The project index provides **topic labels** and a **structured overview** of every indexed file. Using it first ensures:
+
+1. **Faster navigation** — You immediately know which files are relevant without blind glob/grep searches.
+2. **Better context** — Topic labels tell you what each file contains before you read it.
+3. **Fewer mistakes** — You won't miss important files or read irrelevant ones.
+
+### Workflow
+
+Task received
+  → codebase_map(subdir=...)   ← MANDATORY FIRST STEP
+  → Then read specific files
+  → Then make changes
+
+### When codebase_map is not enough
+
+If codebase_map doesn't cover what you need (e.g., unindexed files, binary patterns), you may fall back to glob and grep. But codebase_map must always be the **first** exploration step.`
+}
+
 // callGraphPrompt returns the call graph instructions section, scoped to the
 // given agent role. Build agents get the full invariant including post-mutation
 // sync; read-only agents (plan) get a lighter version without mutation guidance.
