@@ -1,75 +1,70 @@
-# Release Notes — v0.8.0
+# Release Notes — v0.9.0
 
-## Web Search Agent
+## Smarter Search, Faster Indexing, Context Safety
 
-This release adds a **deep research agent** that can search the web, fetch pages, and synthesise findings — giving every agent in ogcode the ability to look up current information instead of guessing.
-
-### New: Search Agent (deep_search)
-
-- **SearchAgent** — A new built-in agent that decomposes a query into sub-queries, runs parallel Google searches via a headless Chrome bridge, fetches the most relevant pages, and produces a single synthesised answer with cited sources.
-- **`deep_search` tool** — Available to Build, Plan, Note, and Breakdown agents. Pass a question and optionally context, and receive a complete research report as the tool result.
-- **Ephemeral sessions** — Search runs in a temporary session (capped at 20 steps) that is automatically deleted when complete. Search sessions are hidden from the session list.
-- **Reasoning fallback** — `extractLastAssistantText` now falls back to reasoning/thinking content when the text part is empty, ensuring thinking-model output is captured correctly.
-
-### New: web_search & fetch_page Tools
-
-- **`web_search`** — Searches Google and returns titles, URLs, and snippets. Supports `limit` (max 15) and parallel calls.
-- **`fetch_page`** — Retrieves the readable text content of a URL (handles JavaScript-rendered pages). Returns title, URL, and extracted text (truncated at 14,000 characters).
-
-### New: Search Bridge (Node.js subprocess)
-
-- **Playwright-based bridge** — A Node.js/Express server (`tools/search-bridge/server.js`) manages a headless Chromium instance for search and fetch operations. Capable of handling JavaScript-heavy pages.
-- **Automatic startup** — When search is enabled, the Go server starts the bridge as a subprocess and waits up to 30 seconds for it to become healthy.
-- **Profile modes** — Isolated profile (safe default, no shared cookies) or real Chrome profile (uses your cookies/logins for authenticated sites; Chrome must be fully closed).
-- **Concurrency control** — Maximum 15 concurrent tabs by default (`OGCODE_SEARCH_MAX_CONCURRENCY`).
-
-### New: Search Configuration UI
-
-- **Settings → General → Web Search Agent** — Toggle search on/off and enable "Use real Chrome profile" from the web UI.
-- **Live bridge status** — Green indicator when the bridge is running, red with recovery instructions when it's not.
-- **Restart reminder** — Amber banner reminds users to restart the server after enabling/disabling search.
-- **Config API** — `GET /search/config` and `POST /search/config` endpoints for programmatic access. Config persisted in `search_config` database table.
-
-### Agent Prompt Updates
-
-- **Build, Plan, Breakdown, Note agents** — All now include `deep_search` in their tool suite and are instructed to use it for external knowledge (library docs, API references, version compatibility, security advisories, best practices).
-- **Build agent rule** — "After calling deep_search, always write the research findings as your own text response — do not just return the tool result silently."
-
-### Bug Fixes
-
-- **Data race on MaxSteps** — The `LoopRunner.MaxSteps` field was being mutated during execution, causing a data race when `deep_search` runs a nested loop concurrently. Now read into a local variable before the loop.
-- **Default embedding model** — `GetMemoryConfig` now defaults `EmbedModel` to `text-embedding-3-small` when empty, preventing nil-value panics.
-
-### Installation & Packaging
-
-- **Homebrew** — `brew install ogcode` now automatically runs `npm install` and `npx playwright install chromium` in the bridge directory when Node.js is available.
-- **curl install script** — `install.sh` extracts search-bridge files from the release archive and installs npm dependencies when Node.js is present.
-- **Makefile** — `make install` copies bridge files and runs `npm install` + `playwright install` into `~/.local/share/ogcode/search-bridge/`.
-- **GoReleaser** — Release archives now bundle `search-bridge/server.js` and `search-bridge/package.json`.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `OGCODE_SEARCH_ENABLED` | `false` | Enable search bridge on server start |
-| `OGCODE_SEARCH_BRIDGE_PORT` | `7331` | Port for the Node.js bridge |
-| `OGCODE_SEARCH_BRIDGE_DIR` | auto-detect | Override bridge directory location |
-| `OGCODE_SEARCH_USE_REAL_PROFILE` | `false` | Use real Chrome profile instead of isolated |
-| `OGCODE_SEARCH_MAX_CONCURRENCY` | `4` | Max concurrent browser tabs |
-
-### Database Migrations
-
-- **`025_search_config.sql`** — Creates the `search_config` table (singleton row for enabled/disabled toggle).
-- **`026_search_config_profile.sql`** — Adds `use_real_profile` column to `search_config`.
-
-### Full Changelog
-
-**Modified (14 files):**
-`.goreleaser.yaml`, `Makefile`, `install.sh`, `internal/agent/agent.go`, `internal/agent/loop.go`, `internal/server/config_routes.go`, `internal/server/routes.go`, `internal/server/server.go`, `internal/session/memory_store.go`, `internal/session/store.go`, `internal/tool/tool.go`, `web/src/api/client.ts`, `web/src/context/server.tsx`, `web/src/pages/settings/general.tsx`
-
-**New (9 files):**
-`internal/db/025_search_config.sql`, `internal/db/026_search_config_profile.sql`, `internal/search/bridge.go`, `internal/search/process.go`, `internal/session/search_store.go`, `internal/tool/deep_search.go`, `internal/tool/fetch_page.go`, `internal/tool/web_search.go`, `tools/search-bridge/server.js`, `tools/search-bridge/package.json`
+This release significantly improves the **deep search agent** with Bing fallback, stealth anti-detection, and guaranteed source citations. The **document indexer** is now much faster with multi-file batching and parallel workers. A new **proactive context compaction** system prevents context-length errors before they happen, and **note queries** are now rewritten using conversation context for better retrieval.
 
 ---
 
-*See also: [v0.7.0 Release Notes](#) for the Codebase Indexing, Exclude Patterns, and codebase_map features.*
+### ✨ New Features
+
+- **Bing fallback & stealth anti-detection** — The search bridge now falls back to Bing when Google is blocked, uses `headless=new` mode, and applies stealth anti-detection scripts for more reliable scraping.
+- **Guaranteed Sources section** — Deep search results always append a deduplicated Sources section with URLs collected from `web_search` and `fetch_page` calls, so agents never lose citation links.
+- **Markdown rendering for search results** — Deep search output is now rendered as proper markdown with an expanded Sources section, instead of raw text.
+- **codebase_map for Note & Build agents** — Both the Note Agent and Build/Plan agents now receive the `codebase_map` tool and are instructed to use it as their first exploration step, ensuring smarter project navigation before reading files.
+- **Note query rewriting** — Note queries are now rewritten using conversation context for more relevant retrieval, instead of sending raw user input.
+- **Viewport-aware note generation** — The note agent RunLoop now receives viewport dimensions for responsive content rendering.
+
+### ⚡ Performance Improvements
+
+- **Multi-file batching & parallel workers** — The document indexer now batches multiple files together and processes them in parallel with configurable workers, dramatically speeding up large project indexing.
+- **Real-time indexing progress bar** — The doc index UI now shows a live progress bar during indexing, so you know exactly how far along the build is.
+- **Deep search speed optimizations** — Tighter timeouts, prompt optimization, and improved concurrency make deep search noticeably faster.
+- **Search concurrency increase** — Default `MAX_CONCURRENCY` raised from 4 to 15, and bridge HTTP timeout bumped to 150s for reliability on slow networks.
+
+### 🔧 Bug Fixes
+
+- **Proactive context compaction** — The agent loop now estimates request body size before sending to the LLM and proactively compacts messages that exceed a 500KB threshold. This prevents context-length errors (especially with smaller local models like Ollama).
+- **Ollama 400 error detection** — Context overflow errors from Ollama (HTTP 400) are now detected and trigger automatic message compaction and retry, instead of failing the session.
+- **Deep search timeout** — Increased from 90s to 180s to prevent "context deadline exceeded" errors on complex research queries.
+- **Note query model consistency** — Note query rewriting now uses the same model configured for the Note Agent, instead of overriding to haiku/mini/flash.
+- **Search bridge HTTP timeout** — Bumped to 150s to handle slower search results without premature timeouts.
+
+### 📁 Files Changed (23 files)
+
+**Modified:** `AGENT.md`, `internal/agent/agent.go`, `internal/agent/loop.go`, `internal/agent/loop_test.go`, `internal/agent/prompt_builder.go`, `internal/agent/prompt_builder_test.go`, `internal/indexer/indexer.go`, `internal/indexer/indexer_test.go`, `internal/search/bridge.go`, `internal/server/docindex_routes.go`, `internal/server/note_routes.go`, `internal/server/server.go`, `internal/tool/deep_search.go`, `tools/search-bridge/server.js`, `web/src/api/client.ts`, `web/src/components/message-item.tsx`, `web/src/context/docindex.tsx`, `web/src/context/note.tsx`, `web/src/pages/docindex.tsx`
+
+**New:** `internal/db/027_memory_config_base_url.sql` (from v0.8.x branch)
+
+---
+
+### 📥 Installation
+
+**macOS/Linux:**
+```bash
+curl -fsSL http://ogcode.xyz/install.sh | sh
+```
+
+**Windows:**
+```powershell
+irm http://ogcode.xyz/install.ps1 | iex
+```
+
+**Homebrew:**
+```bash
+brew install prasenjeet-symon/tap/ogcode
+```
+
+**Winget:**
+```powershell
+winget install prasenjeet-symon.ogcode
+```
+
+**Go Install:**
+```bash
+go install github.com/prasenjeet-symon/ogcode@latest
+```
+
+---
+
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.8.2...v0.9.0*
