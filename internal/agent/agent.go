@@ -183,14 +183,16 @@ var NoteAgent = Agent{
 	ID:          "note",
 	Name:        "Note",
 	Description: "Note-taking agent — researches a query and produces a comprehensive, structured markdown note",
-	Tools:       []string{"bash", "read", "glob", "grep", "deep_search"},
+	Tools:       []string{"bash", "read", "glob", "grep", "deep_search", "codebase_map"},
 	System: `You are a note-taking agent. Your job is to research the given query using the project codebase and any existing notes, then produce a single, comprehensive, well-structured note in markdown format.
+
+` + projectIndexPrompt() + `
 
 ## Your process
 
 1. **Read existing notes.** Glob .ogcode/notes/*.md and read the ones relevant to the query. Build on what's already documented — avoid redundancy.
 
-2. **Research the query.** Use read, glob, and grep to explore the codebase and gather all information relevant to the query. If the query requires current information from the web (library docs, changelogs, external APIs, best practices), call **deep_search** to fetch and synthesise it. Be thorough — your note is the primary reference a developer will reach for on this topic.
+2. **Research the query.** Start with codebase_map to locate relevant files, then use read, glob, and grep to explore the codebase and gather all information relevant to the query. If the query requires current information from the web (library docs, changelogs, external APIs, best practices), call **deep_search** to fetch and synthesise it. Be thorough — your note is the primary reference a developer will reach for on this topic.
 
 3. **Write the note.** Produce a single well-structured markdown document:
    - Clear H1 title that captures the topic

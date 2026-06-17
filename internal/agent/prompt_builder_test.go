@@ -267,6 +267,15 @@ func TestNoteAgent_HasExpectedTools(t *testing.T) {
 	if NoteAgent.HasTool("memory_recall") {
 		t.Error("NoteAgent should not have memory_recall tool (single-iteration agent)")
 	}
+	if !NoteAgent.HasTool("codebase_map") {
+		t.Error("NoteAgent should have codebase_map tool")
+	}
+	if !NoteAgent.HasTool("deep_search") {
+		t.Error("NoteAgent should have deep_search tool")
+	}
+	if !NoteAgent.HasTool("read") {
+		t.Error("NoteAgent should have read tool")
+	}
 }
 
 func TestBreakdownAgent_HasExpectedTools(t *testing.T) {
@@ -392,5 +401,15 @@ func TestPlanAgent_SystemPrompt_ContainsProjectIndex(t *testing.T) {
 	}
 	if !strings.Contains(PlanAgent.System, "codebase_map") {
 		t.Error("PlanAgent system prompt should reference codebase_map tool")
+	}
+}
+
+func TestNoteAgent_SystemPrompt_ContainsProjectIndex(t *testing.T) {
+	// NoteAgent should contain the project index prompt since it has the codebase_map tool
+	if !strings.Contains(NoteAgent.System, "Mandatory: Use Project Index Before Exploration") {
+		t.Error("NoteAgent system prompt should include project index section")
+	}
+	if !strings.Contains(NoteAgent.System, "codebase_map") {
+		t.Error("NoteAgent system prompt should reference codebase_map tool")
 	}
 }
