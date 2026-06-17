@@ -332,7 +332,8 @@ function UserMessage(props: { msg: MessageWithParts }) {
     setSendingToNote(true);
     try {
       const model = sessionCtx.selectedModel();
-      await noteCtx.createNote(text, model);
+      const sessionId = sessionCtx.activeSession()?.id;
+      await noteCtx.createNote(text, model, sessionId);
       setNoteSaved(true);
       setTimeout(() => setNoteSaved(false), 2000);
     } catch (err) {

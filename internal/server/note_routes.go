@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prasenjeet-symon/ogcode/internal/id"
 	"github.com/prasenjeet-symon/ogcode/internal/note"
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
@@ -35,6 +37,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 		Query     string `json:"query"`
 		Directory string `json:"directory"`
 		Model     string `json:"model,omitempty"`
+		SessionID string `json:"sessionId,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -47,6 +50,17 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 	dir := input.Directory
 	if dir == "" {
 		dir = s.dir
+	}
+
+	// If a source session ID is provided, rewrite the query using conversation context
+	query := input.Query
+	if input.SessionID != "" {
+		if rewritten, err := s.rewriteNoteQuery(input.SessionID, input.Query, input.Model); err != nil {
+			slog.Warn("note query rewrite failed, using original query", "session", input.SessionID, "err", err)
+		} else if rewritten != "" {
+			query = rewritten
+			slog.Info("note query rewritten", "original", truncate(input.Query, 80), "rewritten", truncate(rewritten, 80))
+		}
 	}
 
 	// Create a session to run the note agent
@@ -65,7 +79,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create the note record linked to the session
+	// Create the note record linked to the session — store original query for display
 	n := &note.Note{
 		ID:        id.NewNoteID(),
 		Directory: dir,
@@ -84,7 +98,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 
 	s.bus.Publish("note.created", n)
 
-	// Fire agent loop with the query as the first user message
+	// Fire agent loop with the (potentially rewritten) query as the first user message
 	go func() {
 		userMsg := &session.MessageInfo{
 			ID:        session.NewMessageID(),
@@ -97,7 +111,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 			slog.Error("create note user message", "err", err)
 			return
 		}
-		textData, _ := json.Marshal(session.TextPartData{Text: input.Query})
+		textData, _ := json.Marshal(session.TextPartData{Text: query})
 		userPart := &session.Part{
 			ID:        session.NewPartID(),
 			MessageID: userMsg.ID,
@@ -136,6 +150,129 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	writeJSON(w, http.StatusCreated, n)
+}
+
+// rewriteNoteQuery uses conversation context from a source session to rewrite
+// a short user query into a detailed, self-contained description that the Note
+// Agent can understand without the full conversation history.
+func (s *Server) rewriteNoteQuery(sourceSessionID, originalQuery, model string) (string, error) {
+	// Fetch the last 15 user messages from the source session
+	msgs, err := s.store.GetMessages(session.SessionID(sourceSessionID), "", 50)
+	if err != nil {
+		return "", fmt.Errorf("fetch messages: %w", err)
+	}
+
+	// Extract up to 15 user text messages (most recent first)
+	var userMessages []string
+	for i := len(msgs) - 1; i >= 0 && len(userMessages) < 15; i-- {
+		if msgs[i].Info.Role != session.RoleUser {
+			continue
+		}
+		var text string
+		for _, p := range msgs[i].Parts {
+			if p.Type == session.PartText {
+				var data session.TextPartData
+				if json.Unmarshal(p.Data, &data) == nil && data.Text != "" {
+					text = data.Text
+				}
+			}
+		}
+		if text == "" {
+			continue
+		}
+		userMessages = append(userMessages, text)
+	}
+
+	if len(userMessages) == 0 {
+		return originalQuery, nil
+	}
+
+	// Reverse to chronological order
+	for i, j := 0, len(userMessages)-1; i < j; i, j = i+1, j-1 {
+		userMessages[i], userMessages[j] = userMessages[j], userMessages[i]
+	}
+
+	// Build the rewrite prompt
+	var contextBuilder strings.Builder
+	for i, msg := range userMessages {
+		contextBuilder.WriteString(fmt.Sprintf("User message %d: %s", i+1, msg))
+		if i < len(userMessages)-1 {
+			contextBuilder.WriteString("\n\n")
+		}
+	}
+
+	// Truncate context to avoid excessive token usage
+	contextText := contextBuilder.String()
+	if len(contextText) > 4000 {
+		contextText = contextText[:4000] + "\n[...truncated...]"
+	}
+
+	promptText := fmt.Sprintf(
+		"You are a note-writing assistant. The user wants to save notes about a topic from their conversation.\n\n"+
+			"Here is the conversation context (recent user messages):\n\n%s\n\n"+
+			"The user's current message they want to save as a note: \"%s\"\n\n"+
+			"Based on the conversation context, rewrite the user's message into a detailed, self-contained "+
+			"description of what the note should cover. The note agent will use this to research and prepare "+
+			"comprehensive notes. Include relevant specifics from the conversation (file names, function names, "+
+			"technical details, decisions made, etc.). Respond with ONLY the rewritten description, "+
+			"no preamble or explanation.",
+		contextText, originalQuery,
+	)
+
+	// Resolve provider for the LLM call
+	var p provider.Provider
+	if model != "" {
+		p = s.registry.ResolveProvider(model)
+	}
+	if p == nil {
+		p = s.defaultProvider
+	}
+	if p == nil {
+		return originalQuery, fmt.Errorf("no LLM provider available")
+	}
+
+	// Use a fast model for the rewrite to minimize latency and cost
+	rewriteModel := model
+	for _, m := range p.Models() {
+		if strings.Contains(strings.ToLower(m.ID), "haiku") ||
+			strings.Contains(strings.ToLower(m.ID), "mini") ||
+			strings.Contains(strings.ToLower(m.ID), "flash") {
+			rewriteModel = m.ID
+			break
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	promptContent, _ := json.Marshal(promptText)
+	req := provider.StreamRequest{
+		Model:    rewriteModel,
+		System:   []string{"You rewrite short user queries into detailed, self-contained descriptions for a note-taking agent. Respond with only the rewritten text."},
+		Messages: []provider.ModelMessage{{Role: "user", Content: promptContent}},
+		Abort:    ctx,
+	}
+
+	ch, err := p.StreamChat(ctx, req)
+	if err != nil {
+		return originalQuery, fmt.Errorf("rewrite stream: %w", err)
+	}
+
+	var result strings.Builder
+	for evt := range ch {
+		if evt.Type == provider.EventTextDelta {
+			result.WriteString(evt.Text)
+		}
+		if evt.Type == provider.EventError {
+			return originalQuery, fmt.Errorf("rewrite stream error: %s", evt.Error)
+		}
+	}
+
+	rewritten := strings.TrimSpace(result.String())
+	if rewritten == "" {
+		return originalQuery, nil
+	}
+	return rewritten, nil
 }
 
 func (s *Server) handleGetNote(w http.ResponseWriter, r *http.Request) {
