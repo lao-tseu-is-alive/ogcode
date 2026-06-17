@@ -7,7 +7,7 @@ interface NoteContextValue {
   notes: () => Note[];
   loading: () => boolean;
   refresh: () => Promise<void>;
-  createNote: (query: string, model?: string | null, sessionId?: string) => Promise<Note>;
+  createNote: (query: string, model?: string | null, sessionId?: string, viewportWidth?: number, viewportHeight?: number) => Promise<Note>;
   deleteNote: (id: string) => Promise<void>;
   refreshNote: (id: string) => Promise<Note | null>;
 }
@@ -30,10 +30,10 @@ export const NoteProvider: ParentComponent = (props) => {
     }
   }
 
-  async function createNote(query: string, model?: string | null, sessionId?: string): Promise<Note> {
+  async function createNote(query: string, model?: string | null, sessionId?: string, viewportWidth?: number, viewportHeight?: number): Promise<Note> {
     setLoading(true);
     try {
-      const n = await createNoteAPI(query, server.directory(), model || undefined, sessionId);
+      const n = await createNoteAPI(query, server.directory(), model || undefined, sessionId, viewportWidth, viewportHeight);
       setNotes((prev) => prev.find((x) => x.id === n.id) ? prev : [n, ...prev]);
       return n;
     } finally {

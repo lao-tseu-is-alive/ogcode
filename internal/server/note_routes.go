@@ -34,10 +34,12 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Query     string `json:"query"`
-		Directory string `json:"directory"`
-		Model     string `json:"model,omitempty"`
-		SessionID string `json:"sessionId,omitempty"`
+		Query          string `json:"query"`
+		Directory      string `json:"directory"`
+		Model          string `json:"model,omitempty"`
+		SessionID      string `json:"sessionId,omitempty"`
+		ViewportWidth  int    `json:"viewportWidth,omitempty"`
+		ViewportHeight int    `json:"viewportHeight,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -144,7 +146,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 			s.mu.Unlock()
 		}()
 
-		if err := s.loopRunner.RunLoop(ctx, sess.ID, "note", 0, 0); err != nil {
+		if err := s.loopRunner.RunLoop(ctx, sess.ID, "note", input.ViewportWidth, input.ViewportHeight); err != nil {
 			slog.Error("note agent loop error", "session", sess.ID, "err", err)
 		}
 	}()

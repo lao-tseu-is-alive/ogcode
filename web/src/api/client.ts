@@ -491,9 +491,11 @@ export function listNotes(directory?: string): Promise<Note[]> {
   return fetchAPI(`/notes${dir}`);
 }
 
-export function createNote(query: string, directory?: string, model?: string, sessionId?: string): Promise<Note> {
+export function createNote(query: string, directory?: string, model?: string, sessionId?: string, viewportWidth?: number, viewportHeight?: number): Promise<Note> {
   const body: Record<string, unknown> = { query, directory, model };
   if (sessionId) body.sessionId = sessionId;
+  if (viewportWidth) body.viewportWidth = viewportWidth;
+  if (viewportHeight) body.viewportHeight = viewportHeight;
   return fetchAPI('/notes', {
     method: 'POST',
     body: JSON.stringify(body),
