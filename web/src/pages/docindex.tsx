@@ -169,7 +169,12 @@ export default function DocIndexPage() {
           <Show when={docIndex.building()}>
             <div class="flex items-center gap-1.5 text-[11px] text-zinc-400">
               <div class="w-2 h-2 rounded-full bg-[color:var(--accent)] animate-pulse" />
-              Indexing…
+              <Show when={docIndex.progress() && docIndex.progress()!.total > 0} fallback={'Indexing…'}>
+                {(() => {
+                  const p = docIndex.progress()!;
+                  return <>{p.completed + p.failed} / {p.total} files</>;
+                })()}
+              </Show>
             </div>
           </Show>
 
@@ -234,6 +239,27 @@ export default function DocIndexPage() {
           </button>
         </div>
 
+        {/* Progress bar during indexing */}
+        <Show when={docIndex.building() && docIndex.progress() && docIndex.progress()!.total > 0}>
+          {(() => {
+            const p = docIndex.progress()!;
+            const pct = p.percent;
+            return (
+              <div class="shrink-0 h-1 bg-[color:var(--bg-elevated)] relative">
+                <div
+                  class="h-full bg-[color:var(--accent)] transition-all duration-500 ease-out"
+                  style={{ width: `${pct}%` }}
+                />
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <span class="text-[9px] font-mono text-zinc-500 tabular-nums">
+                    {pct}% · {p.completed} done{p.failed > 0 ? ` · ${p.failed} failed` : ''}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+        </Show>
+
         {/* Content */}
         <div class="flex-1 overflow-y-auto">
 
@@ -266,9 +292,28 @@ export default function DocIndexPage() {
                 </button>
               </Show>
               <Show when={docIndex.building()}>
-                <div class="mt-4 flex items-center gap-2 text-[12px] text-zinc-400">
-                  <div class="w-3.5 h-3.5 border-2 border-[color:var(--accent)] border-t-transparent rounded-full animate-spin" />
-                  Indexing in progress…
+                <div class="mt-4 flex flex-col items-center gap-3">
+                  <div class="w-5 h-5 border-2 border-[color:var(--accent)] border-t-transparent rounded-full animate-spin" />
+                  <Show when={docIndex.progress() && docIndex.progress()!.total > 0} fallback={
+                    <p class="text-[12px] text-zinc-400">Indexing in progress…</p>
+                  }>
+                    {(() => {
+                      const p = docIndex.progress()!;
+                      return (
+                        <div class="flex flex-col items-center gap-2">
+                          <div class="w-48 h-1.5 bg-[color:var(--bg-elevated)] rounded-full overflow-hidden">
+                            <div
+                              class="h-full bg-[color:var(--accent)] rounded-full transition-all duration-500 ease-out"
+                              style={{ width: `${p.percent}%` }}
+                            />
+                          </div>
+                          <p class="text-[12px] text-zinc-400">
+                            {p.completed + p.failed} / {p.total} files · {p.percent}%
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </Show>
                 </div>
               </Show>
             </div>

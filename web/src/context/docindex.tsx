@@ -7,6 +7,13 @@ import {
 } from '../api/client';
 import { useServer } from './server';
 
+interface IndexProgress {
+  total: number;
+  completed: number;
+  failed: number;
+  percent: number;
+}
+
 interface DocIndexContextValue {
   docs: () => DocSummary[];
   loading: () => boolean;
@@ -20,6 +27,7 @@ interface DocIndexContextValue {
   loadExcludes: () => Promise<void>;
   addExclude: (pattern: string) => Promise<void>;
   deleteExclude: (id: string) => Promise<void>;
+  progress: () => IndexProgress | null;
 }
 
 const DocIndexContext = createContext<DocIndexContextValue>();
@@ -32,6 +40,7 @@ export const DocIndexProvider: ParentComponent = (props) => {
   const [models, setModels] = createSignal<ModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = createSignal<string>('');
   const [excludes, setExcludes] = createSignal<ExcludeEntry[]>([]);
+  const [progress, setProgress] = createSignal<IndexProgress | null>(null);
 
   // Load models whenever the directory changes
   createEffect(on(server.directory, () => {
@@ -95,14 +104,47 @@ export const DocIndexProvider: ParentComponent = (props) => {
     }
   }
 
+  // Poll for progress while building
+  let progressTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startProgressPolling() {
+    stopProgressPolling();
+    progressTimer = setInterval(async () => {
+      try {
+        const status = await getDocIndexBuildStatus();
+        if (status.running) {
+          setProgress({
+            total: status.total ?? 0,
+            completed: status.completed ?? 0,
+            failed: status.failed ?? 0,
+            percent: status.percent ?? 0,
+          });
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 1000);
+  }
+
+  function stopProgressPolling() {
+    if (progressTimer !== null) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  }
+
   async function build(rebuild = false) {
     if (building()) return;
     setBuilding(true);
+    setProgress({ total: 0, completed: 0, failed: 0, percent: 0 });
+    startProgressPolling();
     try {
       await buildDocIndex(server.directory() || undefined, rebuild, selectedModel() || undefined);
     } catch (e) {
       console.error('start docindex build failed:', e);
       setBuilding(false);
+      setProgress(null);
+      stopProgressPolling();
     }
   }
 
@@ -119,8 +161,17 @@ export const DocIndexProvider: ParentComponent = (props) => {
       .then((status) => {
         if (status.running) {
           setBuilding(true);
+          setProgress({
+            total: status.total ?? 0,
+            completed: status.completed ?? 0,
+            failed: status.failed ?? 0,
+            percent: status.percent ?? 0,
+          });
+          startProgressPolling();
         } else if (building()) {
           setBuilding(false);
+          setProgress(null);
+          stopProgressPolling();
         }
       })
       .catch((e) => console.error('docindex: build status check failed:', e));
@@ -131,7 +182,30 @@ export const DocIndexProvider: ParentComponent = (props) => {
     const last = server.lastEvent();
     if (!last || last.type !== 'docindex.built') return;
     setBuilding(false);
+    setProgress(null);
+    stopProgressPolling();
     refresh();
+  }));
+
+  // Also listen for progress events via SSE for real-time updates
+  createEffect(on(server.eventTick, () => {
+    const last = server.lastEvent();
+    if (!last || last.type !== 'docindex.progress') return;
+    const props = last.properties;
+    if (props) {
+      const total = typeof props.total === 'number' ? props.total : 0;
+      const completed = typeof props.completed === 'number' ? props.completed : 0;
+      const failed = typeof props.failed === 'number' ? props.failed : 0;
+      const percent = total > 0 ? Math.round(((completed + failed) / total) * 100) : 0;
+      setProgress({ total, completed, failed, percent });
+
+      if (props.phase === 'done') {
+        setBuilding(false);
+        setProgress(null);
+        stopProgressPolling();
+        refresh();
+      }
+    }
   }));
 
   const value: DocIndexContextValue = {
@@ -147,6 +221,7 @@ export const DocIndexProvider: ParentComponent = (props) => {
     loadExcludes,
     addExclude: handleAddExclude,
     deleteExclude: handleDeleteExclude,
+    progress,
   };
 
   return (

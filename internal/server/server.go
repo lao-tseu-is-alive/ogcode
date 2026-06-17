@@ -21,6 +21,7 @@ import (
 	"github.com/prasenjeet-symon/ogcode/internal/db"
 	"github.com/prasenjeet-symon/ogcode/internal/docindex"
 	"github.com/prasenjeet-symon/ogcode/internal/git"
+	"github.com/prasenjeet-symon/ogcode/internal/indexer"
 	"github.com/prasenjeet-symon/ogcode/internal/mcp"
 	"github.com/prasenjeet-symon/ogcode/internal/memory"
 	"github.com/prasenjeet-symon/ogcode/internal/note"
@@ -81,8 +82,9 @@ type Server struct {
 	gitMu sync.Mutex
 
 	// docindexMu protects docindexRunning.
-	docindexMu      sync.Mutex
-	docindexRunning bool
+	docindexMu       sync.Mutex
+	docindexRunning  bool
+	indexerProgress  *indexer.ProgressTracker // nil when not indexing
 }
 
 func New(port int, dir string, mode ServerMode) *Server {

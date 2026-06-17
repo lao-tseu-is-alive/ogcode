@@ -713,6 +713,10 @@ export interface DocSummary {
 
 export interface DocIndexBuildStatus {
   running: boolean;
+  total?: number;
+  completed?: number;
+  failed?: number;
+  percent?: number;
 }
 
 export function getDocIndexBuildStatus(): Promise<DocIndexBuildStatus> {

@@ -14,8 +14,22 @@ import (
 func (s *Server) handleDocIndexBuildStatus(w http.ResponseWriter, r *http.Request) {
 	s.docindexMu.Lock()
 	running := s.docindexRunning
+	progress := s.indexerProgress
 	s.docindexMu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"running": running})
+
+	result := map[string]any{"running": running}
+	if running && progress != nil {
+		total := progress.Total.Load()
+		completed := progress.Completed.Load()
+		failed := progress.Failed.Load()
+		result["total"] = total
+		result["completed"] = completed
+		result["failed"] = failed
+		if total > 0 {
+			result["percent"] = int(float64(completed+failed) / float64(total) * 100)
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleBuildDocIndex(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +79,7 @@ func (s *Server) handleBuildDocIndex(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			s.docindexMu.Lock()
 			s.docindexRunning = false
+			s.indexerProgress = nil
 			s.docindexMu.Unlock()
 			s.bus.Publish("docindex.built", map[string]string{"directory": dir})
 		}()
@@ -73,6 +88,12 @@ func (s *Server) handleBuildDocIndex(w http.ResponseWriter, r *http.Request) {
 		if input.Model != "" {
 			idx = idx.WithModel(input.Model)
 		}
+
+		// Store progress tracker so the status endpoint can report progress.
+		s.docindexMu.Lock()
+		s.indexerProgress = idx.Progress()
+		s.docindexMu.Unlock()
+
 		if err := idx.Run(context.Background()); err != nil {
 			slog.Error("docindex build failed", "dir", dir, "err", err)
 		}
