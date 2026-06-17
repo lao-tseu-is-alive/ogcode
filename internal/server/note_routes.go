@@ -219,7 +219,7 @@ func (s *Server) rewriteNoteQuery(sourceSessionID, originalQuery, model string) 
 		contextText, originalQuery,
 	)
 
-	// Resolve provider for the LLM call
+	// Resolve provider for the LLM call — use the same model as the Note Agent
 	var p provider.Provider
 	if model != "" {
 		p = s.registry.ResolveProvider(model)
@@ -231,14 +231,11 @@ func (s *Server) rewriteNoteQuery(sourceSessionID, originalQuery, model string) 
 		return originalQuery, fmt.Errorf("no LLM provider available")
 	}
 
-	// Use a fast model for the rewrite to minimize latency and cost
 	rewriteModel := model
-	for _, m := range p.Models() {
-		if strings.Contains(strings.ToLower(m.ID), "haiku") ||
-			strings.Contains(strings.ToLower(m.ID), "mini") ||
-			strings.Contains(strings.ToLower(m.ID), "flash") {
-			rewriteModel = m.ID
-			break
+	if rewriteModel == "" {
+		// If no model specified, use the provider's first available model
+		if models := p.Models(); len(models) > 0 {
+			rewriteModel = models[0].ID
 		}
 	}
 
