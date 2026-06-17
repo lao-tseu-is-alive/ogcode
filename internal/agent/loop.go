@@ -343,11 +343,37 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 			Tools:    providerTools,
 			Abort:    ctx,
 		}
-		slog.Info("calling LLM", "session", sessionID, "step", step, "model", modelID, "messages", len(modelMessages))
+
+		compactionCount := 0
+
+		// Proactive compaction: estimate the request body size and compact
+		// before sending if it exceeds a safe threshold. This prevents sending
+		// requests that will fail with context-length errors (especially with
+		// smaller local models like Ollama). We only do this once per step
+		// to avoid compaction loops.
+		const maxRequestBodyBytes = 500 * 1024 // 500KB is a safe upper bound for most models
+		estimatedSize := estimateRequestSize(streamReq)
+		if !memoryEnabled && estimatedSize > maxRequestBodyBytes && compactionCount == 0 {
+			before := len(streamReq.Messages)
+			slog.Info("proactive compaction: estimated request body exceeds threshold", "session", sessionID, "estimatedBytes", estimatedSize, "threshold", maxRequestBodyBytes, "messages", before)
+			summaryAddendum, compactedMsgs := lr.llmCompact(ctx, p, modelID, streamReq.Messages)
+			streamReq.Messages = compactedMsgs
+			if summaryAddendum != "" {
+				streamReq.System = append(streamReq.System, summaryAddendum)
+				compactionSummary = summaryAddendum
+				if err := lr.Store.UpdateCompactionSummary(sessionID, summaryAddendum); err != nil {
+					slog.Error("persist compaction summary", "err", err)
+				}
+			}
+			compactionCount++
+			slog.Info("proactive compaction completed", "session", sessionID, "before", before, "after", len(streamReq.Messages), "newEstimatedBytes", estimateRequestSize(streamReq))
+			lr.Bus.Publish("loop.compacted", map[string]string{"sessionId": string(sessionID)})
+		}
+
+		slog.Info("calling LLM", "session", sessionID, "step", step, "model", modelID, "messages", len(streamReq.Messages))
 
 		var streamCh <-chan provider.StreamEvent
 		var streamErr error
-		compactionCount := 0
 		const maxCompactions = 2
 		const maxRetries = 3
 		for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -1648,12 +1674,19 @@ func isContextLengthError(err error) bool {
 	if err == nil {
 		return false
 	}
-	lower := strings.ToLower(err.Error())
+	msg := err.Error()
+	lower := strings.ToLower(msg)
 	return strings.Contains(lower, "too long") ||
 		strings.Contains(lower, "context length") ||
 		strings.Contains(lower, "maximum context") ||
 		strings.Contains(lower, "context_length_exceeded") ||
-		strings.Contains(lower, "prompt is too long")
+		strings.Contains(lower, "prompt is too long") ||
+		// Ollama returns a bare 400 with empty body when the prompt exceeds
+		// the model's context window. The error format is "ollama API error 400: "
+		// (with empty body after the colon-space) — treat this as context length
+		// exceeded rather than a generic client error. We check for the empty body
+		// specifically to avoid matching other 400 errors that have error details.
+		(strings.Contains(lower, "api error 400") && strings.HasSuffix(strings.TrimSpace(lower), "400:"))
 }
 
 // llmCompact summarizes the older portion of the conversation using the LLM itself,
@@ -1887,4 +1920,36 @@ func truncateText(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+// estimateRequestSize provides a rough byte-size estimate of the request that
+// will be serialized and sent to the LLM provider. It walks the messages and
+// system prompts, summing content lengths, so it is fast and allocation-free.
+// The estimate is deliberately conservative (over-counts) to trigger proactive
+// compaction before the actual serialized body hits the model's context limit.
+func estimateRequestSize(req provider.StreamRequest) int {
+	size := 0
+	for _, s := range req.System {
+		size += len(s)
+	}
+	for _, m := range req.Messages {
+		size += len(m.Role)
+		if m.Content != nil {
+			size += len(m.Content)
+		}
+		if m.ToolCalls != nil {
+			size += len(m.ToolCalls)
+		}
+		if m.ToolCallID != "" {
+			size += len(m.ToolCallID)
+		}
+		if m.Name != "" {
+			size += len(m.Name)
+		}
+		for _, img := range m.Images {
+			size += len(img.Data)
+		}
+	}
+	// Tools JSON is also serialized but relatively small; skip for now.
+	return size
 }

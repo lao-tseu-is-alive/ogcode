@@ -2,9 +2,11 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
@@ -398,4 +400,69 @@ func TestFormatSources(t *testing.T) {
 func mustMarshalToolData(d session.ToolPartData) json.RawMessage {
 	b, _ := json.Marshal(d)
 	return b
+}
+
+func TestIsContextLengthError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil error", err: nil, want: false},
+		{name: "context_length_exceeded", err: fmt.Errorf("context_length_exceeded"), want: true},
+		{name: "prompt is too long", err: fmt.Errorf("prompt is too long: 50000 tokens"), want: true},
+		{name: "too long", err: fmt.Errorf("this model's maximum context length is too long"), want: true},
+		{name: "maximum context", err: fmt.Errorf("maximum context length exceeded"), want: true},
+		{name: "context length", err: fmt.Errorf("This model's context length is 4096 tokens"), want: true},
+		{name: "ollama empty body 400", err: fmt.Errorf("ollama API error 400: "), want: true},
+		{name: "ollama with message 400", err: fmt.Errorf("ollama API error 400: some other error"), want: false},
+		{name: "openai 400 with body", err: fmt.Errorf("openai API error 400: invalid request"), want: false},
+		{name: "generic 400", err: fmt.Errorf("some error 400"), want: false},
+		{name: "rate limit", err: fmt.Errorf("rate limit exceeded"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isContextLengthError(tt.err)
+			if got != tt.want {
+				t.Errorf("isContextLengthError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEstimateRequestSize(t *testing.T) {
+	req := provider.StreamRequest{
+		System: []string{"You are a helpful assistant."},
+		Messages: []provider.ModelMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`"Hello"`),
+			},
+			{
+				Role:    "assistant",
+				Content: json.RawMessage(`"Hi there"`),
+			},
+		},
+	}
+
+	size := estimateRequestSize(req)
+	if size <= 0 {
+		t.Errorf("estimateRequestSize returned %d, expected > 0", size)
+	}
+
+	// System prompt + 2 messages should be roughly proportional
+	systemLen := len("You are a helpful assistant.")
+	userLen := len(`"Hello"`)
+	assistantLen := len(`"Hi there"`)
+	expectedMin := systemLen + userLen + assistantLen
+	if size < expectedMin {
+		t.Errorf("estimateRequestSize = %d, expected at least %d", size, expectedMin)
+	}
+
+	// Empty request should have zero size
+	emptySize := estimateRequestSize(provider.StreamRequest{})
+	if emptySize != 0 {
+		t.Errorf("estimateRequestSize(empty) = %d, expected 0", emptySize)
+	}
 }
