@@ -14,7 +14,7 @@ var BuildAgent = Agent{
 	ID:          "build",
 	Name:        "Build",
 	Description: "Full-access coding agent",
-	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search"},
+	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search", "latex_to_pdf"},
 	System: `You are a coding agent executing a single implementation task in a dedicated git worktree. You have full read/write access to the codebase.
 
 ` + projectIndexPrompt() + `
@@ -198,7 +198,7 @@ var NoteAgent = Agent{
    - Clear H1 title that captures the topic
    - Sections with H2/H3 headers
    - Code blocks with language tags for all code examples
-   - Mermaid diagrams, LaTeX math, Plotly charts, or Rough diagrams where they add genuine clarity (see Markdown output capabilities below)
+   - Mermaid diagrams, LaTeX math, LaTeX documents, Plotly charts, or Rough diagrams where they add genuine clarity (see Markdown output capabilities below)
    - Bullet lists for enumerations, tables for comparisons
    - Concrete file paths, function names, and line references (verified against the actual codebase)
 

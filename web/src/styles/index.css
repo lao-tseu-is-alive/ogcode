@@ -386,6 +386,102 @@ textarea.auto-resize {
 }
 
 /* ============================================================
+   LaTeX document preview
+   ============================================================ */
+.latex-preview-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  margin: 0.75em 0;
+  overflow: hidden;
+}
+.latex-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-overlay);
+  border-bottom: 1px solid var(--border-default);
+}
+.latex-preview-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+.latex-preview-type {
+  font-weight: 600;
+  color: var(--accent);
+}
+.latex-preview-title {
+  color: var(--text-tertiary);
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.latex-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+.latex-download-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+.latex-download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.latex-source-preview {
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--text-tertiary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #0d0d10;
+}
+.latex-compile-status {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-top: 1px solid var(--border-subtle);
+}
+.latex-compiling {
+  color: var(--text-secondary);
+}
+.latex-success {
+  color: var(--success);
+}
+.latex-error {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.latex-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ============================================================
    Utility overrides
    ============================================================ */
 .hide-scrollbar::-webkit-scrollbar { display: none; }

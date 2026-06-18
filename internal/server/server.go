@@ -223,6 +223,7 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.ReadPdfPageTool{})
 	toolRegistry.Register(tool.NewPdfIndexTool(s.docindexStore))
 	toolRegistry.Register(tool.NewProjectIndexTool(s.docindexStore))
+	toolRegistry.Register(tool.LatexToPdfTool{})
 
 	// Search bridge — opt-in via OGCODE_SEARCH_ENABLED=true env var OR the settings UI.
 	// Must be started before loopRunner is built so RunSearchSession can be wired in.

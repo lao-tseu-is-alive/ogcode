@@ -108,7 +108,13 @@ func TestMarkdownCapabilitiesPrompt(t *testing.T) {
 		t.Error("expected Mermaid mention in markdown capabilities prompt")
 	}
 	if !strings.Contains(prompt, "LaTeX math") {
-		t.Error("expected LaTeX mention in markdown capabilities prompt")
+		t.Error("expected LaTeX math mention in markdown capabilities prompt")
+	}
+	if !strings.Contains(prompt, "LaTeX documents") {
+		t.Error("expected LaTeX documents mention in markdown capabilities prompt")
+	}
+	if !strings.Contains(prompt, "latex_to_pdf") {
+		t.Error("expected latex_to_pdf tool mention in markdown capabilities prompt")
 	}
 	if !strings.Contains(prompt, "HTML/CSS/JS") {
 		t.Error("expected HTML/CSS/JS mention in markdown capabilities prompt")

@@ -130,6 +130,23 @@ export default function MarkdownContent(props: { text: string; class?: string })
       .replace(
         /<pre><code class="hljs language-rough">([\s\S]*?)<\/code><\/pre>/g,
         '<div class="rough-diagram" style="min-height:200px">$1</div>'
+      )
+      .replace(
+        /<pre><code class="hljs language-latex">([\s\S]*?)<\/code><\/pre>/g,
+        (_match: string, codeContent: string) => {
+          // Decode HTML entities from highlight.js
+          const rawLatex = codeContent
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'");
+          const encoded = encodeHtmlForSrcdoc(rawLatex);
+          htmlBlocks.push(encoded);
+          const idx = htmlBlocks.length - 1;
+          return `<div class="latex-document" data-srcdoc-idx="${idx}"></div>`;
+        }
       );
 
     return DOMPurify.sanitize(wrapped, {
@@ -230,6 +247,155 @@ img { max-width: 100%; height: auto; }
       iframe.srcdoc = darkWrap;
       el.textContent = '';
       el.appendChild(iframe);
+    });
+
+    // Render LaTeX document blocks as styled previews with PDF download
+    const latexNodes = containerRef.querySelectorAll('.latex-document');
+    latexNodes.forEach(el => {
+      const idx = parseInt(el.getAttribute('data-srcdoc-idx') || '-1', 10);
+      if (idx < 0 || idx >= blocksData.length) {
+        el.textContent = 'Invalid LaTeX block';
+        return;
+      }
+
+      const rawLatex = decodeHtmlFromSrcdoc(blocksData[idx]);
+
+      // Extract document class and title for a preview
+      const docClassMatch = rawLatex.match(/\\documentclass(?:\[.*?\])?\{(.+?)\}/);
+      const titleMatch = rawLatex.match(/\\title\{(.+?)\}/);
+      const docClass = docClassMatch ? docClassMatch[1] : 'unknown';
+      const docTitle = titleMatch ? titleMatch[1].replace(/\\[a-zA-Z]+(?:\{.*?\})?/g, '').trim() : '';
+
+      // Create a container with styled preview and download button
+      const container = document.createElement('div');
+      container.className = 'latex-preview-container';
+
+      // Header
+      const header = document.createElement('div');
+      header.className = 'latex-preview-header';
+      header.innerHTML = `
+        <div class="latex-preview-info">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span class="latex-preview-type">LaTeX (${docClass})</span>
+          ${docTitle ? `<span class="latex-preview-title">— ${docTitle}</span>` : ''}
+        </div>
+        <button class="latex-download-btn" title="Compile and download PDF">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          PDF
+        </button>
+      `;
+
+      // Source code preview
+      const sourceDiv = document.createElement('div');
+      sourceDiv.className = 'latex-source-preview';
+      // Show first 20 lines as a preview
+      const lines = rawLatex.split('\n');
+      const previewLines = lines.slice(0, 20).join('\n');
+      const moreLines = lines.length > 20 ? `\n... (${lines.length - 20} more lines)` : '';
+      sourceDiv.textContent = previewLines + moreLines;
+
+      // Compile status indicator
+      const statusDiv = document.createElement('div');
+      statusDiv.className = 'latex-compile-status';
+      statusDiv.style.display = 'none';
+
+      container.appendChild(header);
+      container.appendChild(sourceDiv);
+      container.appendChild(statusDiv);
+      el.textContent = '';
+      el.appendChild(container);
+
+      // Bind download button
+      const downloadBtn = container.querySelector('.latex-download-btn');
+      if (downloadBtn) {
+        downloadBtn.addEventListener('click', async () => {
+          downloadBtn.setAttribute('disabled', 'true');
+          downloadBtn.innerHTML = `
+            <svg class="latex-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"/>
+            </svg>
+            Compiling...
+          `;
+          statusDiv.style.display = 'block';
+          statusDiv.className = 'latex-compile-status latex-compiling';
+          statusDiv.textContent = 'Compiling LaTeX to PDF...';
+
+          try {
+            const baseURL = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${baseURL}/api/latex`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ source: rawLatex }),
+            });
+
+            if (!res.ok) {
+              let errorMsg = `Error ${res.status}`;
+              try {
+                const errData = await res.json();
+                errorMsg = errData.error || errorMsg;
+                if (errData.output) {
+                  errorMsg += '\n\npdflatex output:\n' + errData.output.slice(0, 500);
+                }
+              } catch {}
+              throw new Error(errorMsg);
+            }
+
+            // Response is a PDF blob
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'output.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            statusDiv.className = 'latex-compile-status latex-success';
+            statusDiv.textContent = '✓ PDF compiled and downloading';
+            downloadBtn.innerHTML = `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Done
+            `;
+            setTimeout(() => {
+              downloadBtn.removeAttribute('disabled');
+              downloadBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                PDF
+              `;
+              statusDiv.style.display = 'none';
+            }, 3000);
+          } catch (err) {
+            statusDiv.className = 'latex-compile-status latex-error';
+            statusDiv.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
+            downloadBtn.removeAttribute('disabled');
+            downloadBtn.innerHTML = `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Retry
+            `;
+          }
+        });
+      }
     });
   });
 
