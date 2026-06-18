@@ -1611,6 +1611,11 @@ You have access to agentic memory. Prior conversation context is provided in <pr
 To retrieve specific past facts, decisions, or details, use the memory_recall tool with a precise question. Use it proactively whenever the current query references past context, prior decisions, or earlier work — do not guess or hallucinate past details.`
 	}
 
+	// Inject LaTeX environment info for agents that have the latex_to_pdf tool.
+	if a.HasTool("latex_to_pdf") {
+		prompt += latexInfoPrompt()
+	}
+
 	// Inject viewport dimensions so agents can make responsive design decisions.
 	prompt += viewportPrompt(viewportWidth, viewportHeight)
 

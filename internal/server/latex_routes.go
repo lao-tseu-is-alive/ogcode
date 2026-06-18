@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -287,11 +288,32 @@ func (s *Server) handleLatexPages(w http.ResponseWriter, r *http.Request) {
 // handleLatexStatus returns whether pdflatex is available on the system.
 // GET /api/latex/status
 func (s *Server) handleLatexStatus(w http.ResponseWriter, r *http.Request) {
-	_, err := exec.LookPath("pdflatex")
+	path, err := exec.LookPath("pdflatex")
 	available := err == nil
-	writeJSON(w, http.StatusOK, map[string]bool{
+
+	result := map[string]any{
 		"available": available,
-	})
+	}
+
+	if available {
+		out, verErr := exec.Command("pdflatex", "--version").Output()
+		if verErr == nil {
+			lines := strings.Split(string(out), "\n")
+			if len(lines) > 0 {
+				result["version"] = strings.TrimSpace(lines[0])
+			}
+			// Extract distribution from version line, e.g. "(TeX Live 2026)"
+			if len(lines) > 0 {
+				if idx := strings.Index(lines[0], "("); idx != -1 {
+					dist := strings.TrimSpace(strings.TrimSuffix(lines[0][idx+1:], ")"))
+					result["distribution"] = dist
+				}
+			}
+		}
+		result["path"] = path
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) registerLatexRoutes(r chi.Router) {

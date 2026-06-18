@@ -1,6 +1,10 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+)
 
 // projectIndexPrompt returns the mandatory project index instructions section.
 // Agents that have the codebase_map tool must use it before any file exploration.
@@ -327,6 +331,118 @@ The chat interface natively renders the following — use them when they add gen
 - **Plotly charts** (triple-backtick plotly blocks) — bar, line, scatter, pie, heatmap, and more. The block must contain a valid JSON object with a "data" array and optional "layout" object following the Plotly.js spec.
 - **Rough diagrams** (triple-backtick rough blocks) — hand-drawn style 2D diagrams. The block must contain a valid JSON object with an "elements" array and optional "width"/"height"/"options" fields. Each element has a "type" (rectangle, circle, ellipse, line, arrow, path, linearPath, polygon, text) plus type-specific coordinates and optional RoughJS style options (stroke, fill, roughness, bowing, fillStyle, etc.).
 - **HTML/CSS/JS** (triple-backtick html blocks) — full interactive content rendered in a sandboxed iframe. Use this for rich visualizations, custom dashboards, interactive widgets, styled tables, animated content, or any presentation that goes beyond static markdown. The block should contain a complete HTML document (or fragment with inline <style> and <script>). CSS is fully supported. JavaScript runs in a sandbox with no access to the parent page. Use the viewport dimensions provided below to make your content responsive — design for the available width and height.`
+}
+
+// latexEnv holds information about the detected LaTeX installation.
+type latexEnv struct {
+	Available    bool
+	VersionLine  string // e.g. "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+	Distribution string // e.g. "TeX Live 2026", "MiKTeX 24.1"
+	DocClasses   []string
+	Packages     []string
+}
+
+// detectedLatexEnv caches the result of LaTeX environment detection.
+var detectedLatexEnv *latexEnv
+
+// getLatexEnv detects the installed LaTeX environment by running pdflatex
+// --version and checking for common document classes and packages. The result
+// is cached after the first call.
+func getLatexEnv() *latexEnv {
+	if detectedLatexEnv != nil {
+		return detectedLatexEnv
+	}
+
+	env := &latexEnv{}
+
+	// Check pdflatex availability and version
+	path, err := exec.LookPath("pdflatex")
+	if err != nil || path == "" {
+		detectedLatexEnv = env
+		return env
+	}
+	env.Available = true
+
+	out, err := exec.Command("pdflatex", "--version").Output()
+	if err == nil {
+		lines := strings.Split(string(out), "\n")
+		if len(lines) > 0 {
+			env.VersionLine = strings.TrimSpace(lines[0])
+		}
+		// Extract distribution from the version line
+		// e.g. "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+		if idx := strings.Index(env.VersionLine, "("); idx != -1 {
+			dist := strings.TrimSpace(strings.TrimSuffix(env.VersionLine[idx+1:], ")"))
+			env.Distribution = dist
+		}
+	}
+
+	// Check common document classes
+	for _, cls := range []string{"article", "report", "book", "letter", "beamer", "extarticle", "extreport", "extbook", "memoir", "scrartcl", "scrreprt", "scrbook"} {
+		if kpsewhich(cls + ".cls") {
+			env.DocClasses = append(env.DocClasses, cls)
+		}
+	}
+
+	// Check common packages
+	for _, pkg := range []string{
+		"amsmath", "amssymb", "graphicx", "hyperref", "geometry",
+		"tikz", "pgfplots", "listings", "fancyhdr", "xcolor",
+		"booktabs", "tabularx", "enumitem", "parskip", "fontenc",
+		"inputenc", "babel", "natbib", "biblatex", "caption",
+		"subcaption", "multicol", "float", "algorithm2e", "algorithmic",
+		"siunitx", "cleveref", "csquotes", "microtype", "fontspec",
+		"unicode-math",
+	} {
+		if kpsewhich(pkg + ".sty") {
+			env.Packages = append(env.Packages, pkg)
+		}
+	}
+
+	detectedLatexEnv = env
+	return env
+}
+
+// kpsewhich checks whether a TeX file is findable via kpsewhich.
+func kpsewhich(file string) bool {
+	out, err := exec.Command("kpsewhich", file).Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) != ""
+}
+
+// latexInfoPrompt returns a section describing the available LaTeX environment
+// so agents can write compatible LaTeX documents. Returns empty string if
+// pdflatex is not available.
+func latexInfoPrompt() string {
+	env := getLatexEnv()
+	if !env.Available {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("\n\n## LaTeX environment\n\n")
+	b.WriteString("pdflatex is available on this system. When writing LaTeX documents, target this installed version:\n\n")
+
+	if env.VersionLine != "" {
+		b.WriteString(fmt.Sprintf("- **Version:** %s\n", env.VersionLine))
+	}
+	if env.Distribution != "" {
+		b.WriteString(fmt.Sprintf("- **Distribution:** %s\n", env.Distribution))
+	}
+
+	if len(env.DocClasses) > 0 {
+		b.WriteString(fmt.Sprintf("- **Available document classes:** %s\n", strings.Join(env.DocClasses, ", ")))
+	}
+
+	if len(env.Packages) > 0 {
+		b.WriteString(fmt.Sprintf("- **Available packages:** %s\n", strings.Join(env.Packages, ", ")))
+	}
+
+	b.WriteString("\nWrite LaTeX that is compatible with the installed version. Avoid using packages or commands that are not listed above unless you are confident they are available. Prefer standard document classes (article, report, book) for maximum compatibility.\n")
+
+	return b.String()
 }
 
 // viewportPrompt returns a section telling the agent about the user's

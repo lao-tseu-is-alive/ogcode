@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -418,4 +419,71 @@ func TestNoteAgent_SystemPrompt_ContainsProjectIndex(t *testing.T) {
 	if !strings.Contains(NoteAgent.System, "codebase_map") {
 		t.Error("NoteAgent system prompt should reference codebase_map tool")
 	}
+}
+
+func TestLatexInfoPrompt_WithLatex(t *testing.T) {
+	// Reset cached result so we re-detect
+	detectedLatexEnv = nil
+	prompt := latexInfoPrompt()
+
+	// If pdflatex is available on the test system, check that the prompt includes useful info
+	if _, err := exec.LookPath("pdflatex"); err == nil {
+		if prompt == "" {
+			t.Error("expected non-empty latexInfoPrompt when pdflatex is available")
+		}
+		if !strings.Contains(prompt, "LaTeX environment") {
+			t.Error("expected 'LaTeX environment' heading in latexInfoPrompt")
+		}
+		if !strings.Contains(prompt, "pdflatex is available") {
+			t.Error("expected 'pdflatex is available' in latexInfoPrompt")
+		}
+		if !strings.Contains(prompt, "Version") {
+			t.Error("expected 'Version' in latexInfoPrompt")
+		}
+		if !strings.Contains(prompt, "compatible") {
+			t.Error("expected compatibility guidance in latexInfoPrompt")
+		}
+		// Should include standard doc classes
+		if !strings.Contains(prompt, "article") {
+			t.Error("expected 'article' doc class in latexInfoPrompt")
+		}
+	} else {
+		// pdflatex not installed — prompt should be empty
+		if prompt != "" {
+			t.Error("expected empty latexInfoPrompt when pdflatex is not available")
+		}
+	}
+}
+
+func TestLatexInfoPrompt_WithoutLatex(t *testing.T) {
+	// Force the cached env to simulate no pdflatex
+	detectedLatexEnv = &latexEnv{Available: false}
+	prompt := latexInfoPrompt()
+	if prompt != "" {
+		t.Errorf("expected empty prompt when pdflatex not available, got: %q", prompt)
+	}
+	// Reset for other tests
+	detectedLatexEnv = nil
+}
+
+func TestBuildSystemPrompt_InjectsLatexInfo(t *testing.T) {
+	// Reset cached result
+	detectedLatexEnv = nil
+
+	// BuildAgent has latex_to_pdf tool — should get LaTeX info injected
+	if _, err := exec.LookPath("pdflatex"); err == nil {
+		prompt := buildSystemPrompt(BuildAgent, "/tmp/test", false, false, "", "", nil, 1920, 1080)
+		if !strings.Contains(prompt, "LaTeX environment") {
+			t.Error("expected LaTeX environment section in BuildAgent prompt when pdflatex is available")
+		}
+	}
+
+	// PlanAgent does NOT have latex_to_pdf tool — should NOT get LaTeX info
+	prompt := buildSystemPrompt(PlanAgent, "/tmp/test", false, false, "", "", nil, 1920, 1080)
+	if strings.Contains(prompt, "LaTeX environment") {
+		t.Error("did NOT expect LaTeX environment section in PlanAgent prompt (no latex_to_pdf tool)")
+	}
+
+	// Reset for other tests
+	detectedLatexEnv = nil
 }
