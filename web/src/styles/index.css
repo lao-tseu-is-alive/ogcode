@@ -386,16 +386,16 @@ textarea.auto-resize {
 }
 
 /* ============================================================
-   LaTeX document preview
+   LaTeX document rendering (inline pages)
    ============================================================ */
-.latex-preview-container {
+.latex-render-container {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   margin: 0.75em 0;
   overflow: hidden;
 }
-.latex-preview-header {
+.latex-render-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -403,23 +403,53 @@ textarea.auto-resize {
   background: var(--bg-overlay);
   border-bottom: 1px solid var(--border-default);
 }
-.latex-preview-info {
+.latex-render-info {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--text-secondary);
   font-size: 0.8125rem;
+  min-width: 0;
+  flex: 1;
 }
-.latex-preview-type {
+.latex-render-type {
   font-weight: 600;
   color: var(--accent);
+  white-space: nowrap;
 }
-.latex-preview-title {
+.latex-render-title {
   color: var(--text-tertiary);
-  max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.latex-render-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.latex-src-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+.latex-src-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.latex-src-toggle.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: rgba(59, 130, 246, 0.3);
 }
 .latex-download-btn {
   display: inline-flex;
@@ -444,6 +474,52 @@ textarea.auto-resize {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Loading spinner */
+.latex-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 12px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+.latex-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: latex-spin 0.8s linear infinite;
+}
+@keyframes latex-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Page images — rendered PDF pages displayed inline */
+.latex-pages {
+  background: #2a2a2e;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+}
+.latex-page {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.latex-page-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 2px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Source code preview (toggleable) */
 .latex-source-preview {
   padding: 10px 12px;
   font-family: var(--font-mono);
@@ -452,18 +528,18 @@ textarea.auto-resize {
   color: var(--text-tertiary);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 200px;
+  max-height: 300px;
   overflow-y: auto;
   background: #0d0d10;
+  border-top: 1px solid var(--border-default);
 }
-.latex-compile-status {
+
+/* Status messages */
+.latex-render-status {
   padding: 6px 12px;
   font-size: 0.8125rem;
   font-weight: 500;
   border-top: 1px solid var(--border-subtle);
-}
-.latex-compiling {
-  color: var(--text-secondary);
 }
 .latex-success {
   color: var(--success);
@@ -477,8 +553,9 @@ textarea.auto-resize {
   max-height: 150px;
   overflow-y: auto;
 }
+/* Backward compat — old class names may still be in cached DOM */
 .latex-spin {
-  animation: spin 1s linear infinite;
+  animation: latex-spin 1s linear infinite;
 }
 
 /* ============================================================

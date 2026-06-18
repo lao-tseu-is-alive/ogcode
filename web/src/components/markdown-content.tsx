@@ -249,7 +249,7 @@ img { max-width: 100%; height: auto; }
       el.appendChild(iframe);
     });
 
-    // Render LaTeX document blocks as styled previews with PDF download
+    // Render LaTeX document blocks — compile to PDF and display pages inline
     const latexNodes = containerRef.querySelectorAll('.latex-document');
     latexNodes.forEach(el => {
       const idx = parseInt(el.getAttribute('data-srcdoc-idx') || '-1', 10);
@@ -260,21 +260,21 @@ img { max-width: 100%; height: auto; }
 
       const rawLatex = decodeHtmlFromSrcdoc(blocksData[idx]);
 
-      // Extract document class and title for a preview
+      // Extract document class and title for display
       const docClassMatch = rawLatex.match(/\\documentclass(?:\[.*?\])?\{(.+?)\}/);
       const titleMatch = rawLatex.match(/\\title\{(.+?)\}/);
-      const docClass = docClassMatch ? docClassMatch[1] : 'unknown';
+      const docClass = docClassMatch ? docClassMatch[1] : 'article';
       const docTitle = titleMatch ? titleMatch[1].replace(/\\[a-zA-Z]+(?:\{.*?\})?/g, '').trim() : '';
 
-      // Create a container with styled preview and download button
+      // Build the container
       const container = document.createElement('div');
-      container.className = 'latex-preview-container';
+      container.className = 'latex-render-container';
 
-      // Header
+      // Header bar
       const header = document.createElement('div');
-      header.className = 'latex-preview-header';
+      header.className = 'latex-render-header';
       header.innerHTML = `
-        <div class="latex-preview-info">
+        <div class="latex-render-info">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
@@ -282,43 +282,179 @@ img { max-width: 100%; height: auto; }
             <line x1="16" y1="17" x2="8" y2="17"/>
             <polyline points="10 9 9 9 8 9"/>
           </svg>
-          <span class="latex-preview-type">LaTeX (${docClass})</span>
-          ${docTitle ? `<span class="latex-preview-title">— ${docTitle}</span>` : ''}
+          <span class="latex-render-type">LaTeX (${docClass})</span>
+          ${docTitle ? `<span class="latex-render-title">— ${docTitle}</span>` : ''}
         </div>
-        <button class="latex-download-btn" title="Compile and download PDF">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          PDF
-        </button>
+        <div class="latex-render-actions">
+          <button class="latex-src-toggle" title="Show/hide source code">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+          </button>
+          <button class="latex-download-btn" title="Download PDF">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            PDF
+          </button>
+        </div>
       `;
 
-      // Source code preview
+      // Page images container (shown after compilation)
+      const pagesDiv = document.createElement('div');
+      pagesDiv.className = 'latex-pages';
+      pagesDiv.style.display = 'none'; // hidden until pages are loaded
+
+      // Source code preview (toggleable)
       const sourceDiv = document.createElement('div');
       sourceDiv.className = 'latex-source-preview';
-      // Show first 20 lines as a preview
+      sourceDiv.style.display = 'none'; // hidden by default, toggle via button
       const lines = rawLatex.split('\n');
-      const previewLines = lines.slice(0, 20).join('\n');
-      const moreLines = lines.length > 20 ? `\n... (${lines.length - 20} more lines)` : '';
-      sourceDiv.textContent = previewLines + moreLines;
+      const previewText = lines.join('\n');
+      sourceDiv.textContent = previewText;
 
-      // Compile status indicator
+      // Status indicator
       const statusDiv = document.createElement('div');
-      statusDiv.className = 'latex-compile-status';
-      statusDiv.style.display = 'none';
+      statusDiv.className = 'latex-render-status';
+
+      // Loading spinner (shown while compiling)
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = 'latex-loading';
+      loadingDiv.innerHTML = `
+        <div class="latex-spinner"></div>
+        <span>Compiling LaTeX...</span>
+      `;
 
       container.appendChild(header);
+      container.appendChild(loadingDiv);
+      container.appendChild(pagesDiv);
       container.appendChild(sourceDiv);
       container.appendChild(statusDiv);
       el.textContent = '';
       el.appendChild(container);
 
-      // Bind download button
+      // Toggle source code visibility
+      const srcToggle = container.querySelector('.latex-src-toggle');
+      if (srcToggle) {
+        srcToggle.addEventListener('click', () => {
+          const isVisible = sourceDiv.style.display !== 'none';
+          sourceDiv.style.display = isVisible ? 'none' : 'block';
+          srcToggle.classList.toggle('active', !isVisible);
+        });
+      }
+
+      // Compile and render inline
+      const baseURL = import.meta.env.VITE_API_URL || '';
+
+      const compileAndRender = async () => {
+        loadingDiv.style.display = 'flex';
+        statusDiv.style.display = 'none';
+        statusDiv.className = 'latex-render-status';
+
+        try {
+          const res = await fetch(`${baseURL}/api/latex/pages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: rawLatex }),
+          });
+
+          if (!res.ok) {
+            let errorMsg = `Error ${res.status}`;
+            try {
+              const errData = await res.json();
+              errorMsg = errData.error || errorMsg;
+              if (errData.output) {
+                errorMsg += '\n\npdflatex output:\n' + errData.output.slice(0, 500);
+              }
+            } catch {}
+            throw new Error(errorMsg);
+          }
+
+          const data = await res.json();
+
+          // Hide loading spinner
+          loadingDiv.style.display = 'none';
+
+          // Render page images inline
+          if (data.pages && data.pages.length > 0) {
+            pagesDiv.style.display = 'block';
+            pagesDiv.innerHTML = ''; // clear previous
+
+            data.pages.forEach((page: { image: string; pageNum: number }) => {
+              const pageDiv = document.createElement('div');
+              pageDiv.className = 'latex-page';
+
+              const img = document.createElement('img');
+              img.src = `data:image/jpeg;base64,${page.image}`;
+              img.alt = `Page ${page.pageNum}`;
+              img.className = 'latex-page-img';
+              img.loading = 'lazy';
+
+              pageDiv.appendChild(img);
+              pagesDiv.appendChild(pageDiv);
+            });
+
+            // Store pdfBase64 for download
+            (container as any)._pdfBase64 = data.pdfBase64;
+            (container as any)._pdfSize = data.pdfSize;
+            (container as any)._docTitle = data.title || 'output';
+          } else if (data.pdfBase64) {
+            // Fallback: no page images but have PDF (fitz unavailable)
+            pagesDiv.style.display = 'none';
+            (container as any)._pdfBase64 = data.pdfBase64;
+            (container as any)._pdfSize = data.pdfSize;
+            (container as any)._docTitle = data.title || 'output';
+
+            // Show source since we can't render pages
+            sourceDiv.style.display = 'block';
+            loadingDiv.style.display = 'none';
+            statusDiv.className = 'latex-render-status latex-success';
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = '✓ PDF compiled (page rendering unavailable — download to view)';
+          }
+        } catch (err) {
+          loadingDiv.style.display = 'none';
+          statusDiv.className = 'latex-render-status latex-error';
+          statusDiv.style.display = 'block';
+          statusDiv.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
+
+          // Show source code so the user can see what was attempted
+          sourceDiv.style.display = 'block';
+        }
+      };
+
+      // Auto-compile on render
+      compileAndRender();
+
+      // Download button handler
       const downloadBtn = container.querySelector('.latex-download-btn');
       if (downloadBtn) {
         downloadBtn.addEventListener('click', async () => {
+          // If we already have the PDF data, download directly
+          const pdfBase64 = (container as any)._pdfBase64;
+          if (pdfBase64) {
+            const byteCharacters = atob(pdfBase64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(container as any)._docTitle || 'output'}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            return;
+          }
+
+          // Fallback: compile again for download
           downloadBtn.setAttribute('disabled', 'true');
           downloadBtn.innerHTML = `
             <svg class="latex-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -326,12 +462,8 @@ img { max-width: 100%; height: auto; }
             </svg>
             Compiling...
           `;
-          statusDiv.style.display = 'block';
-          statusDiv.className = 'latex-compile-status latex-compiling';
-          statusDiv.textContent = 'Compiling LaTeX to PDF...';
 
           try {
-            const baseURL = import.meta.env.VITE_API_URL || '';
             const res = await fetch(`${baseURL}/api/latex`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -350,7 +482,6 @@ img { max-width: 100%; height: auto; }
               throw new Error(errorMsg);
             }
 
-            // Response is a PDF blob
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -361,8 +492,6 @@ img { max-width: 100%; height: auto; }
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            statusDiv.className = 'latex-compile-status latex-success';
-            statusDiv.textContent = '✓ PDF compiled and downloading';
             downloadBtn.innerHTML = `
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"/>
@@ -379,11 +508,8 @@ img { max-width: 100%; height: auto; }
                 </svg>
                 PDF
               `;
-              statusDiv.style.display = 'none';
-            }, 3000);
+            }, 2000);
           } catch (err) {
-            statusDiv.className = 'latex-compile-status latex-error';
-            statusDiv.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
             downloadBtn.removeAttribute('disabled');
             downloadBtn.innerHTML = `
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -391,8 +517,11 @@ img { max-width: 100%; height: auto; }
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Retry
+              PDF
             `;
+            statusDiv.className = 'latex-render-status latex-error';
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = `✗ Download failed: ${err instanceof Error ? err.message : String(err)}`;
           }
         });
       }

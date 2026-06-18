@@ -127,9 +127,10 @@ func (s *Server) routes() http.Handler {
 			r.Get("/excludes", s.handleListExcludes)
 			r.Post("/excludes", s.handleAddExclude)
 			r.Delete("/excludes/{id}", s.handleDeleteExclude)
-			// LaTeX compilation
-			s.registerLatexRoutes(r)
 		})
+
+		// LaTeX compilation and rendering
+		s.registerLatexRoutes(r)
 	})
 
 	// Serve embedded web UI (or placeholder for dev)
@@ -142,7 +143,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, x-ogcode-directory")
+		w.Header().Set("Access-Control-Headers", "Content-Type, x-ogcode-directory")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
