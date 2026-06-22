@@ -107,7 +107,7 @@ export default function DocIndexPage() {
   const [showExcludesModal, setShowExcludesModal] = createSignal(false);
   const [newPattern, setNewPattern] = createSignal('');
   const [search, setSearch] = createSignal('');
-  const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
+  const [expanded, setExpanded] = createSignal<Set<string>>(new Set());
 
   onMount(() => docIndex.loadExcludes());
 
@@ -143,8 +143,8 @@ export default function DocIndexPage() {
     return Math.max(...dates);
   };
 
-  const toggleCollapse = (path: string) => {
-    setCollapsed(prev => {
+  const toggleExpand = (path: string) => {
+    setExpanded(prev => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
@@ -358,12 +358,12 @@ export default function DocIndexPage() {
               <div class="space-y-1">
                 <For each={folderGroups()}>
                   {(group) => {
-                    const isCollapsed = () => collapsed().has(group.relPath);
+                    const isCollapsed = () => !expanded().has(group.relPath);
                     return (
                       <div class="rounded-xl border border-[color:var(--border-subtle)] overflow-hidden">
                         {/* Folder header */}
                         <button
-                          onClick={() => toggleCollapse(group.relPath)}
+                          onClick={() => toggleExpand(group.relPath)}
                           class="w-full flex items-center gap-2.5 px-4 py-2.5 bg-[color:var(--bg-surface)] hover:bg-[color:var(--bg-elevated)] transition-colors text-left"
                         >
                           <svg
