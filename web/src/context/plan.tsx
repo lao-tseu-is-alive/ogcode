@@ -88,7 +88,11 @@ export const PlanProvider: ParentComponent = (props) => {
   const dismissArchiveNotification = () => setArchivePath('');
 
   const [models, setModels] = createSignal<any[]>([]);
-  const [pendingModel, setPendingModel] = createSignal<string>('');
+  // Persisted model selection for the home/plan-list page — survives app restarts.
+  const STORAGE_KEY = 'ogcode-selected-model';
+  const [pendingModel, setPendingModel] = createSignal<string>(
+    typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) || '' : ''
+  );
 
   const selectedModel = (): string => {
     if (pendingModel()) return pendingModel();
@@ -103,6 +107,8 @@ export const PlanProvider: ParentComponent = (props) => {
 
   async function selectModel(modelId: string) {
     setPendingModel(modelId);
+    // Persist so the selection survives app restarts.
+    try { localStorage.setItem(STORAGE_KEY, modelId); } catch (_e) { /* ignore */ }
     const plan = activePlan();
     if (!plan) return;
     try {

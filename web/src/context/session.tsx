@@ -172,7 +172,11 @@ export const SessionProvider: ParentComponent = (props) => {
   const [models, setModels] = createSignal<ModelInfo[]>([]);
   // Model selection chosen before any session exists (e.g. on the home page).
   // Used as the default for `newSession()` and read by `selectedModel()`.
-  const [pendingModel, setPendingModel] = createSignal<string>('');
+  // Persisted to localStorage so the user's last model choice survives app restarts.
+  const STORAGE_KEY = 'ogcode-selected-model';
+  const [pendingModel, setPendingModel] = createSignal<string>(
+    typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) || '' : ''
+  );
   // Two-tier polling:
   //   fastPollInterval — 3 s, runs only while the agent loop is active
   //   bgPollInterval   — 15 s, always runs for the active session so the UI
@@ -205,6 +209,9 @@ export const SessionProvider: ParentComponent = (props) => {
     // before the network request completes — prevents the old model from being sent if
     // the user sends a prompt quickly after changing the model.
     setPendingModel(modelId);
+    // Persist the selection so it survives app restarts — this is the default model
+    // for the home page and new sessions.
+    try { localStorage.setItem(STORAGE_KEY, modelId); } catch (_e) { /* ignore quota errors */ }
     const sess = activeSession();
     if (!sess) return;
     try {
