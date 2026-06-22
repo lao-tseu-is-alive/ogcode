@@ -30,6 +30,7 @@ interface ModelSelectorProps {
   selectedModel?: () => string;
   models?: () => ModelInfo[];
   onSelect?: (modelId: string) => void;
+  placement?: 'top' | 'bottom';
 }
 
 export default function ModelSelector(props: ModelSelectorProps = {}) {
@@ -85,9 +86,10 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
       <Show when={open()}>
         <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
         <div
-          class="absolute bottom-full left-0 mb-1.5 w-72 bg-[color:var(--bg-overlay)]
+          class={`absolute left-0 w-72 bg-[color:var(--bg-overlay)]
                  border border-[color:var(--border-default)] rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.5)]
-                 z-50 py-1 max-h-96 overflow-y-auto"
+                 z-50 py-1 max-h-96 overflow-y-auto
+                 ${(props.placement ?? 'top') === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5'}`}
         >
           <For each={[...grouped().entries()]}>
             {([providerId, models]) => (

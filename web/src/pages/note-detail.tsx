@@ -2,8 +2,10 @@ import { createSignal, Show, onMount, onCleanup, For } from 'solid-js';
 import { useNavigate, useParams } from '@solidjs/router';
 import { useNote } from '../context/note';
 import { useServer } from '../context/server';
-import { type Note, type NoteVersion, listNoteVersions, downloadNoteExport } from '../api/client';
+import { type Note, type NoteVersion, type ModelInfo, listNoteVersions, downloadNoteExport, getModels } from '../api/client';
 import MarkdownContent from '../components/markdown-content';
+import NoteEditor from '../components/note-editor';
+import ModelSelector from '../components/model-selector';
 import SessionSidebar from '../components/session-sidebar';
 import PlanSidebar from '../components/plan-sidebar';
 
@@ -47,14 +49,31 @@ export default function NoteDetailPage() {
   const [previewVersion, setPreviewVersion] = createSignal<NoteVersion | null>(null);
   const [loadingVersions, setLoadingVersions] = createSignal(false);
 
-  async function load() {
+  const [isEditing, setIsEditing] = createSignal(false);
+  const [editTitle, setEditTitle] = createSignal('');
+  const [editContent, setEditContent] = createSignal('');
+  const [saving, setSaving] = createSignal(false);
+  const [aiModels, setAiModels] = createSignal<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = createSignal('');
+
+  onMount(async () => {
     const n = await noteCtx.refreshNote(params.id);
     if (!n) {
       setNotFound(true);
     } else {
       setNote(n);
+      if (n.source === 'manual' && !n.content) {
+        setEditTitle(n.title === 'Untitled' ? '' : n.title);
+        setEditContent('');
+        setIsEditing(true);
+      }
     }
-  }
+    getModels().then(ms => {
+      const enabled = (ms || []).filter(m => m.enabled);
+      setAiModels(enabled);
+      if (enabled.length > 0) setSelectedModel(enabled[0].id);
+    }).catch(() => {});
+  });
 
   async function loadVersions() {
     setLoadingVersions(true);
@@ -68,9 +87,6 @@ export default function NoteDetailPage() {
     }
   }
 
-  onMount(load);
-
-  // Poll while generating
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   const startPoll = () => {
     if (pollTimer) return;
@@ -80,7 +96,6 @@ export default function NoteDetailPage() {
         setNote(n);
         if (n.status !== 'generating') {
           stopPoll();
-          // Refresh version list when generation completes
           loadVersions();
         }
       }
@@ -97,6 +112,35 @@ export default function NoteDetailPage() {
     else stopPoll();
     return n;
   };
+
+  function enterEditMode() {
+    const n = note();
+    if (!n) return;
+    setEditTitle(n.title || '');
+    setEditContent(n.content || '');
+    setIsEditing(true);
+    setPreviewVersion(null);
+  }
+
+  async function handleSave() {
+    const n = note();
+    if (!n) return;
+    setSaving(true);
+    try {
+      const updated = await noteCtx.updateNote(n.id, editTitle(), editContent());
+      setNote(updated);
+      setIsEditing(false);
+      loadVersions();
+    } catch (e) {
+      console.error('save note failed:', e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    setIsEditing(false);
+  }
 
   const handleExport = async () => {
     if (!note()) return;
@@ -180,7 +224,7 @@ export default function NoteDetailPage() {
                   Error
                 </span>
               </Show>
-              <Show when={currentNote()?.status === 'done'}>
+              <Show when={currentNote()?.status === 'done' && !isEditing()}>
                 <span class="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 shrink-0">
                   <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
@@ -189,8 +233,8 @@ export default function NoteDetailPage() {
                 </span>
               </Show>
 
-              {/* History button */}
-              <Show when={currentNote() && (currentNote()!.version ?? 0) > 0}>
+              {/* History button — hidden while editing */}
+              <Show when={currentNote() && (currentNote()!.version ?? 0) > 0 && !isEditing()}>
                 <button
                   onClick={handleToggleHistory}
                   class={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md border transition shrink-0
@@ -207,8 +251,44 @@ export default function NoteDetailPage() {
                 </button>
               </Show>
 
-              {/* Export */}
-              <Show when={currentNote()}>
+              {/* Edit button */}
+              <Show when={currentNote()?.status === 'done' && !isEditing()}>
+                <button
+                  onClick={enterEditMode}
+                  class="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] transition"
+                  title="Edit note"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+              </Show>
+
+              {/* Cancel / Model picker / Save when editing */}
+              <Show when={isEditing()}>
+                <button
+                  onClick={handleCancel}
+                  class="shrink-0 h-7 px-2.5 rounded-md text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-[color:var(--bg-hover)]/50 transition"
+                >
+                  Cancel
+                </button>
+                <ModelSelector
+                  selectedModel={() => selectedModel()}
+                  models={() => aiModels()}
+                  onSelect={setSelectedModel}
+                  placement="bottom"
+                />
+                <button
+                  onClick={handleSave}
+                  disabled={saving()}
+                  class="shrink-0 h-7 px-3 rounded-md text-[11px] font-medium bg-[color:var(--accent)] text-white disabled:opacity-50 hover:opacity-90 transition"
+                >
+                  {saving() ? 'Saving…' : 'Save'}
+                </button>
+              </Show>
+
+              {/* Export — hidden while editing */}
+              <Show when={currentNote() && !isEditing()}>
                 <button
                   onClick={handleExport}
                   class="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition"
@@ -220,8 +300,8 @@ export default function NoteDetailPage() {
                 </button>
               </Show>
 
-              {/* Delete */}
-              <Show when={currentNote()}>
+              {/* Delete — hidden while editing */}
+              <Show when={currentNote() && !isEditing()}>
                 <button
                   onClick={handleDelete}
                   disabled={deleting()}
@@ -237,10 +317,22 @@ export default function NoteDetailPage() {
 
             {/* Title + meta */}
             <div class="px-6 pb-4">
-              <h1 class="text-[20px] font-semibold text-zinc-100 leading-snug tracking-tight">
-                {currentNote()?.title || currentNote()?.query || '…'}
-              </h1>
-              <Show when={currentNote()}>
+              <Show when={isEditing()} fallback={
+                <h1 class="text-[20px] font-semibold text-zinc-100 leading-snug tracking-tight">
+                  {currentNote()?.title || currentNote()?.query || '…'}
+                </h1>
+              }>
+                <input
+                  type="text"
+                  value={editTitle()}
+                  onInput={e => setEditTitle(e.currentTarget.value)}
+                  placeholder="Untitled"
+                  class="w-full text-[20px] font-semibold text-zinc-100 leading-snug tracking-tight
+                         bg-transparent border-none outline-none placeholder-zinc-600"
+                  onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+                />
+              </Show>
+              <Show when={currentNote() && !isEditing()}>
                 <div class="flex items-center gap-2 mt-2 flex-wrap">
                   <span class="flex items-center gap-1.5 text-[11px] text-zinc-500">
                     <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -248,15 +340,26 @@ export default function NoteDetailPage() {
                     </svg>
                     {formatDate(currentNote()!.createdAt)}
                   </span>
-                  <span class="text-zinc-700">·</span>
-                  <span class="flex items-center gap-1.5 text-[11px] text-zinc-500 min-w-0">
-                    <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-                    </svg>
-                    <span class="italic truncate" title={currentNote()!.query}>
-                      {currentNote()!.query}
+                  <Show when={currentNote()?.source !== 'manual' && currentNote()?.query}>
+                    <span class="text-zinc-700">·</span>
+                    <span class="flex items-center gap-1.5 text-[11px] text-zinc-500 min-w-0">
+                      <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                      </svg>
+                      <span class="italic truncate" title={currentNote()!.query}>
+                        {currentNote()!.query}
+                      </span>
                     </span>
-                  </span>
+                  </Show>
+                  <Show when={currentNote()?.source === 'manual'}>
+                    <span class="text-zinc-700">·</span>
+                    <span class="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                      <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Manual note
+                    </span>
+                  </Show>
                 </div>
               </Show>
             </div>
@@ -266,7 +369,7 @@ export default function NoteDetailPage() {
           <div class="flex-1 flex overflow-hidden">
             {/* Main content */}
             <div class="flex-1 overflow-y-auto px-6 py-6">
-              <div class="max-w-3xl mx-auto">
+              <div class="max-w-3xl mx-auto flex flex-col min-h-full">
                 <Show when={!currentNote()}>
                   <div class="flex items-center justify-center h-32">
                     <div class="w-5 h-5 border-2 border-[color:var(--accent)] border-t-transparent rounded-full animate-spin" />
@@ -280,38 +383,63 @@ export default function NoteDetailPage() {
                   </div>
                 </Show>
 
-                <Show when={previewVersion()}>
-                  <div class="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-400/5 border border-amber-400/20 text-[12px] text-amber-400">
-                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Viewing v{previewVersion()!.version} — {formatDate(previewVersion()!.createdAt)}
-                    <button
-                      onClick={() => setPreviewVersion(null)}
-                      class="ml-auto text-amber-400/60 hover:text-amber-400 transition"
-                    >
-                      Back to current
-                    </button>
-                  </div>
+                {/* Edit mode */}
+                <Show when={isEditing()}>
+                  <NoteEditor
+                    content={editContent()}
+                    onChange={setEditContent}
+                    model={selectedModel()}
+                    autofocus
+                  />
                 </Show>
 
-                <Show when={displayContent()}>
-                  <MarkdownContent text={displayContent()} />
-                </Show>
+                {/* View mode */}
+                <Show when={!isEditing()}>
+                  <Show when={previewVersion()}>
+                    <div class="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-400/5 border border-amber-400/20 text-[12px] text-amber-400">
+                      <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Viewing v{previewVersion()!.version} — {formatDate(previewVersion()!.createdAt)}
+                      <button
+                        onClick={() => setPreviewVersion(null)}
+                        class="ml-auto text-amber-400/60 hover:text-amber-400 transition"
+                      >
+                        Back to current
+                      </button>
+                    </div>
+                  </Show>
 
-                <Show when={currentNote()?.status === 'error' && !currentNote()?.content}>
-                  <div class="flex flex-col items-center justify-center h-48 text-center gap-2">
-                    <svg class="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                    <p class="text-[13px] text-zinc-500">Note generation failed.</p>
-                  </div>
+                  <Show when={displayContent()}>
+                    <MarkdownContent text={displayContent()} />
+                  </Show>
+
+                  <Show when={currentNote()?.status === 'done' && !currentNote()?.content && currentNote()?.source === 'manual'}>
+                    <div class="flex flex-col items-center justify-center h-48 text-center gap-3">
+                      <svg class="w-10 h-10 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      <div>
+                        <p class="text-[13px] font-medium text-zinc-400">This note is empty</p>
+                        <p class="text-[12px] text-zinc-600 mt-1">Click Edit to start writing</p>
+                      </div>
+                    </div>
+                  </Show>
+
+                  <Show when={currentNote()?.status === 'error' && !currentNote()?.content}>
+                    <div class="flex flex-col items-center justify-center h-48 text-center gap-2">
+                      <svg class="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                      </svg>
+                      <p class="text-[13px] text-zinc-500">Note generation failed.</p>
+                    </div>
+                  </Show>
                 </Show>
               </div>
             </div>
 
             {/* Version history panel */}
-            <Show when={showHistory()}>
+            <Show when={showHistory() && !isEditing()}>
               <div class="w-64 shrink-0 border-l border-[color:var(--border-subtle)] flex flex-col bg-[color:var(--bg-surface)]">
                 <div class="shrink-0 px-4 py-3 border-b border-[color:var(--border-subtle)] flex items-center justify-between">
                   <span class="text-[12px] font-semibold text-zinc-300">Version History</span>

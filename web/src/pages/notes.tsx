@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, For, Show, onCleanup } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { useNote } from '../context/note';
 import { useServer } from '../context/server';
@@ -150,12 +150,21 @@ function NoteCard(props: { note: Note; onDelete: (e: MouseEvent) => void; onClic
         </Show>
       </div>
 
-      {/* Footer: query description */}
+      {/* Footer: query description or manual badge */}
       <div class="px-4 py-2 border-t border-[color:var(--border-subtle)] flex items-center gap-1.5 bg-[color:var(--bg-base)]/30">
-        <svg class="w-3 h-3 text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
-        <span class="text-[11px] text-zinc-600 italic truncate">{n().query}</span>
+        <Show when={n().source === 'manual'} fallback={
+          <>
+            <svg class="w-3 h-3 text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span class="text-[11px] text-zinc-600 italic truncate">{n().query}</span>
+          </>
+        }>
+          <svg class="w-3 h-3 text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <span class="text-[11px] text-zinc-600">Manual note</span>
+        </Show>
       </div>
     </div>
   );
@@ -165,6 +174,7 @@ export default function NotesPage() {
   const noteCtx = useNote();
   const navigate = useNavigate();
   const [search, setSearch] = createSignal('');
+  const [creatingManual, setCreatingManual] = createSignal(false);
 
   const filtered = () => {
     const q = search().trim().toLowerCase();
@@ -180,6 +190,19 @@ export default function NotesPage() {
     await noteCtx.deleteNote(id);
   };
 
+  const handleNewNote = async () => {
+    if (creatingManual()) return;
+    setCreatingManual(true);
+    try {
+      const n = await noteCtx.createManualNote();
+      navigate(`/notes/${n.id}`);
+    } catch (e) {
+      console.error('create manual note failed:', e);
+    } finally {
+      setCreatingManual(false);
+    }
+  };
+
   return (
     <div class="flex h-screen w-full">
       <Sidebar />
@@ -192,25 +215,44 @@ export default function NotesPage() {
             <h1 class="text-[15px] font-semibold text-zinc-100">Project Notes</h1>
             <p class="text-[11px] text-zinc-500 mt-0.5">
               {noteCtx.notes().length > 0
-                ? `${noteCtx.notes().length} note${noteCtx.notes().length === 1 ? '' : 's'} · use "Save to Notes" in any chat to add more`
-                : 'Use "Save to Notes" on any chat message to generate a note'}
+                ? `${noteCtx.notes().length} note${noteCtx.notes().length === 1 ? '' : 's'}`
+                : 'Write notes manually or save from chat'}
             </p>
           </div>
 
-          {/* Search */}
-          <div class="relative">
-            <svg class="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              value={search()}
-              onInput={(e) => setSearch(e.currentTarget.value)}
-              placeholder="Search notes…"
-              class="h-8 w-56 pl-8 pr-3 bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] rounded-md
-                     text-[12px] text-zinc-200 placeholder-zinc-600
-                     focus:outline-none focus:border-[color:var(--border-default)] transition"
-            />
+          <div class="flex items-center gap-2">
+            {/* New Note button */}
+            <button
+              onClick={handleNewNote}
+              disabled={creatingManual()}
+              class="h-8 px-3 flex items-center gap-1.5 rounded-md text-[12px] font-medium
+                     bg-[color:var(--accent)] text-white disabled:opacity-50 hover:opacity-90 transition"
+            >
+              <Show when={creatingManual()} fallback={
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+              }>
+                <div class="w-3.5 h-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+              </Show>
+              New Note
+            </button>
+
+            {/* Search */}
+            <div class="relative">
+              <svg class="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={search()}
+                onInput={(e) => setSearch(e.currentTarget.value)}
+                placeholder="Search notes…"
+                class="h-8 w-48 pl-8 pr-3 bg-[color:var(--bg-surface)] border border-[color:var(--border-subtle)] rounded-md
+                       text-[12px] text-zinc-200 placeholder-zinc-600
+                       focus:outline-none focus:border-[color:var(--border-default)] transition"
+              />
+            </div>
           </div>
         </div>
 
@@ -227,7 +269,7 @@ export default function NotesPage() {
                 </p>
                 <Show when={!search()}>
                   <p class="text-[12px] text-zinc-600 mt-1">
-                    Hover over any chat message and click <span class="text-zinc-400 font-medium">"Save to Notes"</span>
+                    Click <span class="text-zinc-400 font-medium">New Note</span> to write manually, or hover a chat message and click <span class="text-zinc-400 font-medium">"Save to Notes"</span>
                   </p>
                 </Show>
               </div>

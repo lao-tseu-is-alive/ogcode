@@ -1,41 +1,44 @@
-# Release Notes — v0.9.1
+# Release Notes — v0.9.2
 
-## LaTeX Document Support & Intelligent Environment Detection
+## Manual Notes & AI-Powered Block Editor
 
-This release adds **full LaTeX document support** with inline PDF compilation, viewport rendering, and intelligent environment detection — so the agent always writes LaTeX compatible with your local system.
+This release turns Notes from an AI-only, read-only artifact into a fully editable workspace. You can now **create blank notes manually**, **edit any note inline** with a Notion-style block editor, and **transform selected text with AI** — all without leaving the notes page.
 
 ---
 
 ### ✨ New Features
 
-- **LaTeX-to-PDF agent tool** — Agents can now compile LaTeX source code to PDF using the new `latex_to_pdf` tool. The agent receives the compiled PDF path and, for vision-capable models, the first page rendered as a JPEG image for verification.
-- **Inline LaTeX document rendering** — `language-latex` code blocks in chat are now automatically detected and rendered inline. The web UI extracts LaTeX blocks, compiles them server-side via pdflatex, and displays styled page previews with document class/title extraction, source code toggle, and a "Download PDF" button.
-- **LaTeX environment detection** — On startup, the server detects your local pdflatex version, TeX distribution (TeX Live, MiKTeX, etc.), available document classes, and key packages via `kpsewhich`. This information is injected into the agent system prompt so agents write compatible LaTeX without guessing what's available.
-- **LaTeX API routes** — Three new endpoints power the rendering pipeline:
-  - `POST /api/latex` — Compile LaTeX source to PDF
-  - `POST /api/latex/pages` — Compile + render pages as base64-encoded JPEG images
-  - `GET /api/latex/status` — Check pdflatex availability and version info
-- **go-fitz PDF rendering** — The `latex_fitz.go` module uses the go-fitz library (MuPDF bindings) to render PDF pages as high-quality JPEG images for inline display and vision model consumption.
+- **Manual note creation** — A new **New Note** button on the notes page creates a blank note instantly (no AI loop required). Manual notes are tagged with a `source: 'manual'` badge so they're visually distinct from AI-generated notes. Empty manual notes drop you straight into the editor.
+- **Inline note editing** — Any note (AI-generated or manual) can now be edited in place. Click the **Edit** button on a note's detail page to switch into edit mode with an editable title and content. Saving increments the version and records a version snapshot, so the full history is preserved alongside AI-generated versions.
+- **Notion-style block editor** (`note-editor.tsx`) — A new rich block editor component powers editing:
+  - **Slash commands** — Type `/` to insert headings, bullet/numbered lists, to-dos, code blocks, blockquotes, dividers, bold, italic, links, and images.
+  - **Block reordering** — Drag blocks by their grip handle to reorder. Top/bottom drop indicators show the target position.
+  - **Image support** — Paste images, drag-and-drop from the OS, or use the slash `image` command. Images are embedded as base64 (max 5 MB) with editable alt text, replace, and remove actions.
+  - **Keyboard navigation** — Enter to split blocks (with list continuation), Backspace at the start of a line to merge, ArrowUp/ArrowDown to move between blocks.
+- **AI text transformation** — Select any text in the editor to reveal a floating toolbar with **Improve**, **Shorter**, **Longer**, and **Fix grammar** actions. The selected text is sent to your chosen LLM model and the result can be previewed and applied back into the note (single-block or cross-block selection supported).
+- **Model picker in edit mode** — A model selector (with `bottom` placement so it doesn't overflow the toolbar) lets you choose which LLM powers AI transformations for that note.
+
+### 🔧 Backend
+
+- **`source` column on notes** — New `028_notes_source.sql` migration adds a `source TEXT NOT NULL DEFAULT 'ai'` column to the `note` table. The `Note` model, store, and all scan paths now read/write the source field. Existing notes default to `'ai'`.
+- **`PATCH /api/notes/{noteID}`** — New endpoint to update a note's title and content. `Store.SaveContent` increments the version, updates the row, and records a `NoteVersion` snapshot.
+- **`POST /api/notes/transform`** — New endpoint that runs an AI text transformation (improve / shorter / longer / grammar) using the configured provider, streaming the result and returning the trimmed text.
+- **Manual note creation** — `POST /api/notes` now accepts an optional `source` field. When `source === 'manual'`, a blank note is created immediately with status `done` and no agent loop is started.
+- **`note.created` / `note.manual_updated` events** — Manual note creation and manual edits publish events through the existing event bus.
 
 ### 🎨 Web UI
 
-- **LaTeX document preview cards** — Markdown content renderer now detects `language-latex` code blocks and renders them as styled preview cards with:
-  - Document class and title extraction
-  - Inline page image rendering
-  - Source code preview toggle
-  - Download PDF button
-- **LaTeX-specific CSS** — New styles for LaTeX preview cards, page images, error states, and compilation status indicators.
-- **Sandboxed rendering pipeline** — LaTeX source is encoded as base64 data attributes, extracted before DOMPurify sanitization, then sent to the server for compilation. Results are rendered inline without page reloads.
-
-### 🔧 Agent System Prompt
-
-- **LaTeX environment section** — When pdflatex is available, the agent system prompt now includes a "LaTeX environment" section listing the detected version, distribution, available document classes (article, report, book, etc.), and installed packages. This ensures agents write compilable LaTeX the first time.
+- **Notes page** — New Note button added next to the search box; empty-state copy updated to mention both manual writing and "Save to Notes". Note cards show a "Manual note" badge with a pencil icon instead of the query text for manual notes.
+- **Note detail page** — Edit mode toggles the title input, swaps the markdown preview for the block editor, and hides the status badge / history / export / delete controls while editing. Cancel returns to view mode without saving. Manual notes with empty content show an "empty note" prompt with a hint to click Edit.
+- **Model selector placement** — `ModelSelector` now accepts a `placement` prop (`'top'` default, `'bottom'` for use in toolbars near the top of the viewport).
 
 ### 📁 Files Changed (13 files)
 
-**New:** `internal/server/latex_fitz.go`, `internal/server/latex_routes.go`, `internal/tool/latex_pdf.go`
+**New:** `internal/db/028_notes_source.sql`, `web/src/components/note-editor.tsx`
 
-**Modified:** `internal/agent/agent.go`, `internal/agent/loop.go`, `internal/agent/prompt_builder.go`, `internal/agent/prompt_builder_test.go`, `internal/server/routes.go`, `internal/server/server.go`, `web/src/components/markdown-content.tsx`, `web/src/styles/index.css`
+**Modified (backend):** `internal/note/note.go`, `internal/note/store.go`, `internal/server/note_routes.go`, `internal/server/routes.go`, `internal/cli/version.go`, `internal/version/version.go`
+
+**Modified (web):** `web/src/api/client.ts`, `web/src/components/model-selector.tsx`, `web/src/context/note.tsx`, `web/src/pages/note-detail.tsx`, `web/src/pages/notes.tsx`
 
 ---
 
@@ -68,4 +71,4 @@ go install github.com/prasenjeet-symon/ogcode@latest
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.9.0...v0.9.1*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.9.1...v0.9.2*

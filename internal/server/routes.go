@@ -94,8 +94,10 @@ func (s *Server) routes() http.Handler {
 		r.Route("/notes", func(r chi.Router) {
 			r.Get("/", s.handleListNotes)
 			r.Post("/", s.handleCreateNote)
+			r.Post("/transform", s.handleTransformText)
 			r.Route("/{noteID}", func(r chi.Router) {
 				r.Get("/", s.handleGetNote)
+				r.Patch("/", s.handleUpdateNote)
 				r.Delete("/", s.handleDeleteNote)
 				r.Get("/versions", s.handleListNoteVersions)
 				r.Get("/export", s.handleExportNote)

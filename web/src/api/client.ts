@@ -473,6 +473,7 @@ export interface Note {
   content: string;
   sessionId?: string;
   status: 'generating' | 'done' | 'error';
+  source: 'ai' | 'manual';
   version: number;
   createdAt: number;
   updatedAt: number;
@@ -491,11 +492,12 @@ export function listNotes(directory?: string): Promise<Note[]> {
   return fetchAPI(`/notes${dir}`);
 }
 
-export function createNote(query: string, directory?: string, model?: string, sessionId?: string, viewportWidth?: number, viewportHeight?: number): Promise<Note> {
+export function createNote(query: string, directory?: string, model?: string, sessionId?: string, viewportWidth?: number, viewportHeight?: number, source?: string): Promise<Note> {
   const body: Record<string, unknown> = { query, directory, model };
   if (sessionId) body.sessionId = sessionId;
   if (viewportWidth) body.viewportWidth = viewportWidth;
   if (viewportHeight) body.viewportHeight = viewportHeight;
+  if (source) body.source = source;
   return fetchAPI('/notes', {
     method: 'POST',
     body: JSON.stringify(body),
@@ -506,8 +508,22 @@ export function getNote(id: string): Promise<Note> {
   return fetchAPI(`/notes/${id}`);
 }
 
+export function updateNote(id: string, title: string, content: string): Promise<Note> {
+  return fetchAPI(`/notes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title, content }),
+  });
+}
+
 export function deleteNote(id: string): Promise<void> {
   return fetchAPI(`/notes/${id}`, { method: 'DELETE' });
+}
+
+export function transformText(text: string, instruction: string, model?: string): Promise<{ result: string }> {
+  return fetchAPI('/notes/transform', {
+    method: 'POST',
+    body: JSON.stringify({ text, instruction, model }),
+  });
 }
 
 export function listNoteVersions(noteId: string): Promise<NoteVersion[]> {

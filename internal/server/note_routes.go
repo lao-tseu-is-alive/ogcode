@@ -38,6 +38,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 		Directory      string `json:"directory"`
 		Model          string `json:"model,omitempty"`
 		SessionID      string `json:"sessionId,omitempty"`
+		Source         string `json:"source,omitempty"`
 		ViewportWidth  int    `json:"viewportWidth,omitempty"`
 		ViewportHeight int    `json:"viewportHeight,omitempty"`
 	}
@@ -45,13 +46,42 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if input.Query == "" {
-		http.Error(w, "query is required", http.StatusBadRequest)
-		return
-	}
+
 	dir := input.Directory
 	if dir == "" {
 		dir = s.dir
+	}
+
+	// Manual note: create blank note immediately, no AI loop
+	if input.Source == note.SourceManual {
+		title := input.Query
+		if title == "" {
+			title = "Untitled"
+		}
+		n := &note.Note{
+			ID:        id.NewNoteID(),
+			Directory: dir,
+			Title:     title,
+			Query:     "",
+			Content:   "",
+			Source:    note.SourceManual,
+			Status:    note.StatusDone,
+			Version:   0,
+			CreatedAt: note.Now(),
+			UpdatedAt: note.Now(),
+		}
+		if err := s.noteStore.Create(n); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.bus.Publish("note.created", n)
+		writeJSON(w, http.StatusCreated, n)
+		return
+	}
+
+	if input.Query == "" {
+		http.Error(w, "query is required", http.StatusBadRequest)
+		return
 	}
 
 	// If a source session ID is provided, rewrite the query using conversation context
@@ -89,6 +119,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 		Query:     input.Query,
 		Content:   "",
 		SessionID: string(sess.ID),
+		Source:    note.SourceAI,
 		Status:    note.StatusGenerating,
 		CreatedAt: note.Now(),
 		UpdatedAt: note.Now(),
@@ -152,6 +183,128 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	writeJSON(w, http.StatusCreated, n)
+}
+
+func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
+	noteID := chi.URLParam(r, "noteID")
+	var input struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	n, err := s.noteStore.Get(noteID)
+	if err != nil || n == nil {
+		http.Error(w, "note not found", http.StatusNotFound)
+		return
+	}
+	title := noteTitle(input.Title, input.Content, n.Query)
+	if err := s.noteStore.SaveContent(noteID, title, input.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, err := s.noteStore.Get(noteID)
+	if err != nil || updated == nil {
+		http.Error(w, "failed to retrieve updated note", http.StatusInternalServerError)
+		return
+	}
+	s.bus.Publish("note.manual_updated", updated)
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func noteTitle(title, content, fallback string) string {
+	if title != "" {
+		return title
+	}
+	for _, line := range strings.SplitN(content, "\n", 20) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "# ") {
+			return strings.TrimPrefix(line, "# ")
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "Untitled"
+}
+
+func (s *Server) handleTransformText(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Text        string `json:"text"`
+		Instruction string `json:"instruction"`
+		Model       string `json:"model,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if input.Text == "" || input.Instruction == "" {
+		http.Error(w, "text and instruction are required", http.StatusBadRequest)
+		return
+	}
+
+	systemPrompts := map[string]string{
+		"improve": "You are a writing assistant. Improve the writing quality, clarity, and flow of the provided text. Maintain the same tone and intent. Return only the improved text with no explanations.",
+		"shorter": "You are a writing assistant. Make the provided text shorter and more concise while preserving the key information. Return only the condensed text with no explanations.",
+		"longer":  "You are a writing assistant. Expand the provided text with more detail, examples, and context while maintaining the same tone and intent. Return only the expanded text with no explanations.",
+		"grammar": "You are a writing assistant. Fix any grammar, spelling, and punctuation errors in the provided text. Return only the corrected text with no explanations.",
+	}
+	systemPrompt, ok := systemPrompts[input.Instruction]
+	if !ok {
+		http.Error(w, "unknown instruction", http.StatusBadRequest)
+		return
+	}
+
+	var p provider.Provider
+	if input.Model != "" {
+		p = s.registry.ResolveProvider(input.Model)
+	}
+	if p == nil {
+		p = s.defaultProvider
+	}
+	if p == nil {
+		http.Error(w, "no LLM provider available", http.StatusServiceUnavailable)
+		return
+	}
+
+	model := input.Model
+	if model == "" {
+		if models := p.Models(); len(models) > 0 {
+			model = models[0].ID
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	promptContent, _ := json.Marshal(input.Text)
+	req := provider.StreamRequest{
+		Model:    model,
+		System:   []string{systemPrompt},
+		Messages: []provider.ModelMessage{{Role: "user", Content: promptContent}},
+		Abort:    ctx,
+	}
+
+	ch, err := p.StreamChat(ctx, req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("stream error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var result strings.Builder
+	for evt := range ch {
+		if evt.Type == provider.EventTextDelta {
+			result.WriteString(evt.Text)
+		}
+		if evt.Type == provider.EventError {
+			http.Error(w, fmt.Sprintf("LLM error: %s", evt.Error), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"result": strings.TrimSpace(result.String())})
 }
 
 // rewriteNoteQuery uses conversation context from a source session to rewrite

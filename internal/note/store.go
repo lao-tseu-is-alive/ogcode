@@ -21,20 +21,25 @@ func NewStore(database *db.DB) *Store {
 }
 
 func (s *Store) Create(note *Note) error {
+	src := note.Source
+	if src == "" {
+		src = SourceAI
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO note (id, directory, title, query, content, session_id, status, version, time_created, time_updated)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		note.ID, note.Directory, note.Title, note.Query, note.Content, note.SessionID, note.Status, note.Version, note.CreatedAt, note.UpdatedAt,
+		`INSERT INTO note (id, directory, title, query, content, session_id, status, source, version, time_created, time_updated)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		note.ID, note.Directory, note.Title, note.Query, note.Content, note.SessionID, note.Status, src, note.Version, note.CreatedAt, note.UpdatedAt,
 	)
 	if err != nil {
 		return err
 	}
+	note.Source = src
 	return s.writeFile(note)
 }
 
 func (s *Store) Get(id string) (*Note, error) {
 	row := s.db.QueryRow(
-		`SELECT id, directory, title, query, content, session_id, status, version, time_created, time_updated
+		`SELECT id, directory, title, query, content, session_id, status, source, version, time_created, time_updated
 		 FROM note WHERE id = ?`, id,
 	)
 	return scanNote(row)
@@ -42,7 +47,7 @@ func (s *Store) Get(id string) (*Note, error) {
 
 func (s *Store) GetBySessionID(sessionID string) (*Note, error) {
 	row := s.db.QueryRow(
-		`SELECT id, directory, title, query, content, session_id, status, version, time_created, time_updated
+		`SELECT id, directory, title, query, content, session_id, status, source, version, time_created, time_updated
 		 FROM note WHERE session_id = ?`, sessionID,
 	)
 	return scanNote(row)
@@ -50,7 +55,7 @@ func (s *Store) GetBySessionID(sessionID string) (*Note, error) {
 
 func (s *Store) List(directory string) ([]*Note, error) {
 	rows, err := s.db.Query(
-		`SELECT id, directory, title, query, content, session_id, status, version, time_created, time_updated
+		`SELECT id, directory, title, query, content, session_id, status, source, version, time_created, time_updated
 		 FROM note WHERE directory = ? ORDER BY time_updated DESC`, directory,
 	)
 	if err != nil {
@@ -144,12 +149,32 @@ func (s *Store) ListVersions(noteID string) ([]*NoteVersion, error) {
 	return versions, nil
 }
 
+// SaveContent updates a note's title and content, increments version, and records a version snapshot.
+func (s *Store) SaveContent(noteID, title, content string) error {
+	n, err := s.Get(noteID)
+	if err != nil || n == nil {
+		return fmt.Errorf("note not found: %w", err)
+	}
+	nextVersion := n.Version + 1
+	if err := s.UpdateContent(noteID, title, content, StatusDone, nextVersion); err != nil {
+		return err
+	}
+	v := &NoteVersion{
+		ID:        id.NewNoteVersionID(),
+		NoteID:    noteID,
+		Version:   nextVersion,
+		Content:   content,
+		CreatedAt: Now(),
+	}
+	return s.createVersion(v)
+}
+
 // RecoverStuckNotes finds all notes still in "generating" status and marks
 // them as "error". This runs on server startup to handle notes whose agent
 // loop was interrupted by a server restart or crash.
 func (s *Store) RecoverStuckNotes() ([]*Note, error) {
 	rows, err := s.db.Query(
-		`SELECT id, directory, title, query, content, session_id, status, version, time_created, time_updated
+		`SELECT id, directory, title, query, content, session_id, status, source, version, time_created, time_updated
 		 FROM note WHERE status = ?`, StatusGenerating,
 	)
 	if err != nil {
@@ -230,7 +255,7 @@ func (s *Store) removeFile(n *Note) error {
 func scanNote(row *sql.Row) (*Note, error) {
 	var n Note
 	var sessionID sql.NullString
-	err := row.Scan(&n.ID, &n.Directory, &n.Title, &n.Query, &n.Content, &sessionID, &n.Status, &n.Version, &n.CreatedAt, &n.UpdatedAt)
+	err := row.Scan(&n.ID, &n.Directory, &n.Title, &n.Query, &n.Content, &sessionID, &n.Status, &n.Source, &n.Version, &n.CreatedAt, &n.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -238,17 +263,23 @@ func scanNote(row *sql.Row) (*Note, error) {
 		return nil, fmt.Errorf("get note: %w", err)
 	}
 	n.SessionID = sessionID.String
+	if n.Source == "" {
+		n.Source = SourceAI
+	}
 	return &n, nil
 }
 
 func scanNoteRow(rows *sql.Rows) (*Note, error) {
 	var n Note
 	var sessionID sql.NullString
-	err := rows.Scan(&n.ID, &n.Directory, &n.Title, &n.Query, &n.Content, &sessionID, &n.Status, &n.Version, &n.CreatedAt, &n.UpdatedAt)
+	err := rows.Scan(&n.ID, &n.Directory, &n.Title, &n.Query, &n.Content, &sessionID, &n.Status, &n.Source, &n.Version, &n.CreatedAt, &n.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	n.SessionID = sessionID.String
+	if n.Source == "" {
+		n.Source = SourceAI
+	}
 	return &n, nil
 }
 

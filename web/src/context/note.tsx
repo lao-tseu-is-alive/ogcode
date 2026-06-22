@@ -1,6 +1,6 @@
 import { createContext, useContext, type ParentComponent } from 'solid-js';
 import { createSignal, createEffect, on } from 'solid-js';
-import { type Note, listNotes, createNote as createNoteAPI, deleteNote as deleteNoteAPI, getNote } from '../api/client';
+import { type Note, listNotes, createNote as createNoteAPI, deleteNote as deleteNoteAPI, getNote, updateNote as updateNoteAPI } from '../api/client';
 import { useServer } from './server';
 
 interface NoteContextValue {
@@ -8,6 +8,8 @@ interface NoteContextValue {
   loading: () => boolean;
   refresh: () => Promise<void>;
   createNote: (query: string, model?: string | null, sessionId?: string, viewportWidth?: number, viewportHeight?: number) => Promise<Note>;
+  createManualNote: () => Promise<Note>;
+  updateNote: (id: string, title: string, content: string) => Promise<Note>;
   deleteNote: (id: string) => Promise<void>;
   refreshNote: (id: string) => Promise<Note | null>;
 }
@@ -39,6 +41,23 @@ export const NoteProvider: ParentComponent = (props) => {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function createManualNote(): Promise<Note> {
+    setLoading(true);
+    try {
+      const n = await createNoteAPI('', server.directory(), undefined, undefined, undefined, undefined, 'manual');
+      setNotes((prev) => prev.find((x) => x.id === n.id) ? prev : [n, ...prev]);
+      return n;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateNote(id: string, title: string, content: string): Promise<Note> {
+    const n = await updateNoteAPI(id, title, content);
+    setNotes((prev) => prev.map((x) => (x.id === id ? n : x)));
+    return n;
   }
 
   async function deleteNote(id: string) {
@@ -104,6 +123,8 @@ export const NoteProvider: ParentComponent = (props) => {
     loading,
     refresh,
     createNote,
+    createManualNote,
+    updateNote,
     deleteNote,
     refreshNote,
   };
