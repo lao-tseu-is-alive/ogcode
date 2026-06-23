@@ -5,6 +5,9 @@ ogcode
 # Data directory
 .ogcode/
 
+# Downloaded embedding model cache (one-time download of ~86 MB ONNX weights)
+embed-model/
+
 # Web build artifacts
 # Dependencies
 node_modules/

@@ -272,7 +272,7 @@ func (s *Server) Start() error {
 		if err != nil {
 			slog.Warn("failed to read memory config from DB", "err", err)
 		} else if dbMemCfg.Enabled && dbMemCfg.EmbedProviderID != "" {
-			embedP, err := provider.NewEmbedProviderWithConfig(dbMemCfg.EmbedProviderID, dbMemCfg.EmbedAPIKey, dbMemCfg.EmbedModel, dbMemCfg.EmbedBaseURL)
+			embedP, err := provider.ResolveEmbedProvider(dbMemCfg.EmbedProviderID, dbMemCfg.EmbedAPIKey, dbMemCfg.EmbedModel, dbMemCfg.EmbedBaseURL)
 			if err != nil {
 				slog.Warn("memory config has unsupported embed provider; memory disabled", "err", err)
 			} else {

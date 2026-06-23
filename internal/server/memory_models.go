@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
@@ -62,6 +63,12 @@ func (s *Server) handleMemoryModels(w http.ResponseWriter, r *http.Request) {
 // baseURL overrides the env-var default when non-empty.
 func fetchProviderModels(ctx context.Context, providerID, modelType, apiKey, baseURL string) ([]string, error) {
 	switch providerID {
+	case "local":
+		// The built-in embedder ships a fixed model; there is nothing to fetch.
+		// Returning the model name keeps the model picker non-empty for users
+		// who switch providers and switch back.
+		return []string{provider.EmbedModelID}, nil
+
 	case "anthropic":
 		if modelType == "embed" {
 			return nil, fmt.Errorf("Anthropic does not support text embeddings")

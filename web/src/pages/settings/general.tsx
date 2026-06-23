@@ -234,7 +234,7 @@ const BASE_URL_HINTS: Record<string, string> = {
 
 function MemoryConfigForm() {
   const [enabled, setEnabled] = createSignal(false);
-  const [embedProvider, setEmbedProvider] = createSignal('openai');
+  const [embedProvider, setEmbedProvider] = createSignal('local');
   const [embedModel, setEmbedModel] = createSignal('');
   const [embedApiKey, setEmbedApiKey] = createSignal('');
   const [embedBaseUrl, setEmbedBaseUrl] = createSignal('');
@@ -251,7 +251,7 @@ function MemoryConfigForm() {
     try {
       const cfg = await getMemoryConfig();
       setEnabled(cfg.enabled);
-      setEmbedProvider(cfg.embedProviderId || 'openai');
+      setEmbedProvider(cfg.embedProviderId || 'local');
       setEmbedModel(cfg.embedModel || '');
       setEmbedApiKey(cfg.embedApiKey || '');
       setEmbedBaseUrl(cfg.embedBaseUrl || '');
@@ -346,7 +346,7 @@ function MemoryConfigForm() {
               </div>
               <div class="px-4 py-3 space-y-3">
                 {/* Provider + Model side by side */}
-                <div class="grid grid-cols-2 gap-3">
+                <div class={embedProvider() === 'local' ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
                   <div>
                     <label class="block text-[11px] text-zinc-500 mb-1.5">Provider</label>
                     <div class="relative">
@@ -369,50 +369,70 @@ function MemoryConfigForm() {
                       </svg>
                     </div>
                   </div>
-                  <div>
-                    <label class="block text-[11px] text-zinc-500 mb-1.5">Embedding model</label>
-                    <input
-                      type="text"
-                      value={embedModel()}
-                      onInput={e => setEmbedModel(e.currentTarget.value)}
-                      placeholder={EMBED_MODEL_HINTS[embedProvider()] || 'e.g. text-embedding-3-small'}
-                      class={inputClass}
-                    />
+                  {/* Embedding model — hidden for the built-in provider (fixed model) */}
+                  <Show when={embedProvider() !== 'local'}>
+                    <div>
+                      <label class="block text-[11px] text-zinc-500 mb-1.5">Embedding model</label>
+                      <input
+                        type="text"
+                        value={embedModel()}
+                        onInput={e => setEmbedModel(e.currentTarget.value)}
+                        placeholder={EMBED_MODEL_HINTS[embedProvider()] || 'e.g. text-embedding-3-small'}
+                        class={inputClass}
+                      />
+                    </div>
+                  </Show>
+                </div>
+                {/* Built-in provider info — replaces the API key / base URL fields */}
+                <Show when={embedProvider() === 'local'}>
+                  <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-3 py-2.5">
+                    <div class="flex items-start gap-2">
+                      <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div class="text-[11px] text-zinc-400 leading-snug">
+                        Runs <span class="text-zinc-200 font-medium">all-MiniLM-L6-v2</span> inside the ogcode binary — no API key or model setup needed.
+                        The ~86&nbsp;MB model weights download automatically on first use.
+                      </div>
+                    </div>
                   </div>
-                </div>
-                {/* API key */}
-                <div>
-                  <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
-                    API key
-                    <Show when={embedApiKey() === '__SET__'}>
-                      <span class="text-emerald-500 font-medium">● set</span>
-                    </Show>
-                  </label>
-                  <input
-                    type="password"
-                    value={embedApiKey() === '__SET__' ? '' : embedApiKey()}
-                    onInput={e => setEmbedApiKey(e.currentTarget.value)}
-                    placeholder={embedApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
-                    class={inputClass}
-                  />
-                </div>
-                {/* Base URL — only for providers that support it */}
-                <Show when={PROVIDER_DEFS.find(p => p.id === embedProvider())?.hasBaseURL}>
+                </Show>
+                {/* API key + Base URL — only for external providers */}
+                <Show when={embedProvider() !== 'local'}>
+                  {/* API key */}
                   <div>
                     <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
-                      Base URL
-                      <Show when={embedBaseUrl() === '__SET__'}>
+                      API key
+                      <Show when={embedApiKey() === '__SET__'}>
                         <span class="text-emerald-500 font-medium">● set</span>
                       </Show>
                     </label>
                     <input
-                      type="text"
-                      value={embedBaseUrl() === '__SET__' ? '' : embedBaseUrl()}
-                      onInput={e => setEmbedBaseUrl(e.currentTarget.value)}
-                      placeholder={BASE_URL_HINTS[embedProvider()] || 'leave blank to use default'}
+                      type="password"
+                      value={embedApiKey() === '__SET__' ? '' : embedApiKey()}
+                      onInput={e => setEmbedApiKey(e.currentTarget.value)}
+                      placeholder={embedApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
                       class={inputClass}
                     />
                   </div>
+                  {/* Base URL — only for providers that support it */}
+                  <Show when={PROVIDER_DEFS.find(p => p.id === embedProvider())?.hasBaseURL}>
+                    <div>
+                      <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                        Base URL
+                        <Show when={embedBaseUrl() === '__SET__'}>
+                          <span class="text-emerald-500 font-medium">● set</span>
+                        </Show>
+                      </label>
+                      <input
+                        type="text"
+                        value={embedBaseUrl() === '__SET__' ? '' : embedBaseUrl()}
+                        onInput={e => setEmbedBaseUrl(e.currentTarget.value)}
+                        placeholder={BASE_URL_HINTS[embedProvider()] || 'leave blank to use default'}
+                        class={inputClass}
+                      />
+                    </div>
+                  </Show>
                 </Show>
               </div>
             </div>

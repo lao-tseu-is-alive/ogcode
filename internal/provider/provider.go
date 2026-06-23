@@ -264,6 +264,26 @@ func NewProviderWithConfig(providerID, apiKey, baseURL string) (Provider, error)
 	}
 }
 
+// LocalEmbedderProvider is the provider ID for the inbuilt, no-dependency
+// embedder that runs a sentence-embedding model in-process. It needs no API
+// key and no network access.
+const LocalEmbedderProvider = "local"
+
+// ResolveEmbedProvider builds an embed Provider from memory-config fields. It
+// returns a provider that also satisfies Embedder. providerID selects the
+// backend:
+//   - "local" (or ""): the inbuilt LocalEmbedder (pure Go, embedded model).
+//   - "openai", "openrouter", "ollama": an OpenAI-compatible embed provider.
+//
+// For external providers, apiKey/model/baseURL override env defaults when
+// non-empty. The local provider ignores those fields.
+func ResolveEmbedProvider(providerID, apiKey, model, baseURL string) (Provider, error) {
+	if providerID == "" || providerID == LocalEmbedderProvider {
+		return NewLocalEmbedder(""), nil
+	}
+	return NewEmbedProviderWithConfig(providerID, apiKey, model, baseURL)
+}
+
 // NewChatProvider creates a Provider configured for LLM inference (chat/summarization).
 // providerID must be "anthropic", "openai", "openrouter", or "ollama".
 // If apiKey is non-empty it overrides the env-var key.
