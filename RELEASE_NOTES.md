@@ -1,44 +1,43 @@
-# Release Notes — v0.9.2
+# Release Notes — v0.10.0
 
-## Manual Notes & AI-Powered Block Editor
+## Onboarding Wizard & Live Provider Hot-Reload
 
-This release turns Notes from an AI-only, read-only artifact into a fully editable workspace. You can now **create blank notes manually**, **edit any note inline** with a Notion-style block editor, and **transform selected text with AI** — all without leaving the notes page.
+This release adds a **first-run onboarding wizard** that walks new users through connecting their first LLM provider, a **credential validation** flow that tests an API key before saving it, and a **runtime provider hot-reload** so credential changes take effect immediately — no server restart required.
 
 ---
 
 ### ✨ New Features
 
-- **Manual note creation** — A new **New Note** button on the notes page creates a blank note instantly (no AI loop required). Manual notes are tagged with a `source: 'manual'` badge so they're visually distinct from AI-generated notes. Empty manual notes drop you straight into the editor.
-- **Inline note editing** — Any note (AI-generated or manual) can now be edited in place. Click the **Edit** button on a note's detail page to switch into edit mode with an editable title and content. Saving increments the version and records a version snapshot, so the full history is preserved alongside AI-generated versions.
-- **Notion-style block editor** (`note-editor.tsx`) — A new rich block editor component powers editing:
-  - **Slash commands** — Type `/` to insert headings, bullet/numbered lists, to-dos, code blocks, blockquotes, dividers, bold, italic, links, and images.
-  - **Block reordering** — Drag blocks by their grip handle to reorder. Top/bottom drop indicators show the target position.
-  - **Image support** — Paste images, drag-and-drop from the OS, or use the slash `image` command. Images are embedded as base64 (max 5 MB) with editable alt text, replace, and remove actions.
-  - **Keyboard navigation** — Enter to split blocks (with list continuation), Backspace at the start of a line to merge, ArrowUp/ArrowDown to move between blocks.
-- **AI text transformation** — Select any text in the editor to reveal a floating toolbar with **Improve**, **Shorter**, **Longer**, and **Fix grammar** actions. The selected text is sent to your chosen LLM model and the result can be previewed and applied back into the note (single-block or cross-block selection supported).
-- **Model picker in edit mode** — A model selector (with `bottom` placement so it doesn't overflow the toolbar) lets you choose which LLM powers AI transformations for that note.
+- **Onboarding wizard** (`web/src/pages/onboarding.tsx`) — First-run users with no provider configured are redirected to a guided wizard that lets them pick a provider (Anthropic, OpenAI, OpenRouter, or Ollama), enter credentials, optionally test the key, and save. The wizard handles both keyless local Ollama and remote/cloud Ollama that needs an API key.
+- **Onboarding context & redirect gate** (`web/src/context/onboarding.tsx`) — A new SolidJS context tracks whether any provider is configured. `OnboardingGate` redirects first-run users to the wizard and respects a "Skip for now" dismissal so it never traps users in a loop. Fails open if the config check errors.
+- **Credential validation** (`internal/provider/validate.go`) — `ValidateCredentials` makes a minimal chat request with the supplied key to confirm the provider accepts it, returning a clear error otherwise. Used by the settings/onboarding "test key" flow.
+- **Runtime provider hot-reload** (`internal/server/server.go`) — `loadProviderMap()` and `reloadProviders()` rebuild the provider registry from the current DB + env credentials and swap it into the running server in place. The shared `*provider.Registry` pointer is preserved, and custom-model routing survives the swap. Saving a key in settings or completing the wizard now makes the provider's models available immediately.
+- **Default provider priority** (`internal/provider/provider.go`) — `Registry.Default()` returns the highest-priority registered provider (anthropic → openai → openrouter → ollama), so the loop runner picks up runtime credential changes instead of always falling back to the immutable startup default.
 
 ### 🔧 Backend
 
-- **`source` column on notes** — New `028_notes_source.sql` migration adds a `source TEXT NOT NULL DEFAULT 'ai'` column to the `note` table. The `Note` model, store, and all scan paths now read/write the source field. Existing notes default to `'ai'`.
-- **`PATCH /api/notes/{noteID}`** — New endpoint to update a note's title and content. `Store.SaveContent` increments the version, updates the row, and records a `NoteVersion` snapshot.
-- **`POST /api/notes/transform`** — New endpoint that runs an AI text transformation (improve / shorter / longer / grammar) using the configured provider, streaming the result and returning the trimmed text.
-- **Manual note creation** — `POST /api/notes` now accepts an optional `source` field. When `source === 'manual'`, a blank note is created immediately with status `done` and no agent loop is started.
-- **`note.created` / `note.manual_updated` events** — Manual note creation and manual edits publish events through the existing event bus.
+- **Thread-safe registry** — `Registry` now guards its `providers` map with a read/write lock. All read paths (`Get`, `List`, `ListModels`, `ResolveProvider`, `ModelSupportsImages`, `RefreshModels`) take a read lock or operate on a snapshot, and `ReplaceProviders` takes a write lock. This makes concurrent model lookups safe against hot-reload swaps.
+- **`POST /api/providers/config/{id}/validate`** (`internal/server/provider_routes.go`) — New endpoint that tests credentials without persisting them. The `"__SET__"` sentinel resolves to the stored key so a saved provider can be re-tested without re-entering the key. Always responds `200` with `{ok, error?}` for inline UI rendering.
+- **In-place reload on save** — `handleSetProviderConfig` now calls `reloadProviders()` after persisting, so newly saved credentials are live immediately.
+- **Loop runner respects registry default** (`internal/agent/loop.go`) — `RunLoop` and `RunSearchSession` now prefer `Registry.Default()` over the startup `DefaultProvider`, so credential changes applied at runtime take effect for new sessions.
 
 ### 🎨 Web UI
 
-- **Notes page** — New Note button added next to the search box; empty-state copy updated to mention both manual writing and "Save to Notes". Note cards show a "Manual note" badge with a pencil icon instead of the query text for manual notes.
-- **Note detail page** — Edit mode toggles the title input, swaps the markdown preview for the block editor, and hides the status badge / history / export / delete controls while editing. Cancel returns to view mode without saving. Manual notes with empty content show an "empty note" prompt with a hint to click Edit.
-- **Model selector placement** — `ModelSelector` now accepts a `placement` prop (`'top'` default, `'bottom'` for use in toolbars near the top of the viewport).
+- **Onboarding route & gate** (`web/src/app.tsx`) — New `/onboarding` route and `OnboardingGate` component redirect first-run users to the wizard. `OnboardingProvider` wraps the app tree.
+- **Validate API client** (`web/src/api/client.ts`) — New `validateProviderConfig()` helper and `ValidateResult` type for the test-key flow.
 
-### 📁 Files Changed (13 files)
+### 🧪 Tests
 
-**New:** `internal/db/028_notes_source.sql`, `web/src/components/note-editor.tsx`
+- **`internal/provider/registry_test.go`** — Covers `ReplaceProviders` hot-reload (add/drop providers), preservation of custom-model routing across a swap, `Default()` priority ordering, and a concurrent reader/writer race test (run with `-race`).
+- **`internal/server/provider_routes_test.go`** — End-to-end HTTP test verifying that with no provider configured the model list is empty, that POSTing an Anthropic key hot-reloads the provider and its models appear immediately, and that the validate endpoint always returns a well-formed `{ok, error}` body.
 
-**Modified (backend):** `internal/note/note.go`, `internal/note/store.go`, `internal/server/note_routes.go`, `internal/server/routes.go`, `internal/cli/version.go`, `internal/version/version.go`
+### 📁 Files Changed
 
-**Modified (web):** `web/src/api/client.ts`, `web/src/components/model-selector.tsx`, `web/src/context/note.tsx`, `web/src/pages/note-detail.tsx`, `web/src/pages/notes.tsx`
+**New:** `internal/provider/validate.go`, `internal/provider/registry_test.go`, `internal/server/provider_routes_test.go`, `web/src/context/onboarding.tsx`, `web/src/pages/onboarding.tsx`
+
+**Modified (backend):** `internal/agent/loop.go`, `internal/provider/provider.go`, `internal/server/provider_routes.go`, `internal/server/routes.go`, `internal/server/server.go`, `internal/cli/version.go`, `internal/version/version.go`
+
+**Modified (web):** `web/src/api/client.ts`, `web/src/app.tsx`
 
 ---
 
@@ -71,4 +70,4 @@ go install github.com/prasenjeet-symon/ogcode@latest
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.9.1...v0.9.2*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.9.2...v0.10.0*
