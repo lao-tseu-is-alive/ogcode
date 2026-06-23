@@ -308,11 +308,19 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Eagerly prefetch the local embedder's model weights in the background so
-	// the one-time ~86 MB download completes during startup rather than
-	// blocking the first memory-related agent turn. No-op for non-local embed
-	// providers.
-	mem.PrefetchEmbedder(context.Background())
+	// Eagerly download the inbuilt local embedder's model weights (the default
+	// embedding backend) before the server accepts requests. The local embedder
+	// is the default and may be enabled at runtime via the settings UI without a
+	// restart, so we always run this preflight regardless of whether agentic
+	// memory is configured yet — it ensures the one-time ~86 MB download is out
+	// of the way. Subsequent LocalEmbedder instances share the cache directory
+	// and skip the download entirely. Errors are non-fatal: the next Embed call
+	// retries, so we log and continue rather than refusing to start.
+	dlCtx, dlCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	if err := provider.EnsureLocalEmbedderModel(dlCtx); err != nil {
+		slog.Warn("local embedder: startup model download failed; will retry on first use", "err", err)
+	}
+	dlCancel()
 
 	// Initialize MCP client (for tool exposure, unrelated to agentic memory
 	// database, which is now local SQLite with its own embed provider)

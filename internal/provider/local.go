@@ -81,33 +81,60 @@ func (e *LocalEmbedder) init(ctx context.Context) error {
 	return e.initErr
 }
 
-// Prefetch kicks off the lazy initialization in a background goroutine so the
-// (potentially slow) one-time model download happens at server startup rather
-// than blocking the first memory-related agent turn. It is fire-and-forget:
-// the goroutine runs init under the sync.Once guard, so any later Embed call
-// either joins the in-flight init (the Once serializes them) or returns
-// immediately once it has completed. Errors are logged but never surfaced to
-// the caller — the next Embed call will return them if init failed.
+// EnsureModelDownloaded guarantees the local embedder's model weights are
+// present on disk (downloading them on first use and verifying the SHA-256)
+// but does NOT build the inference pipeline. It is meant for a startup
+// preflight: call it once at server boot so the one-time ~86 MB download
+// completes before the server accepts requests. A LocalEmbedder later used for
+// inference (e.g. by agentic memory) shares the same cache directory, finds the
+// cached model, and only pays the pipeline-build cost — never re-downloading.
 //
-// The supplied context governs the download; callers should pass a long-lived
-// context (e.g. context.Background()) since the ~86 MB download can take a
-// while on slow connections.
-func (e *LocalEmbedder) Prefetch(ctx context.Context) {
-	go func() {
-		t0 := time.Now()
-		if err := e.init(ctx); err != nil {
-			slog.Warn("local embedder: background prefetch failed; will retry on next Embed", "err", err, "duration", time.Since(t0))
-			return
-		}
-		slog.Info("local embedder: background prefetch complete", "duration", time.Since(t0))
-	}()
+// It is idempotent: a sidecar marker records the verified hash so subsequent
+// calls skip both the download and the full-file hash check, returning
+// immediately. Safe to call concurrently with init/Embed on another instance
+// sharing the same cache directory (file writes are idempotent and the final
+// rename is atomic).
+func (e *LocalEmbedder) EnsureModelDownloaded(ctx context.Context) error {
+	t0 := time.Now()
+	if err := e.prepareModel(ctx); err != nil {
+		return err
+	}
+	slog.Info("local embedder: model ready", "duration", time.Since(t0))
+	return nil
+}
+
+// EnsureLocalEmbedderModel performs a blocking preflight that guarantees the
+// inbuilt local embedder's model weights are present on disk in the default
+// cache directory. It downloads the ~86 MB ONNX file on first use; subsequent
+// calls hit the cache and return immediately.
+//
+// Call this once at server startup (before serving requests) so the one-time
+// download completes up front, regardless of whether agentic memory is enabled
+// at boot — the local embedder is the default and may be enabled at runtime via
+// the settings UI without a restart. A non-nil error means the download could
+// not complete (e.g. no network); the caller may continue, as the next Embed
+// call will retry.
+func EnsureLocalEmbedderModel(ctx context.Context) error {
+	e := NewLocalEmbedder("")
+	return e.EnsureModelDownloaded(ctx)
 }
 
 func (e *LocalEmbedder) initLocked(ctx context.Context) error {
-	t0 := time.Now()
+	if err := e.prepareModel(ctx); err != nil {
+		return err
+	}
+	return e.buildPipeline(ctx)
+}
+
+// prepareModel materializes the embedded tokenizer assets to baseDir and
+// ensures the ONNX weight file is present, downloading it on first use and
+// verifying its SHA-256. It does NOT build the inference pipeline, so it can be
+// reused both by the lazy init path (which then builds the pipeline) and by the
+// startup preflight (which only needs the file on disk). Idempotent: a sidecar
+// marker records the verified hash so subsequent calls skip the download.
+func (e *LocalEmbedder) prepareModel(ctx context.Context) error {
 	if err := os.MkdirAll(e.baseDir, 0o755); err != nil {
-		e.initErr = fmt.Errorf("local embedder: create cache dir: %w", err)
-		return e.initErr
+		return fmt.Errorf("local embedder: create cache dir: %w", err)
 	}
 
 	// Materialize the small embedded assets (tokenizer/config). These are tiny
@@ -130,7 +157,7 @@ func (e *LocalEmbedder) initLocked(ctx context.Context) error {
 		string(existing) == embedmodel.ModelSHA256 {
 		if _, statErr := os.Stat(modelPath); statErr == nil {
 			slog.Info("local embedder: using cached model", "dir", e.baseDir)
-			return e.buildPipeline(ctx)
+			return nil
 		}
 	}
 
@@ -140,9 +167,7 @@ func (e *LocalEmbedder) initLocked(ctx context.Context) error {
 	if err := os.WriteFile(markerPath, []byte(embedmodel.ModelSHA256), 0o644); err != nil {
 		slog.Warn("local embedder: failed to write model marker", "err", err)
 	}
-	slog.Info("local embedder: model ready", "duration", time.Since(t0))
-
-	return e.buildPipeline(ctx)
+	return nil
 }
 
 // ensureModel downloads the ONNX weights to modelPath, streaming to a temp

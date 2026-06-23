@@ -79,22 +79,6 @@ func (m *Memory) Enabled() bool {
 	return m.enabled && m.Graph != nil
 }
 
-// PrefetchEmbedder kicks off background initialization of the configured
-// embedder when it supports lazy prefetching (e.g. the inbuilt LocalEmbedder,
-// which downloads ~86 MB of model weights on first use). This is a no-op for
-// embedders that do not implement prefetcher, so it is safe to call
-// unconditionally at startup.
-func (m *Memory) PrefetchEmbedder(ctx context.Context) {
-	if m == nil || m.Graph == nil || m.Graph.Embed == nil {
-		return
-	}
-	if c, ok := m.Graph.Embed.(*embedClient); ok {
-		if p, ok := c.e.(interface{ Prefetch(context.Context) }); ok {
-			p.Prefetch(ctx)
-		}
-	}
-}
-
 // ReadMemory fetches the full session knowledge graph as text.
 func (m *Memory) ReadMemory(ctx context.Context, sessionID string) string {
 	if !m.Enabled() {
