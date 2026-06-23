@@ -24,33 +24,29 @@ type Memory struct {
 }
 
 // GraphOpts holds dependencies for initializing agentic memory.
+//
+// Embedding is always produced by the inbuilt local embedder
+// (all-MiniLM-L6-v2) — there is no embedder configuration. The synthesis LLM
+// (topic/concept inference and recall) is NOT configured here: it is supplied
+// per request by the caller, using the same provider+model the user selected
+// for their session. See WriteMemory and RecallWith.
 type GraphOpts struct {
-	// ChatProvider is the provider used for topic/concept inference and recall.
-	// It may be the same as EmbedProvider or different.
-	ChatProvider provider.Provider
-	// ChatModel is the specific model ID to use for inference. If empty, the
-	// provider's first available model is used.
-	ChatModel string
-	// EmbedProvider is the provider used for text embeddings. Must satisfy provider.Embedder.
+	// EmbedProvider is the provider used for text embeddings. Must satisfy
+	// provider.Embedder. In practice this is always the inbuilt LocalEmbedder.
 	EmbedProvider provider.Provider
 }
 
-// New creates a Memory backed by local SQLite graph store.
-// If chatProvider is nil but embedProvider is non-nil, AddFact can still store
-// facts without LLM topic inference.
+// New creates a Memory backed by local SQLite graph store. The synthesis LLM
+// is not wired here — it is injected per call via WriteMemory/RecallWith so
+// that memory uses the session's currently selected model.
 func New(store *Store, opts *GraphOpts) *Memory {
 	m := &Memory{Store: store}
 	if store != nil {
 		m.enabled = true
 		m.Graph = &Graph{Store: store}
-		if opts != nil {
-			if opts.ChatProvider != nil {
-				m.Graph.Chat = NewChatClient(opts.ChatProvider, opts.ChatModel)
-			}
-			if opts.EmbedProvider != nil {
-				if e, ok := opts.EmbedProvider.(provider.Embedder); ok {
-					m.Graph.Embed = NewEmbedClient(e)
-				}
+		if opts != nil && opts.EmbedProvider != nil {
+			if e, ok := opts.EmbedProvider.(provider.Embedder); ok {
+				m.Graph.Embed = NewEmbedClient(e)
 			}
 		}
 	}
@@ -58,12 +54,7 @@ func New(store *Store, opts *GraphOpts) *Memory {
 		if m.Graph.Embed == nil {
 			slog.Warn("agentic memory: no embedder configured — semantic recall unavailable")
 		} else {
-			slog.Info("agentic memory enabled", "chatProvider", func() string {
-				if opts != nil && opts.ChatProvider != nil {
-					return opts.ChatProvider.ID()
-				}
-				return "none"
-			}(), "embedProvider", func() string {
+			slog.Info("agentic memory enabled", "embedProvider", func() string {
 				if opts != nil && opts.EmbedProvider != nil {
 					return opts.EmbedProvider.ID()
 				}
@@ -103,8 +94,10 @@ func (m *Memory) ReadMemory(ctx context.Context, sessionID string) string {
 	return result
 }
 
-// RecallMemory performs semantic recall for a specific question.
-func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string) string {
+// RecallMemory performs semantic recall for a specific question. chat is the
+// synthesis LLM client built from the session's selected provider+model; when
+// nil, recall returns the raw semantically filtered tree without synthesis.
+func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string, chat ChatClient) string {
 	if !m.Enabled() {
 		return ""
 	}
@@ -120,6 +113,7 @@ func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string) s
 		Limit:     50,
 		MaxRounds: 3,
 		Threshold: 0.7,
+		Chat:      chat,
 	})
 	if err != nil {
 		slog.Warn("memory recall failed", "err", err)
@@ -137,8 +131,14 @@ func (m *Memory) RecallMemory(ctx context.Context, sessionID, question string) s
 	return display
 }
 
-// WriteMemory persists a conversation turn.
-func (m *Memory) WriteMemory(ctx context.Context, sessionID, question, response string) {
+// WriteMemory persists a conversation turn. chat is the synthesis LLM client
+// to use for topic/concept inference and enrichment — it should be built from
+// the same provider+model the user selected for the current session. When chat
+// is nil, the fact is stored without LLM topic inference (placement falls back
+// to heuristic). Synthesis runs in a background goroutine; the chat client is
+// captured at dispatch time so it reflects the session's model even though the
+// call is asynchronous.
+func (m *Memory) WriteMemory(ctx context.Context, sessionID, question, response string, chat ChatClient) {
 	if !m.Enabled() {
 		return
 	}
@@ -150,6 +150,7 @@ func (m *Memory) WriteMemory(ctx context.Context, sessionID, question, response 
 			SessionID: sessionID,
 			Question:  question,
 			Response:  response,
+			Chat:      chat,
 		})
 		if err != nil {
 			slog.Warn("memory_add call failed", "err", err)

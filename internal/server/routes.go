@@ -35,7 +35,6 @@ func (s *Server) routes() http.Handler {
 
 		r.Get("/memory/config", s.handleGetMemoryConfig)
 		r.Post("/memory/config", s.handleSetMemoryConfig)
-		r.Get("/memory/models", s.handleMemoryModels)
 
 		r.Get("/callgraph/agent-config", s.handleGetCallGraphAgentConfig)
 		r.Post("/callgraph/agent-config", s.handleSetCallGraphAgentConfig)

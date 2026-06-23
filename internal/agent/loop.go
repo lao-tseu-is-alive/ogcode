@@ -268,7 +268,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 			slog.Info("agent loop breaking", "session", sessionID, "reason", "last assistant finished", "finish", finish, "totalMessages", len(messages))
 			exitReason = finish
 			if memoryEnabled {
-				lr.writeMemory(ctx, sessionID)
+				lr.writeMemory(ctx, sessionID, p, modelID)
 			}
 			return nil
 		}
@@ -912,7 +912,7 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 			slog.Info("agent loop complete", "session", sessionID, "steps", step, "reason", finishReason)
 			exitReason = finishReason
 			if memoryEnabled {
-				lr.writeMemory(ctx, sessionID)
+				lr.writeMemory(ctx, sessionID, p, modelID)
 			}
 			return nil
 		}
@@ -966,13 +966,15 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 	// Reached MaxSteps with tool calls still pending — treat as stop.
 	exitReason = "stop"
 	if memoryEnabled {
-		lr.writeMemory(ctx, sessionID)
+		lr.writeMemory(ctx, sessionID, p, modelID)
 	}
 	return nil
 }
 
 // writeMemory extracts the last conversation turn and persists it via memory_add.
-func (lr *LoopRunner) writeMemory(ctx context.Context, sessionID session.SessionID) {
+// chatProvider/chatModel are the session's resolved LLM — memory synthesis uses
+// the same model the user is chatting with, captured here at dispatch time.
+func (lr *LoopRunner) writeMemory(ctx context.Context, sessionID session.SessionID, chatProvider provider.Provider, chatModel string) {
 	messages, err := lr.Store.GetMessages(sessionID, "", 1000)
 	if err != nil {
 		slog.Warn("writeMemory: failed to load messages", "err", err)
@@ -1014,7 +1016,11 @@ func (lr *LoopRunner) writeMemory(ctx context.Context, sessionID session.Session
 	}
 
 	slog.Info("writeMemory: persisting turn", "session", sessionID, "questionLen", len(userText), "responseLen", len(responseText))
-	lr.Memory.WriteMemory(ctx, string(sessionID), userText, responseText)
+	var chat memory.ChatClient
+	if chatProvider != nil {
+		chat = memory.NewChatClient(chatProvider, chatModel)
+	}
+	lr.Memory.WriteMemory(ctx, string(sessionID), userText, responseText, chat)
 }
 
 // buildTurnResponse serializes all assistant messages after a given user message

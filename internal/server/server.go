@@ -238,73 +238,26 @@ func (s *Server) Start() error {
 	}
 
 	var mem *memory.Memory
-	if strings.EqualFold(os.Getenv("OGCODE_AGENTIC_MEMORY_MODE"), "true") {
-		// Legacy env-var path (takes precedence over DB config).
-		embedProviderID := os.Getenv("OGCODE_EMBED_PROVIDER")
-		if embedProviderID == "" {
-			return fmt.Errorf("OGCODE_AGENTIC_MEMORY_MODE is enabled but OGCODE_EMBED_PROVIDER is not set; set it to openai, openrouter, or ollama")
-		}
-		embedP := registry.Get(embedProviderID)
-		if embedP == nil {
-			return fmt.Errorf("unknown embed provider %q; ensure corresponding API key is set", embedProviderID)
-		}
-		if _, ok := embedP.(provider.Embedder); !ok {
-			return fmt.Errorf("provider %q does not support embeddings; choose openai, openrouter, or ollama", embedProviderID)
-		}
-		if os.Getenv("OGCODE_EMBED_MODEL") == "" {
-			return fmt.Errorf("OGCODE_AGENTIC_MEMORY_MODE is enabled but OGCODE_EMBED_MODEL is not set; set it to e.g. text-embedding-3-small (openai) or nomic-embed-text (ollama)")
-		}
-
+	// Agentic memory is enabled from the settings UI. Embedding is always
+	// produced by the inbuilt local embedder (all-MiniLM-L6-v2) — zero config,
+	// no third-party service. The synthesis LLM is NOT configured here: it is
+	// injected per request (WriteMemory/Recall) using the session's selected
+	// model, so memory rides on whatever LLM the user is chatting with.
+	dbMemCfg, err := session.GetMemoryConfig(globalDatabase)
+	if err != nil {
+		slog.Warn("failed to read memory config from DB", "err", err)
+	} else if dbMemCfg.Enabled {
+		embedP := provider.NewEmbedder()
 		memStore, err := memory.Open(memory.DefaultDBPath())
 		if err != nil {
-			return fmt.Errorf("memory db: %w", err)
-		}
-
-		mem = memory.New(memStore, &memory.GraphOpts{
-			ChatProvider:  defaultProvider,
-			EmbedProvider: embedP,
-		})
-		s.mem = mem
-		toolRegistry.Register(tool.NewMemoryRecallTool(mem))
-	} else {
-		// DB-config path: user enabled memory from the settings UI.
-		dbMemCfg, err := session.GetMemoryConfig(globalDatabase)
-		if err != nil {
-			slog.Warn("failed to read memory config from DB", "err", err)
-		} else if dbMemCfg.Enabled && dbMemCfg.EmbedProviderID != "" {
-			embedP, err := provider.ResolveEmbedProvider(dbMemCfg.EmbedProviderID, dbMemCfg.EmbedAPIKey, dbMemCfg.EmbedModel, dbMemCfg.EmbedBaseURL)
-			if err != nil {
-				slog.Warn("memory config has unsupported embed provider; memory disabled", "err", err)
-			} else {
-				// Resolve chat provider: use DB config if set, otherwise fall back to defaultProvider.
-				chatP := defaultProvider
-				chatModel := ""
-				if dbMemCfg.ChatProviderID != "" {
-					cp, err := provider.NewChatProviderWithConfig(dbMemCfg.ChatProviderID, dbMemCfg.ChatAPIKey, dbMemCfg.ChatModel, dbMemCfg.ChatBaseURL)
-					if err != nil {
-						slog.Warn("memory config has unsupported chat provider; using default", "err", err)
-					} else {
-						chatP = cp
-						chatModel = dbMemCfg.ChatModel
-					}
-				}
-
-				memStore, err := memory.Open(memory.DefaultDBPath())
-				if err != nil {
-					slog.Warn("failed to open memory store; memory disabled", "err", err)
-				} else {
-					mem = memory.New(memStore, &memory.GraphOpts{
-						ChatProvider:  chatP,
-						ChatModel:     chatModel,
-						EmbedProvider: embedP,
-					})
-					s.mem = mem
-					toolRegistry.Register(tool.NewMemoryRecallTool(mem))
-					slog.Info("agentic memory enabled via DB config",
-						"embed_provider", dbMemCfg.EmbedProviderID, "embed_model", dbMemCfg.EmbedModel,
-						"chat_provider", chatP.ID(), "chat_model", chatModel)
-				}
-			}
+			slog.Warn("failed to open memory store; memory disabled", "err", err)
+		} else {
+			mem = memory.New(memStore, &memory.GraphOpts{
+				EmbedProvider: embedP,
+			})
+			s.mem = mem
+			toolRegistry.Register(tool.NewMemoryRecallTool(mem, registry))
+			slog.Info("agentic memory enabled (local embedder; synthesis uses session LLM)")
 		}
 	}
 

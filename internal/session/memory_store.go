@@ -8,32 +8,30 @@ import (
 )
 
 // MemoryConfig holds the user's agentic-memory configuration stored in the DB.
+//
+// Embedding is always produced by the inbuilt local embedder
+// (all-MiniLM-L6-v2) — there is no embedder configuration. The synthesis LLM
+// is not configured here either: it uses the session's selected model at call
+// time. So the only persisted knob is whether agentic memory is enabled.
+//
+// The underlying memory_config table still carries legacy embed/chat columns
+// from earlier releases; they are no longer read or written by this struct but
+// are retained in the schema for migration safety.
 type MemoryConfig struct {
-	Enabled         bool   `json:"enabled"`
-	EmbedProviderID string `json:"embedProviderId"`
-	EmbedModel      string `json:"embedModel"`
-	EmbedAPIKey     string `json:"embedApiKey"`
-	EmbedBaseURL    string `json:"embedBaseUrl"`
-	ChatProviderID  string `json:"chatProviderId"`
-	ChatModel       string `json:"chatModel"`
-	ChatAPIKey      string `json:"chatApiKey"`
-	ChatBaseURL     string `json:"chatBaseUrl"`
-	UpdatedAt       int64  `json:"updatedAt"`
+	Enabled   bool  `json:"enabled"`
+	UpdatedAt int64 `json:"updatedAt"`
 }
 
 // GetMemoryConfig returns the stored agentic-memory config. If the row does not
-// exist, it returns a zero-value config (disabled, empty fields).
+// exist, it returns a zero-value config (disabled).
 func GetMemoryConfig(database *db.DB) (*MemoryConfig, error) {
 	var c MemoryConfig
 	var enabled int
 	var updated int64
 	err := database.QueryRow(`
-			SELECT enabled, embed_provider_id, embed_model, embed_api_key, embed_base_url,
-			       chat_provider_id, chat_model, chat_api_key, chat_base_url, time_updated
+			SELECT enabled, time_updated
 			FROM memory_config WHERE id = 1
-		`).Scan(
-		&enabled, &c.EmbedProviderID, &c.EmbedModel, &c.EmbedAPIKey, &c.EmbedBaseURL,
-		&c.ChatProviderID, &c.ChatModel, &c.ChatAPIKey, &c.ChatBaseURL, &updated)
+		`).Scan(&enabled, &updated)
 	if err == sql.ErrNoRows {
 		return &MemoryConfig{}, nil
 	}
@@ -42,13 +40,11 @@ func GetMemoryConfig(database *db.DB) (*MemoryConfig, error) {
 	}
 	c.Enabled = enabled != 0
 	c.UpdatedAt = updated
-	if c.EmbedModel == "" {
-		c.EmbedModel = "text-embedding-3-small"
-	}
 	return &c, nil
 }
 
 // SetMemoryConfig upserts the agentic-memory config row (id is always 1).
+// Legacy embed/chat columns are reset to defaults — they are no longer used.
 func SetMemoryConfig(database *db.DB, c *MemoryConfig) error {
 	enabled := 0
 	if c.Enabled {
@@ -57,7 +53,7 @@ func SetMemoryConfig(database *db.DB, c *MemoryConfig) error {
 	_, err := database.Exec(`
 			INSERT INTO memory_config (id, enabled, embed_provider_id, embed_model, embed_api_key, embed_base_url,
 			                           chat_provider_id, chat_model, chat_api_key, chat_base_url, time_updated)
-			VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (1, ?, '', '', '', '', '', '', '', '', ?)
 			ON CONFLICT(id) DO UPDATE SET
 				enabled = excluded.enabled,
 				embed_provider_id = excluded.embed_provider_id,
@@ -69,23 +65,16 @@ func SetMemoryConfig(database *db.DB, c *MemoryConfig) error {
 				chat_api_key = excluded.chat_api_key,
 				chat_base_url = excluded.chat_base_url,
 				time_updated = excluded.time_updated
-	`, enabled, c.EmbedProviderID, c.EmbedModel, c.EmbedAPIKey, c.EmbedBaseURL,
-		c.ChatProviderID, c.ChatModel, c.ChatAPIKey, c.ChatBaseURL, Now())
+	`, enabled, Now())
 	if err != nil {
 		return fmt.Errorf("set memory config: %w", err)
 	}
 	return nil
 }
 
-// MaskedMemoryConfig returns a copy of c with API keys replaced by a sentinel
-// so they can be safely sent to the UI.
+// MaskedMemoryConfig returns a copy of c. With the embed/chat fields gone there
+// are no secrets to mask, but the function is retained for API compatibility.
 func MaskedMemoryConfig(c *MemoryConfig) *MemoryConfig {
 	mc := *c
-	if mc.EmbedAPIKey != "" {
-		mc.EmbedAPIKey = "__SET__"
-	}
-	if mc.ChatAPIKey != "" {
-		mc.ChatAPIKey = "__SET__"
-	}
 	return &mc
 }

@@ -150,19 +150,6 @@ func (s *Server) handleSetMemoryConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Preserve existing API keys when the sentinel "__SET__" is sent.
-	existing, err := session.GetMemoryConfig(s.globalDB)
-	if err != nil {
-		http.Error(w, "failed to read memory config", http.StatusInternalServerError)
-		return
-	}
-	if incoming.EmbedAPIKey == "__SET__" {
-		incoming.EmbedAPIKey = existing.EmbedAPIKey
-	}
-	if incoming.ChatAPIKey == "__SET__" {
-		incoming.ChatAPIKey = existing.ChatAPIKey
-	}
-
 	if err := session.SetMemoryConfig(s.globalDB, &incoming); err != nil {
 		http.Error(w, "failed to save memory config", http.StatusInternalServerError)
 		return

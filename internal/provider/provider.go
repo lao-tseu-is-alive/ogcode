@@ -266,52 +266,16 @@ func NewProviderWithConfig(providerID, apiKey, baseURL string) (Provider, error)
 
 // LocalEmbedderProvider is the provider ID for the inbuilt, no-dependency
 // embedder that runs a sentence-embedding model in-process. It needs no API
-// key and no network access.
+// key and no network access. It is the only embedder ogcode supports —
+// agentic memory embeddings are always produced locally.
 const LocalEmbedderProvider = "local"
 
-// ResolveEmbedProvider builds an embed Provider from memory-config fields. It
-// returns a provider that also satisfies Embedder. providerID selects the
-// backend:
-//   - "local" (or ""): the inbuilt LocalEmbedder (pure Go, embedded model).
-//   - "openai", "openrouter", "ollama": an OpenAI-compatible embed provider.
-//
-// For external providers, apiKey/model/baseURL override env defaults when
-// non-empty. The local provider ignores those fields.
-func ResolveEmbedProvider(providerID, apiKey, model, baseURL string) (Provider, error) {
-	if providerID == "" || providerID == LocalEmbedderProvider {
-		return NewLocalEmbedder(""), nil
-	}
-	return NewEmbedProviderWithConfig(providerID, apiKey, model, baseURL)
-}
-
-// NewChatProvider creates a Provider configured for LLM inference (chat/summarization).
-// providerID must be "anthropic", "openai", "openrouter", or "ollama".
-// If apiKey is non-empty it overrides the env-var key.
-// If model is non-empty it is used as the model ID for inference.
-// Deprecated: Use NewChatProviderWithConfig for full control over baseURL.
-func NewChatProvider(providerID, apiKey, model string) (Provider, error) {
-	return NewChatProviderWithConfig(providerID, apiKey, model, "")
-}
-
-// NewChatProviderWithConfig creates a Provider configured for LLM inference with
-// optional apiKey, model, and baseURL overrides. Env-var values are used as the
-// base; non-empty parameters override them.
-func NewChatProviderWithConfig(providerID, apiKey, model, baseURL string) (Provider, error) {
-	switch providerID {
-	case "anthropic":
-		p := NewAnthropicProvider()
-		if apiKey != "" {
-			p.apiKey = apiKey
-		}
-		if model != "" {
-			p.model = model
-		}
-		return p, nil
-	case "openai", "openrouter", "ollama":
-		return NewEmbedProviderWithConfig(providerID, apiKey, model, baseURL)
-	default:
-		return nil, fmt.Errorf("unknown chat provider %q; must be anthropic, openai, openrouter, or ollama", providerID)
-	}
+// NewEmbedder returns the inbuilt local embedder. ogcode no longer supports
+// third-party embedders (OpenAI, OpenRouter, Ollama) for agentic memory — the
+// pure-Go all-MiniLM-L6-v2 model runs in-process with zero configuration.
+// The returned provider also satisfies Embedder.
+func NewEmbedder() Provider {
+	return NewLocalEmbedder("")
 }
 
 // RefreshModels clears cached model lists for all providers that support it,

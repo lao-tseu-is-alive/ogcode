@@ -157,14 +157,6 @@ export function getConfig(): Promise<ConfigInfo> {
 // Memory config API
 export interface MemoryConfig {
   enabled: boolean;
-  embedProviderId: string;
-  embedModel: string;
-  embedApiKey: string;
-  embedBaseUrl: string;
-  chatProviderId: string;
-  chatModel: string;
-  chatApiKey: string;
-  chatBaseUrl: string;
   updatedAt: number;
 }
 
@@ -177,13 +169,6 @@ export function setMemoryConfig(cfg: Omit<MemoryConfig, 'updatedAt'>): Promise<M
     method: 'POST',
     body: JSON.stringify(cfg),
   });
-}
-
-export function fetchMemoryModels(provider: string, type: 'embed' | 'chat', apiKey?: string, baseUrl?: string): Promise<string[]> {
-  const params = new URLSearchParams({ provider, type });
-  if (apiKey) params.set('apiKey', apiKey);
-  if (baseUrl) params.set('baseUrl', baseUrl);
-  return fetchAPI(`/memory/models?${params}`);
 }
 
 // Provider config API

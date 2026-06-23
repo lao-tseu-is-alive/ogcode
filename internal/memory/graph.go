@@ -28,9 +28,13 @@ type EmbedClient interface {
 }
 
 // Graph orchestrates the knowledge graph lifecycle.
+//
+// Embed is the inbuilt local embedder (always present when memory is enabled).
+// The synthesis LLM is NOT stored here — it is supplied per call via
+// GraphOptions.Chat / RecallOptions.Chat so memory uses the session's
+// currently selected model rather than a server-wide default.
 type Graph struct {
 	Store *Store
-	Chat  ChatClient
 	Embed EmbedClient
 }
 
@@ -40,6 +44,11 @@ type GraphOptions struct {
 	Question  string
 	Response  string
 	UserTopic string
+	// Chat is the synthesis LLM client used for topic/concept inference and
+	// enrichment on this call. It should be built from the session's selected
+	// provider+model. When nil, placement and enrichment fall back to
+	// heuristics (no LLM call).
+	Chat ChatClient
 }
 
 // AddFact stores a new fact and reorganizes the graph. Embedding is required.
@@ -74,7 +83,7 @@ func (g *Graph) AddFact(ctx context.Context, opts GraphOptions) (*Node, error) {
 		return nil, fmt.Errorf("list concepts: %w", err)
 	}
 
-	placement, related, err := g.inferPlacement(ctx, opts, topics, existingConcepts, content)
+	placement, related, err := g.inferPlacement(ctx, opts, topics, existingConcepts, content, opts.Chat)
 	if err != nil {
 		return nil, fmt.Errorf("infer placement: %w", err)
 	}
@@ -135,8 +144,8 @@ func (g *Graph) AddFact(ctx context.Context, opts GraphOptions) (*Node, error) {
 		return nil // eat error; embedding failures shouldn't break storage
 	})
 	eg.Go(func() error {
-		if g.Chat != nil {
-			labels, summary := g.inferLabelsAndSummary(ctx, opts.Question, opts.Response, placement.Topic)
+		if opts.Chat != nil {
+			labels, summary := g.inferLabelsAndSummary(ctx, opts.Question, opts.Response, placement.Topic, opts.Chat)
 			if labels != nil || summary != "" {
 				_ = g.Store.UpdateNodeEnrichment(opts.SessionID, factNode.Key, summary, labels)
 			}
@@ -179,8 +188,8 @@ type RelatedConcept struct {
 	Weight    float32
 }
 
-func (g *Graph) inferLabelsAndSummary(ctx context.Context, question, response, topic string) ([]string, string) {
-	if g.Chat == nil {
+func (g *Graph) inferLabelsAndSummary(ctx context.Context, question, response, topic string, chat ChatClient) ([]string, string) {
+	if chat == nil {
 		return nil, ""
 	}
 	prompt := fmt.Sprintf(`Given this Q&A from topic "%s", generate labels and a summary.
@@ -193,7 +202,7 @@ Respond with:
 2. SUMMARY: <up to 5 sentences that capture the key points>`,
 		topic, question, response)
 
-	resp, err := g.Chat.Chat(ctx, "", prompt)
+	resp, err := chat.Chat(ctx, "", prompt)
 	if err != nil {
 		return nil, ""
 	}
@@ -218,8 +227,8 @@ Respond with:
 	return labels, summary
 }
 
-func (g *Graph) inferPlacement(ctx context.Context, opts GraphOptions, topics []Node, existingConcepts []Node, content string) (Placement, []RelatedConcept, error) {
-	if g.Chat == nil {
+func (g *Graph) inferPlacement(ctx context.Context, opts GraphOptions, topics []Node, existingConcepts []Node, content string, chat ChatClient) (Placement, []RelatedConcept, error) {
+	if chat == nil {
 		topic := opts.UserTopic
 		if topic == "" {
 			topic = "General"
@@ -269,7 +278,7 @@ Examples:
   CONCEPT: REST conventions
   RELATED: none`, sb.String(), content, userTopicHint)
 
-	resp, err := g.Chat.Chat(ctx, "", prompt)
+	resp, err := chat.Chat(ctx, "", prompt)
 	if err != nil {
 		return Placement{Topic: "General", Concept: opts.UserTopic}, nil, nil
 	}
@@ -491,6 +500,11 @@ type RecallOptions struct {
 	Until          int64
 	FromOrder      int
 	ToOrder        int
+	// Chat is the synthesis LLM client used for the convergence refinement
+	// loop. It should be built from the session's selected provider+model.
+	// When nil, recall returns the raw semantically filtered tree without
+	// LLM synthesis.
+	Chat ChatClient
 }
 
 type RecallResult struct {
@@ -542,7 +556,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 		semanticKeys[f.Key] = 0
 	}
 
-	if g.Chat == nil {
+	if opts.Chat == nil {
 		return &RecallResult{
 			Answer:     LightweightTreeAsTextWithHighlight(fullTree, allFacts, semanticKeys),
 			Confidence: 0,
@@ -550,6 +564,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 			FactsUsed:  len(topFacts),
 		}, nil
 	}
+	chat := opts.Chat
 
 	skeletonTree := make(map[string]TopicTree)
 	for k, tt := range fullTree {
@@ -572,7 +587,7 @@ func (g *Graph) Recall(ctx context.Context, opts RecallOptions) (*RecallResult, 
 		round++
 		prompt := buildRecallPrompt(opts.Question, skeletonTree, semanticTree, topFacts, history)
 
-		resp, err := g.Chat.Chat(ctx, "", prompt)
+		resp, err := chat.Chat(ctx, "", prompt)
 		if err != nil {
 			return nil, fmt.Errorf("recall round %d: %w", round, err)
 		}

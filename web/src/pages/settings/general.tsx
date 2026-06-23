@@ -1,10 +1,9 @@
-import { Show, For, createMemo, createSignal, createEffect, onMount } from 'solid-js';
+import { Show, For, createMemo, createSignal, onMount } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { useServer } from '../../context/server';
 import { useSession } from '../../context/session';
 import { useTheme } from '../../context/theme';
-import { getMemoryConfig, setMemoryConfig, fetchMemoryModels, getCallGraphAgentConfig, setCallGraphAgentConfig, getSearchConfig, setSearchConfig } from '../../api/client';
-import { EMBED_PROVIDERS, CHAT_PROVIDERS, PROVIDER_DEFS } from '../../lib/providers';
+import { getMemoryConfig, setMemoryConfig, getCallGraphAgentConfig, setCallGraphAgentConfig, getSearchConfig, setSearchConfig } from '../../api/client';
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -213,35 +212,8 @@ function Shortcut(props: { keys: string[]; description: string }) {
 }
 
 
-const EMBED_MODEL_HINTS: Record<string, string> = {
-  openai: 'text-embedding-3-small',
-  openrouter: 'text-embedding-3-small',
-  ollama: 'nomic-embed-text',
-};
-
-const CHAT_MODEL_HINTS: Record<string, string> = {
-  anthropic: 'claude-sonnet-4-6',
-  openai: 'gpt-4o',
-  openrouter: 'anthropic/claude-sonnet-4.6',
-  ollama: 'qwen3',
-};
-
-const BASE_URL_HINTS: Record<string, string> = {
-  openai: 'https://api.openai.com/v1',
-  ollama: 'http://localhost:11434/v1',
-  openrouter: 'https://openrouter.ai/api/v1',
-};
-
 function MemoryConfigForm() {
   const [enabled, setEnabled] = createSignal(false);
-  const [embedProvider, setEmbedProvider] = createSignal('local');
-  const [embedModel, setEmbedModel] = createSignal('');
-  const [embedApiKey, setEmbedApiKey] = createSignal('');
-  const [embedBaseUrl, setEmbedBaseUrl] = createSignal('');
-  const [chatProvider, setChatProvider] = createSignal('');
-  const [chatModel, setChatModel] = createSignal('');
-  const [chatApiKey, setChatApiKey] = createSignal('');
-  const [chatBaseUrl, setChatBaseUrl] = createSignal('');
   const [loading, setLoading] = createSignal(true);
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
@@ -251,14 +223,6 @@ function MemoryConfigForm() {
     try {
       const cfg = await getMemoryConfig();
       setEnabled(cfg.enabled);
-      setEmbedProvider(cfg.embedProviderId || 'local');
-      setEmbedModel(cfg.embedModel || '');
-      setEmbedApiKey(cfg.embedApiKey || '');
-      setEmbedBaseUrl(cfg.embedBaseUrl || '');
-      setChatProvider(cfg.chatProviderId || '');
-      setChatModel(cfg.chatModel || '');
-      setChatApiKey(cfg.chatApiKey || '');
-      setChatBaseUrl(cfg.chatBaseUrl || '');
     } catch {
       setError('Failed to load memory config');
     } finally {
@@ -269,23 +233,9 @@ function MemoryConfigForm() {
   const handleSave = async () => {
     setError('');
     setSaved(false);
-    if (enabled() && !embedProvider()) {
-      setError('Select a memory provider');
-      return;
-    }
     setSaving(true);
     try {
-      await setMemoryConfig({
-        enabled: enabled(),
-        embedProviderId: embedProvider(),
-        embedModel: embedModel(),
-        embedApiKey: embedApiKey(),
-        embedBaseUrl: embedBaseUrl(),
-        chatProviderId: chatProvider(),
-        chatModel: chatModel(),
-        chatApiKey: chatApiKey(),
-        chatBaseUrl: chatBaseUrl(),
-      });
+      await setMemoryConfig({ enabled: enabled() });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -294,9 +244,6 @@ function MemoryConfigForm() {
       setSaving(false);
     }
   };
-
-  const inputClass = 'w-full h-8 px-2.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 font-mono focus:outline-none focus:border-[color:var(--accent)] transition disabled:opacity-40';
-  const selectClass = 'w-full h-8 pl-2.5 pr-7 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] text-[12px] text-zinc-200 focus:outline-none focus:border-[color:var(--accent)] transition appearance-none cursor-pointer disabled:opacity-40';
 
   return (
     <Show when={!loading()} fallback={
@@ -334,7 +281,7 @@ function MemoryConfigForm() {
         <Show when={enabled()}>
           <div class="space-y-4">
 
-            {/* ── Section 1: Vector Store ── */}
+            {/* ── Vector Store ── */}
             <div class="rounded-lg border border-[color:var(--border-subtle)] overflow-hidden">
               <div class="px-4 py-2.5 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] flex items-center gap-2">
                 <svg class="w-3.5 h-3.5 text-[color:var(--accent)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -344,100 +291,22 @@ function MemoryConfigForm() {
                 <span class="text-[11.5px] font-semibold text-zinc-300">Vector Store</span>
                 <span class="ml-auto text-[10.5px] text-zinc-500">Stores and retrieves memory embeddings</span>
               </div>
-              <div class="px-4 py-3 space-y-3">
-                {/* Provider + Model side by side */}
-                <div class={embedProvider() === 'local' ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
-                  <div>
-                    <label class="block text-[11px] text-zinc-500 mb-1.5">Provider</label>
-                    <div class="relative">
-                      <select
-                        value={embedProvider()}
-                        onChange={e => {
-                          const p = e.currentTarget.value;
-                          setEmbedProvider(p);
-                          if (!embedModel()) setEmbedModel(EMBED_MODEL_HINTS[p] || '');
-                        }}
-                        class={selectClass}
-                      >
-                        <For each={EMBED_PROVIDERS}>
-                          {(p) => <option value={p.id}>{p.label}</option>}
-                        </For>
-                      </select>
-                      <svg class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
+              <div class="px-4 py-3">
+                <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-3 py-2.5">
+                  <div class="flex items-start gap-2">
+                    <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div class="text-[11px] text-zinc-400 leading-snug">
+                      Runs <span class="text-zinc-200 font-medium">all-MiniLM-L6-v2</span> inside the ogcode binary — no API key or model setup needed.
+                      The ~86&nbsp;MB model weights download automatically on first use.
                     </div>
                   </div>
-                  {/* Embedding model — hidden for the built-in provider (fixed model) */}
-                  <Show when={embedProvider() !== 'local'}>
-                    <div>
-                      <label class="block text-[11px] text-zinc-500 mb-1.5">Embedding model</label>
-                      <input
-                        type="text"
-                        value={embedModel()}
-                        onInput={e => setEmbedModel(e.currentTarget.value)}
-                        placeholder={EMBED_MODEL_HINTS[embedProvider()] || 'e.g. text-embedding-3-small'}
-                        class={inputClass}
-                      />
-                    </div>
-                  </Show>
                 </div>
-                {/* Built-in provider info — replaces the API key / base URL fields */}
-                <Show when={embedProvider() === 'local'}>
-                  <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-3 py-2.5">
-                    <div class="flex items-start gap-2">
-                      <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div class="text-[11px] text-zinc-400 leading-snug">
-                        Runs <span class="text-zinc-200 font-medium">all-MiniLM-L6-v2</span> inside the ogcode binary — no API key or model setup needed.
-                        The ~86&nbsp;MB model weights download automatically on first use.
-                      </div>
-                    </div>
-                  </div>
-                </Show>
-                {/* API key + Base URL — only for external providers */}
-                <Show when={embedProvider() !== 'local'}>
-                  {/* API key */}
-                  <div>
-                    <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
-                      API key
-                      <Show when={embedApiKey() === '__SET__'}>
-                        <span class="text-emerald-500 font-medium">● set</span>
-                      </Show>
-                    </label>
-                    <input
-                      type="password"
-                      value={embedApiKey() === '__SET__' ? '' : embedApiKey()}
-                      onInput={e => setEmbedApiKey(e.currentTarget.value)}
-                      placeholder={embedApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
-                      class={inputClass}
-                    />
-                  </div>
-                  {/* Base URL — only for providers that support it */}
-                  <Show when={PROVIDER_DEFS.find(p => p.id === embedProvider())?.hasBaseURL}>
-                    <div>
-                      <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
-                        Base URL
-                        <Show when={embedBaseUrl() === '__SET__'}>
-                          <span class="text-emerald-500 font-medium">● set</span>
-                        </Show>
-                      </label>
-                      <input
-                        type="text"
-                        value={embedBaseUrl() === '__SET__' ? '' : embedBaseUrl()}
-                        onInput={e => setEmbedBaseUrl(e.currentTarget.value)}
-                        placeholder={BASE_URL_HINTS[embedProvider()] || 'leave blank to use default'}
-                        class={inputClass}
-                      />
-                    </div>
-                  </Show>
-                </Show>
               </div>
             </div>
 
-            {/* ── Section 2: AI Understanding ── */}
+            {/* ── AI Understanding ── */}
             <div class="rounded-lg border border-[color:var(--border-subtle)] overflow-hidden">
               <div class="px-4 py-2.5 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] flex items-center gap-2">
                 <svg class="w-3.5 h-3.5 text-[color:var(--accent)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -446,95 +315,17 @@ function MemoryConfigForm() {
                 <span class="text-[11.5px] font-semibold text-zinc-300">AI Understanding</span>
                 <span class="ml-auto text-[10.5px] text-zinc-500">Summarises and understands your history</span>
               </div>
-              <div class="px-4 py-3 space-y-3">
-                {/* Provider + Model side by side */}
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-[11px] text-zinc-500 mb-1.5">Provider</label>
-                    <div class="relative">
-                      <select
-                        value={chatProvider()}
-                        onChange={e => {
-                          const p = e.currentTarget.value;
-                          setChatProvider(p);
-                          if (p && !chatModel()) setChatModel(CHAT_MODEL_HINTS[p] || '');
-                          if (!p) setChatModel('');
-                        }}
-                        class={selectClass}
-                      >
-                        <For each={CHAT_PROVIDERS}>
-                          {(p) => <option value={p.id}>{p.label}</option>}
-                        </For>
-                      </select>
-                      <svg class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
+              <div class="px-4 py-3">
+                <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-3 py-2.5">
+                  <div class="flex items-start gap-2">
+                    <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <div class="text-[11px] text-zinc-400 leading-snug">
+                      Uses the same model you pick for your session — no separate configuration. When you switch models, memory synthesis follows automatically.
                     </div>
                   </div>
-                  <div>
-                    <label class="block text-[11px] text-zinc-500 mb-1.5">Model</label>
-                    <Show
-                      when={chatProvider()}
-                      fallback={
-                        <input
-                          type="text"
-                          disabled
-                          placeholder="Select a provider first"
-                          class={inputClass}
-                        />
-                      }
-                    >
-                      <ModelPicker
-                        provider={chatProvider()}
-                        apiKey={chatApiKey()}
-                        baseUrl={chatBaseUrl()}
-                        type="chat"
-                        value={chatModel()}
-                        onSelect={setChatModel}
-                        placeholder={CHAT_MODEL_HINTS[chatProvider()] || 'e.g. claude-sonnet-4-6'}
-                        inputClass={inputClass}
-                        selectClass={selectClass}
-                      />
-                    </Show>
-                  </div>
                 </div>
-                {/* API key — only when a provider is chosen */}
-                <Show when={chatProvider()}>
-                  <div>
-                    <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
-                      API key
-                      <Show when={chatApiKey() === '__SET__'}>
-                        <span class="text-emerald-500 font-medium">● set</span>
-                      </Show>
-                    </label>
-                    <input
-                      type="password"
-                      value={chatApiKey() === '__SET__' ? '' : chatApiKey()}
-                      onInput={e => setChatApiKey(e.currentTarget.value)}
-                      placeholder={chatApiKey() === '__SET__' ? 'leave blank to keep existing key' : 'sk-… or leave blank to use env var'}
-                      class={inputClass}
-                    />
-                  </div>
-                </Show>
-                {/* Base URL — only when chat provider supports it */}
-                <Show when={chatProvider() && PROVIDER_DEFS.find(p => p.id === chatProvider())?.hasBaseURL}>
-                  <div>
-                    <label class="block text-[11px] text-zinc-500 mb-1.5 flex items-center gap-1.5">
-                      Base URL
-                      <Show when={chatBaseUrl() === '__SET__'}>
-                        <span class="text-emerald-500 font-medium">● set</span>
-                      </Show>
-                    </label>
-                    <input
-                      type="text"
-                      value={chatBaseUrl() === '__SET__' ? '' : chatBaseUrl()}
-                      onInput={e => setChatBaseUrl(e.currentTarget.value)}
-                      placeholder={BASE_URL_HINTS[chatProvider()] || 'leave blank to use default'}
-                      class={inputClass}
-                    />
-                  </div>
-                </Show>
               </div>
             </div>
 
@@ -782,118 +573,6 @@ function SearchConfigForm() {
         </Show>
       </div>
     </Show>
-  );
-}
-
-interface ModelPickerProps {
-  provider: string;
-  apiKey: string;
-  baseUrl: string;
-  type: 'embed' | 'chat';
-  value: string;
-  onSelect: (v: string) => void;
-  placeholder: string;
-  inputClass: string;
-  selectClass: string;
-}
-
-function ModelPicker(props: ModelPickerProps) {
-  const [models, setModels] = createSignal<string[]>([]);
-  const [fetching, setFetching] = createSignal(false);
-  const [fetchError, setFetchError] = createSignal('');
-
-  const doFetch = async (provider: string, apiKey: string, baseUrl: string) => {
-    if (!provider) { setModels([]); return; }
-    setFetching(true);
-    setFetchError('');
-    try {
-      // Don't forward the sentinel — backend uses the stored key.
-      const key = (apiKey && apiKey !== '__SET__') ? apiKey : undefined;
-      const url = (baseUrl && baseUrl !== '__SET__') ? baseUrl : undefined;
-      const list = await fetchMemoryModels(provider, props.type, key, url);
-      setModels(list ?? []);
-      // Auto-select first model if nothing is selected yet.
-      if (list?.length && !props.value) props.onSelect(list[0]);
-    } catch (e: any) {
-      setFetchError(e?.message ?? 'Failed to fetch models');
-      setModels([]);
-    } finally {
-      setFetching(false);
-    }
-  };
-
-  // Re-fetch whenever provider changes.
-  createEffect(() => {
-    const p = props.provider;
-    const k = props.apiKey;
-    const b = props.baseUrl;
-    doFetch(p, k, b);
-  });
-
-  const chevron = (
-    <svg class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
-      fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  );
-
-  return (
-    <div class="space-y-1">
-      <Show when={fetching()}>
-        <div class="flex items-center gap-2 h-8 px-2.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)]">
-          <svg class="w-3 h-3 animate-spin text-zinc-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
-          </svg>
-          <span class="text-[12px] text-zinc-500">Fetching models…</span>
-        </div>
-      </Show>
-
-      <Show when={!fetching()}>
-        <Show when={models().length > 0}
-          fallback={
-            <input
-              type="text"
-              value={props.value}
-              onInput={e => props.onSelect(e.currentTarget.value)}
-              placeholder={props.placeholder}
-              class={props.inputClass}
-            />
-          }
-        >
-          <div class="relative">
-            <select
-              value={props.value}
-              onChange={e => props.onSelect(e.currentTarget.value)}
-              class={props.selectClass}
-            >
-              <option value="">— select model —</option>
-              <For each={models()}>
-                {(m) => <option value={m}>{m}</option>}
-              </For>
-            </select>
-            {chevron}
-          </div>
-        </Show>
-      </Show>
-
-      <div class="flex items-center justify-between">
-        <Show when={fetchError()}>
-          <p class="text-[10.5px] text-amber-500">{fetchError()} — type a model name above.</p>
-        </Show>
-        <Show when={!fetching() && props.provider}>
-          <button
-            type="button"
-            onClick={() => doFetch(props.provider, props.apiKey, props.baseUrl)}
-            class="ml-auto text-[10.5px] text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1"
-          >
-            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
-          </button>
-        </Show>
-      </div>
-    </div>
   );
 }
 
