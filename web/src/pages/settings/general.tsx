@@ -3,7 +3,7 @@ import { useNavigate } from '@solidjs/router';
 import { useServer } from '../../context/server';
 import { useSession } from '../../context/session';
 import { useTheme } from '../../context/theme';
-import { getMemoryConfig, setMemoryConfig, getCallGraphAgentConfig, setCallGraphAgentConfig, getSearchConfig, setSearchConfig } from '../../api/client';
+import { getCallGraphAgentConfig, setCallGraphAgentConfig, getSearchConfig, setSearchConfig } from '../../api/client';
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -69,14 +69,6 @@ export default function GeneralSettings() {
               <span class="font-mono text-[12px] text-zinc-200">{server.branch()}</span>
             </Row>
           </Show>
-        </Card>
-
-        {/* Memory card */}
-        <Card
-          title="Agentic Session Memory"
-          description="Helps ogcode remember your past work within this session and bring back what's relevant when you need it."
-        >
-          <MemoryConfigForm />
         </Card>
 
         {/* Call graph card */}
@@ -211,159 +203,6 @@ function Shortcut(props: { keys: string[]; description: string }) {
   );
 }
 
-
-function MemoryConfigForm() {
-  const [enabled, setEnabled] = createSignal(false);
-  const [loading, setLoading] = createSignal(true);
-  const [saving, setSaving] = createSignal(false);
-  const [error, setError] = createSignal('');
-  const [saved, setSaved] = createSignal(false);
-
-  onMount(async () => {
-    try {
-      const cfg = await getMemoryConfig();
-      setEnabled(cfg.enabled);
-    } catch {
-      setError('Failed to load memory config');
-    } finally {
-      setLoading(false);
-    }
-  });
-
-  const handleSave = async () => {
-    setError('');
-    setSaved(false);
-    setSaving(true);
-    try {
-      await setMemoryConfig({ enabled: enabled() });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setError('Failed to save memory config');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Show when={!loading()} fallback={
-      <div class="py-4 flex items-center gap-2 text-[12px] text-zinc-500">
-        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
-        </svg>
-        Loading…
-      </div>
-    }>
-      <div class="space-y-5">
-
-        {/* ── Enable toggle ── */}
-        <div class="flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <div class="text-[13px] text-zinc-100 font-medium">Enable agentic memory</div>
-            <div class="text-[11.5px] text-zinc-500 mt-0.5 leading-snug">
-              ogcode recalls relevant work from past sessions to give better, context-aware answers.
-            </div>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={enabled()}
-            onClick={() => setEnabled(v => !v)}
-            class={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
-              transition-colors duration-200 focus:outline-none
-              ${enabled() ? 'bg-[color:var(--accent)]' : 'bg-zinc-700'}`}
-          >
-            <span class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
-              transition duration-200 ${enabled() ? 'translate-x-4' : 'translate-x-0'}`} />
-          </button>
-        </div>
-
-        <Show when={enabled()}>
-          <div class="space-y-4">
-
-            {/* ── Vector Store ── */}
-            <div class="rounded-lg border border-[color:var(--border-subtle)] overflow-hidden">
-              <div class="px-4 py-2.5 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] flex items-center gap-2">
-                <svg class="w-3.5 h-3.5 text-[color:var(--accent)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 10h16M4 14h16" />
-                </svg>
-                <span class="text-[11.5px] font-semibold text-zinc-300">Vector Store</span>
-                <span class="ml-auto text-[10.5px] text-zinc-500">Stores and retrieves memory embeddings</span>
-              </div>
-              <div class="px-4 py-3">
-                <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-3 py-2.5">
-                  <div class="flex items-start gap-2">
-                    <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div class="text-[11px] text-zinc-400 leading-snug">
-                      Runs <span class="text-zinc-200 font-medium">all-MiniLM-L6-v2</span> inside the ogcode binary — no API key or model setup needed.
-                      The ~86&nbsp;MB model weights download automatically on first use.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── AI Understanding ── */}
-            <div class="rounded-lg border border-[color:var(--border-subtle)] overflow-hidden">
-              <div class="px-4 py-2.5 bg-[color:var(--bg-elevated)] border-b border-[color:var(--border-subtle)] flex items-center gap-2">
-                <svg class="w-3.5 h-3.5 text-[color:var(--accent)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-                <span class="text-[11.5px] font-semibold text-zinc-300">AI Understanding</span>
-                <span class="ml-auto text-[10.5px] text-zinc-500">Summarises and understands your history</span>
-              </div>
-              <div class="px-4 py-3">
-                <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] px-3 py-2.5">
-                  <div class="flex items-start gap-2">
-                    <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    <div class="text-[11px] text-zinc-400 leading-snug">
-                      Uses the same model you pick for your session — no separate configuration. When you switch models, memory synthesis follows automatically.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </Show>
-
-        {/* ── Footer ── */}
-        <div class="pt-3 border-t border-[color:var(--border-subtle)] flex items-center justify-between gap-3">
-          <Show when={error()}>
-            <p class="text-[11px] text-red-400">{error()}</p>
-          </Show>
-          <Show when={saved() && !error()}>
-            <p class="text-[11px] text-emerald-400">Saved — restart ogcode to apply.</p>
-          </Show>
-          <Show when={!error() && !saved()}>
-            <p class="text-[11px] text-zinc-600">Changes apply after restarting ogcode.</p>
-          </Show>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving()}
-            class="shrink-0 h-8 px-4 text-[12px] font-medium rounded-lg transition
-              bg-[color:var(--accent)] text-[color:var(--on-primary)] hover:bg-[color:var(--accent-hover)]
-              disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-          >
-            <Show when={saving()}>
-              <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
-              </svg>
-            </Show>
-            {saving() ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-
-      </div>
-    </Show>
-  );
-}
 
 function CallGraphConfigForm() {
   const [enabled, setEnabled] = createSignal(true);
