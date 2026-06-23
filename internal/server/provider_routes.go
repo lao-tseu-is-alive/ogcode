@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
@@ -82,5 +85,42 @@ func (s *Server) handleSetProviderConfig(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "failed to save provider config", http.StatusInternalServerError)
 		return
 	}
+	// Apply the new credentials to the running server so they take effect
+	// without requiring a restart.
+	s.reloadProviders()
 	writeJSON(w, http.StatusOK, session.MaskedProviderConfig(&incoming))
+}
+
+// handleValidateProviderConfig tests whether the supplied credentials work by
+// making a minimal request to the provider. It never persists anything. The
+// "__SET__" sentinel resolves to the stored key so a saved provider can be
+// re-tested without re-entering the key. Always responds 200 with
+// {ok, error?} so the UI can render the outcome inline.
+func (s *Server) handleValidateProviderConfig(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var incoming session.ProviderConfig
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	apiKey := incoming.APIKey
+	if apiKey == "__SET__" {
+		existing, err := session.GetProviderConfig(s.globalDB, id)
+		if err != nil {
+			http.Error(w, "failed to read provider config", http.StatusInternalServerError)
+			return
+		}
+		apiKey = existing.APIKey
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	if err := provider.ValidateCredentials(ctx, id, apiKey, incoming.BaseURL); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

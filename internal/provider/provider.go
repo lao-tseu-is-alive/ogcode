@@ -113,6 +113,7 @@ type ModelRefresher interface {
 }
 
 type Registry struct {
+	mu           sync.RWMutex // protects providers
 	providers    map[string]Provider
 	customModels map[string]string // modelID -> providerID
 	customMu     sync.RWMutex
@@ -126,14 +127,20 @@ func NewRegistry() *Registry {
 }
 
 func (r *Registry) Register(p Provider) {
+	r.mu.Lock()
 	r.providers[p.ID()] = p
+	r.mu.Unlock()
 }
 
 func (r *Registry) Get(id string) Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.providers[id]
 }
 
 func (r *Registry) List() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var ids []string
 	for id := range r.providers {
 		ids = append(ids, id)
@@ -141,9 +148,22 @@ func (r *Registry) List() []string {
 	return ids
 }
 
+// snapshot returns the registered providers as a slice under a read lock, so
+// callers can iterate and call Models() (which may hit the network) without
+// holding the registry lock or racing with ReplaceProviders.
+func (r *Registry) snapshot() []Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ps := make([]Provider, 0, len(r.providers))
+	for _, p := range r.providers {
+		ps = append(ps, p)
+	}
+	return ps
+}
+
 func (r *Registry) ListModels() []ModelInfo {
 	var models []ModelInfo
-	for _, p := range r.providers {
+	for _, p := range r.snapshot() {
 		models = append(models, p.Models()...)
 	}
 	return models
@@ -155,7 +175,7 @@ func (r *Registry) ModelSupportsImages(modelID string) bool {
 	if modelID == "" {
 		return false
 	}
-	for _, p := range r.providers {
+	for _, p := range r.snapshot() {
 		for _, m := range p.Models() {
 			if m.ID == modelID {
 				return m.SupportsImages
@@ -183,12 +203,13 @@ func (r *Registry) ResolveProvider(modelID string) Provider {
 	providerID, customOk := r.customModels[modelID]
 	r.customMu.RUnlock()
 	if customOk {
-		if p := r.providers[providerID]; p != nil {
+		if p := r.Get(providerID); p != nil {
 			return p
 		}
 	}
+	ps := r.snapshot()
 	// Then check built-in models
-	for _, p := range r.providers {
+	for _, p := range ps {
 		for _, m := range p.Models() {
 			if m.ID == modelID {
 				return p
@@ -196,7 +217,7 @@ func (r *Registry) ResolveProvider(modelID string) Provider {
 		}
 	}
 	// Fallback to first provider
-	for _, p := range r.providers {
+	for _, p := range ps {
 		return p
 	}
 	return nil
@@ -276,9 +297,38 @@ func NewChatProviderWithConfig(providerID, apiKey, model, baseURL string) (Provi
 // RefreshModels clears cached model lists for all providers that support it,
 // forcing re-fetch on next Models() call.
 func (r *Registry) RefreshModels() {
-	for _, p := range r.providers {
+	for _, p := range r.snapshot() {
 		if refresher, ok := p.(ModelRefresher); ok {
 			refresher.RefreshModels()
 		}
 	}
+}
+
+// ProviderPriority is the stable order used to choose a default provider when a
+// session does not specify a model.
+var ProviderPriority = []string{"anthropic", "openai", "openrouter", "ollama"}
+
+// Default returns the highest-priority registered provider, or nil if the
+// registry has no providers.
+func (r *Registry) Default() Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, id := range ProviderPriority {
+		if p, ok := r.providers[id]; ok {
+			return p
+		}
+	}
+	for _, p := range r.providers {
+		return p
+	}
+	return nil
+}
+
+// ReplaceProviders atomically swaps the set of registered providers. Custom
+// model routing (RegisterCustomModel) is preserved. Used to apply provider
+// credential changes from the settings/onboarding UI without a server restart.
+func (r *Registry) ReplaceProviders(providers map[string]Provider) {
+	r.mu.Lock()
+	r.providers = providers
+	r.mu.Unlock()
 }

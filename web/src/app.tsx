@@ -1,5 +1,7 @@
-import { Route, Router } from '@solidjs/router';
+import { Route, Router, useNavigate, useLocation } from '@solidjs/router';
+import { createEffect } from 'solid-js';
 import { ServerProvider } from './context/server';
+import { OnboardingProvider, useOnboarding } from './context/onboarding';
 import { SessionProvider } from './context/session';
 import { PlanProvider } from './context/plan';
 import { NoteProvider } from './context/note';
@@ -22,10 +24,12 @@ import SettingsLayout from './pages/settings/layout';
 import GeneralSettings from './pages/settings/general';
 import ModelsSettings from './pages/settings/models';
 import AboutSettings from './pages/settings/about';
+import Onboarding from './pages/onboarding';
 
 export default function App() {
   return (
     <Router root={AppWrapper}>
+      <Route path="/onboarding" component={Onboarding} />
       <Route path="/" component={Home} />
       <Route path="/session/:id" component={Chat} />
       <Route path="/plan" component={PlanList} />
@@ -48,24 +52,43 @@ export default function App() {
 function AppWrapper(props: { children?: any }) {
   return (
     <ServerProvider>
-      <ThemeProvider>
-        <SessionProvider>
-          <PlanProvider>
-            <NoteProvider>
-              <CallGraphProvider>
-                <DocIndexProvider>
-                  <NotificationProvider>
-                    <div class="flex h-screen bg-[color:var(--bg-base)] text-zinc-100 antialiased">
-                      {props.children}
-                    </div>
-                    <UpdateNotification />
-                  </NotificationProvider>
-                </DocIndexProvider>
-              </CallGraphProvider>
-            </NoteProvider>
-          </PlanProvider>
-        </SessionProvider>
-      </ThemeProvider>
+      <OnboardingProvider>
+        <ThemeProvider>
+          <SessionProvider>
+            <PlanProvider>
+              <NoteProvider>
+                <CallGraphProvider>
+                  <DocIndexProvider>
+                    <NotificationProvider>
+                      <OnboardingGate />
+                      <div class="flex h-screen bg-[color:var(--bg-base)] text-zinc-100 antialiased">
+                        {props.children}
+                      </div>
+                      <UpdateNotification />
+                    </NotificationProvider>
+                  </DocIndexProvider>
+                </CallGraphProvider>
+              </NoteProvider>
+            </PlanProvider>
+          </SessionProvider>
+        </ThemeProvider>
+      </OnboardingProvider>
     </ServerProvider>
   );
+}
+
+// OnboardingGate redirects first-run users (no provider configured) to the
+// onboarding wizard. It renders nothing; it only runs the redirect effect.
+function OnboardingGate() {
+  const onboarding = useOnboarding();
+  const navigate = useNavigate();
+  const location = useLocation();
+  createEffect(() => {
+    if (!onboarding.loaded()) return;
+    if (onboarding.dismissed()) return;
+    if (onboarding.needsOnboarding() && location.pathname !== '/onboarding') {
+      navigate('/onboarding', { replace: true });
+    }
+  });
+  return null;
 }

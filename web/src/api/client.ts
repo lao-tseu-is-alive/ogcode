@@ -207,6 +207,20 @@ export function setProviderConfig(id: string, cfg: Omit<ProviderConfig, 'provide
   });
 }
 
+export interface ValidateResult {
+  ok: boolean;
+  error?: string;
+}
+
+// Tests whether the given credentials work by making a minimal call to the
+// provider. Does not persist anything.
+export function validateProviderConfig(id: string, cfg: { apiKey: string; baseUrl: string }): Promise<ValidateResult> {
+  return fetchAPI(`/providers/config/${id}/validate`, {
+    method: 'POST',
+    body: JSON.stringify(cfg),
+  });
+}
+
 // Pricing API — returns model ID → USD per 1 million input tokens
 export function getProviderPricing(provider: string): Promise<Record<string, number>> {
   return fetchAPI(`/pricing?provider=${encodeURIComponent(provider)}`);

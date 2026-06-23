@@ -146,7 +146,14 @@ func (lr *LoopRunner) RunLoop(ctx context.Context, sessionID session.SessionID, 
 	}
 	if p == nil {
 		slog.Info("using default provider", "session", sessionID)
-		p = lr.DefaultProvider
+		// Prefer the registry's current default so credential changes applied at
+		// runtime (onboarding/settings) take effect; fall back to the immutable
+		// startup default only when no provider is configured at all.
+		if dp := lr.Registry.Default(); dp != nil {
+			p = dp
+		} else {
+			p = lr.DefaultProvider
+		}
 	}
 
 	// Whether the active model accepts image input — passed to tools so they can
@@ -1833,8 +1840,12 @@ func (lr *LoopRunner) RunSearchSession(ctx context.Context, query, dir, model st
 		dir = lr.Dir
 	}
 	if model == "" {
-		if lr.DefaultProvider != nil {
-			models := lr.DefaultProvider.Models()
+		dp := lr.Registry.Default()
+		if dp == nil {
+			dp = lr.DefaultProvider
+		}
+		if dp != nil {
+			models := dp.Models()
 			if len(models) > 0 {
 				model = models[0].ID
 			}

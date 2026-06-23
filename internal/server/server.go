@@ -151,64 +151,14 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Load DB-stored provider credentials (env vars take precedence).
-	dbProviderCfgs, err := session.GetAllProviderConfigs(globalDatabase)
-	if err != nil {
-		slog.Warn("failed to load provider configs from DB", "err", err)
-	}
-	dbProviderMap := make(map[string]*session.ProviderConfig)
-	for _, c := range dbProviderCfgs {
-		dbProviderMap[c.ProviderID] = c
-	}
-	resolveKey := func(envKey, providerID string) string {
-		if envKey != "" {
-			return envKey
-		}
-		if c, ok := dbProviderMap[providerID]; ok {
-			return c.APIKey
-		}
-		return ""
-	}
-	resolveBaseURL := func(envURL, providerID string) string {
-		if envURL != "" {
-			return envURL
-		}
-		if c, ok := dbProviderMap[providerID]; ok {
-			return c.BaseURL
-		}
-		return ""
+	// Initialize provider registry from DB-stored credentials + environment
+	// variables (env takes precedence). Built here at startup and rebuilt in
+	// place by reloadProviders() when credentials change at runtime.
+	registry := provider.NewRegistry()
+	for _, p := range s.loadProviderMap() {
+		registry.Register(p)
 	}
 
-	// Initialize provider
-	registry := provider.NewRegistry()
-	if key := resolveKey(os.Getenv("ANTHROPIC_API_KEY"), "anthropic"); key != "" {
-		p, _ := provider.NewProviderWithConfig("anthropic", key, "")
-		registry.Register(p)
-		slog.Info("registered anthropic provider")
-	}
-	if key := resolveKey(os.Getenv("OPENAI_API_KEY"), "openai"); key != "" {
-		baseURL := resolveBaseURL(os.Getenv("OPENAI_BASE_URL"), "openai")
-		p, _ := provider.NewProviderWithConfig("openai", key, baseURL)
-		registry.Register(p)
-		slog.Info("registered openai provider")
-	}
-	if key := resolveKey(os.Getenv("OPENROUTER_API_KEY"), "openrouter"); key != "" {
-		p, _ := provider.NewProviderWithConfig("openrouter", key, "")
-		registry.Register(p)
-		slog.Info("registered openrouter provider")
-	}
-	ollamaEnvURL := os.Getenv("OLLAMA_BASE_URL")
-	ollamaEnvKey := os.Getenv("OLLAMA_API_KEY")
-	ollamaKey := resolveKey(ollamaEnvKey, "ollama")
-	ollamaBaseURL := resolveBaseURL(ollamaEnvURL, "ollama")
-	if ollamaKey != "" || ollamaBaseURL != "" || fileExists("/usr/local/bin/ollama") || fileExists("/opt/homebrew/bin/ollama") {
-		if ollamaKey != "" && ollamaBaseURL == "" {
-			slog.Warn("Ollama API key is set but no base URL configured; using http://localhost:11434/v1")
-		}
-		p, _ := provider.NewProviderWithConfig("ollama", ollamaKey, ollamaBaseURL)
-		registry.Register(p)
-		slog.Info("registered ollama provider")
-	}
 	// Initialize tools
 	toolRegistry := tool.NewRegistry()
 	toolRegistry.Register(tool.BashTool{})
@@ -495,6 +445,79 @@ func (s *Server) Start() error {
 
 	slog.Info("server stopped, port released")
 	return nil
+}
+
+// loadProviderMap builds the set of available LLM providers from DB-stored
+// credentials and environment variables (env takes precedence). It is used both
+// at startup and by reloadProviders to apply credential changes without a
+// restart. Requires s.globalDB to be initialized.
+func (s *Server) loadProviderMap() map[string]provider.Provider {
+	providers := make(map[string]provider.Provider)
+
+	dbProviderCfgs, err := session.GetAllProviderConfigs(s.globalDB)
+	if err != nil {
+		slog.Warn("failed to load provider configs from DB", "err", err)
+	}
+	dbProviderMap := make(map[string]*session.ProviderConfig)
+	for _, c := range dbProviderCfgs {
+		dbProviderMap[c.ProviderID] = c
+	}
+	resolveKey := func(envKey, providerID string) string {
+		if envKey != "" {
+			return envKey
+		}
+		if c, ok := dbProviderMap[providerID]; ok {
+			return c.APIKey
+		}
+		return ""
+	}
+	resolveBaseURL := func(envURL, providerID string) string {
+		if envURL != "" {
+			return envURL
+		}
+		if c, ok := dbProviderMap[providerID]; ok {
+			return c.BaseURL
+		}
+		return ""
+	}
+
+	if key := resolveKey(os.Getenv("ANTHROPIC_API_KEY"), "anthropic"); key != "" {
+		p, _ := provider.NewProviderWithConfig("anthropic", key, "")
+		providers["anthropic"] = p
+		slog.Info("registered anthropic provider")
+	}
+	if key := resolveKey(os.Getenv("OPENAI_API_KEY"), "openai"); key != "" {
+		baseURL := resolveBaseURL(os.Getenv("OPENAI_BASE_URL"), "openai")
+		p, _ := provider.NewProviderWithConfig("openai", key, baseURL)
+		providers["openai"] = p
+		slog.Info("registered openai provider")
+	}
+	if key := resolveKey(os.Getenv("OPENROUTER_API_KEY"), "openrouter"); key != "" {
+		p, _ := provider.NewProviderWithConfig("openrouter", key, "")
+		providers["openrouter"] = p
+		slog.Info("registered openrouter provider")
+	}
+	ollamaKey := resolveKey(os.Getenv("OLLAMA_API_KEY"), "ollama")
+	ollamaBaseURL := resolveBaseURL(os.Getenv("OLLAMA_BASE_URL"), "ollama")
+	if ollamaKey != "" || ollamaBaseURL != "" || fileExists("/usr/local/bin/ollama") || fileExists("/opt/homebrew/bin/ollama") {
+		if ollamaKey != "" && ollamaBaseURL == "" {
+			slog.Warn("Ollama API key is set but no base URL configured; using http://localhost:11434/v1")
+		}
+		p, _ := provider.NewProviderWithConfig("ollama", ollamaKey, ollamaBaseURL)
+		providers["ollama"] = p
+		slog.Info("registered ollama provider")
+	}
+	return providers
+}
+
+// reloadProviders rebuilds the provider registry from the current DB + env
+// credentials and swaps it into the running server in place, so credential
+// changes from the settings/onboarding UI take effect without a restart. The
+// shared *provider.Registry pointer (held by the loop runner and handlers) is
+// preserved, and custom-model routing survives the swap.
+func (s *Server) reloadProviders() {
+	s.registry.ReplaceProviders(s.loadProviderMap())
+	slog.Info("reloaded provider registry", "providers", s.registry.List())
 }
 
 func openBrowser(url string) {
