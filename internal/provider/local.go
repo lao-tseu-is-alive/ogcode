@@ -81,6 +81,28 @@ func (e *LocalEmbedder) init(ctx context.Context) error {
 	return e.initErr
 }
 
+// Prefetch kicks off the lazy initialization in a background goroutine so the
+// (potentially slow) one-time model download happens at server startup rather
+// than blocking the first memory-related agent turn. It is fire-and-forget:
+// the goroutine runs init under the sync.Once guard, so any later Embed call
+// either joins the in-flight init (the Once serializes them) or returns
+// immediately once it has completed. Errors are logged but never surfaced to
+// the caller — the next Embed call will return them if init failed.
+//
+// The supplied context governs the download; callers should pass a long-lived
+// context (e.g. context.Background()) since the ~86 MB download can take a
+// while on slow connections.
+func (e *LocalEmbedder) Prefetch(ctx context.Context) {
+	go func() {
+		t0 := time.Now()
+		if err := e.init(ctx); err != nil {
+			slog.Warn("local embedder: background prefetch failed; will retry on next Embed", "err", err, "duration", time.Since(t0))
+			return
+		}
+		slog.Info("local embedder: background prefetch complete", "duration", time.Since(t0))
+	}()
+}
+
 func (e *LocalEmbedder) initLocked(ctx context.Context) error {
 	t0 := time.Now()
 	if err := os.MkdirAll(e.baseDir, 0o755); err != nil {

@@ -308,6 +308,12 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// Eagerly prefetch the local embedder's model weights in the background so
+	// the one-time ~86 MB download completes during startup rather than
+	// blocking the first memory-related agent turn. No-op for non-local embed
+	// providers.
+	mem.PrefetchEmbedder(context.Background())
+
 	// Initialize MCP client (for tool exposure, unrelated to agentic memory
 	// database, which is now local SQLite with its own embed provider)
 	if strings.EqualFold(os.Getenv("OGCODE_MCP_ENABLED"), "true") {
