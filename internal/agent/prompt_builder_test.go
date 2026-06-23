@@ -374,7 +374,8 @@ func TestGetAgent(t *testing.T) {
 }
 
 func TestProjectIndexPrompt(t *testing.T) {
-	prompt := projectIndexPrompt()
+	// Build role — ends with "make changes"
+	prompt := projectIndexPrompt("build")
 
 	for _, sub := range []string{
 		"Mandatory: Use Project Index Before Exploration",
@@ -384,10 +385,29 @@ func TestProjectIndexPrompt(t *testing.T) {
 		"Better context",
 		"Fewer mistakes",
 		"subdir",
+		"Then make changes",
 	} {
 		if !strings.Contains(prompt, sub) {
-			t.Errorf("expected %q in projectIndexPrompt", sub)
+			t.Errorf("expected %q in projectIndexPrompt(build)", sub)
 		}
+	}
+
+	// Plan role — read-only, ends with "produce your plan" instead of "make changes"
+	planPrompt := projectIndexPrompt("plan")
+	if !strings.Contains(planPrompt, "Then produce your plan") {
+		t.Error("expected plan role workflow to end with 'Then produce your plan'")
+	}
+	if strings.Contains(planPrompt, "Then make changes") {
+		t.Error("did not expect 'make changes' in plan role workflow (read-only agent)")
+	}
+
+	// Note role — read-only, ends with "produce your note"
+	notePrompt := projectIndexPrompt("note")
+	if !strings.Contains(notePrompt, "Then produce your note") {
+		t.Error("expected note role workflow to end with 'Then produce your note'")
+	}
+	if strings.Contains(notePrompt, "Then make changes") {
+		t.Error("did not expect 'make changes' in note role workflow (read-only agent)")
 	}
 }
 
@@ -408,6 +428,17 @@ func TestPlanAgent_SystemPrompt_ContainsProjectIndex(t *testing.T) {
 	}
 	if !strings.Contains(PlanAgent.System, "codebase_map") {
 		t.Error("PlanAgent system prompt should reference codebase_map tool")
+	}
+	// The plan agent is read-only — its workflow must not instruct it to make changes
+	if strings.Contains(PlanAgent.System, "Then make changes") {
+		t.Error("PlanAgent system prompt should not include 'make changes' workflow step (read-only agent)")
+	}
+	if !strings.Contains(PlanAgent.System, "Then produce your plan") {
+		t.Error("PlanAgent system prompt should include 'Then produce your plan' workflow step")
+	}
+	// The plan agent's own start-of-session steps must reinforce codebase_map (not just read/glob/grep)
+	if !strings.Contains(PlanAgent.System, "Start with **codebase_map**") {
+		t.Error("PlanAgent step 2 should explicitly start with codebase_map")
 	}
 }
 

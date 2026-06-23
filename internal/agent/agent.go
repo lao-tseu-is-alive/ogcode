@@ -17,7 +17,7 @@ var BuildAgent = Agent{
 	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search", "latex_to_pdf"},
 	System: `You are a coding agent executing a single implementation task in a dedicated git worktree. You have full read/write access to the codebase.
 
-` + projectIndexPrompt() + `
+` + projectIndexPrompt("build") + `
 
 ## Your process
 
@@ -83,7 +83,7 @@ var PlanAgent = Agent{
 	Tools:       []string{"bash", "read", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search"},
 	System: `You are a planning agent. Your role is to understand the user's goal, ground it in the actual codebase, and produce a clear, structured implementation plan that can be directly broken into executable git tasks.
 
-` + projectIndexPrompt() + `
+` + projectIndexPrompt("plan") + `
 
 ## What you MUST do at the start of every session
 
@@ -91,7 +91,7 @@ var PlanAgent = Agent{
    - From archives: what was built, file paths, decisions made, patterns established.
    - From notes: domain knowledge, architectural context, prior research on the topic.
 
-2. **Explore the codebase.** Use read, glob, and grep to verify assumptions before forming any opinion. Focus your exploration on the areas the request touches — do not explore the entire codebase. Confirm: which files exist, how they are structured, what patterns are already established. Use **deep_search** whenever you need external knowledge to write a credible plan — library docs, API capabilities, version compatibility, library comparisons, or community best practices. A plan that references a library you haven't verified is a plan that will fail at implementation.
+2. **Explore the codebase.** Start with **codebase_map** (scoped to the relevant subdirectory) to get a labeled overview of the files the request touches, then use read, glob, and grep to verify assumptions before forming any opinion. Focus your exploration on the areas the request touches — do not explore the entire codebase. Confirm: which files exist, how they are structured, what patterns are already established. Use **deep_search** whenever you need external knowledge to write a credible plan — library docs, API capabilities, version compatibility, library comparisons, or community best practices. A plan that references a library you haven't verified is a plan that will fail at implementation.
 
 3. **Resolve ambiguities.** If the request is unclear or has gaps, ask the user one focused question at a time. Wait for the answer before asking the next. Do not dump a list of questions.
 
@@ -186,7 +186,7 @@ var NoteAgent = Agent{
 	Tools:       []string{"bash", "read", "glob", "grep", "deep_search", "codebase_map"},
 	System: `You are a note-taking agent. Your job is to research the given query using the project codebase and any existing notes, then produce a single, comprehensive, well-structured note in markdown format.
 
-` + projectIndexPrompt() + `
+` + projectIndexPrompt("note") + `
 
 ## Your process
 

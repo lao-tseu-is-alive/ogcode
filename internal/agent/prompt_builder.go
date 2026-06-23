@@ -6,9 +6,21 @@ import (
 	"strings"
 )
 
-// projectIndexPrompt returns the mandatory project index instructions section.
-// Agents that have the codebase_map tool must use it before any file exploration.
-func projectIndexPrompt() string {
+// projectIndexPrompt returns the mandatory project index instructions section,
+// scoped to the given agent role. The workflow tail is tailored to whether the
+// agent can make changes (build) or is read-only (plan, note). Agents that have
+// the codebase_map tool must use it before any file exploration.
+func projectIndexPrompt(role string) string {
+	// The final workflow step differs by role: write-capable agents make changes,
+	// read-only agents produce their plan/note instead.
+	finalStep := "Then make changes"
+	switch role {
+	case "plan":
+		finalStep = "Then produce your plan"
+	case "note":
+		finalStep = "Then produce your note"
+	}
+
 	return `## Mandatory: Use Project Index Before Exploration
 
 **Rule:** Before exploring any file, folder, or project structure, you **MUST** use the "codebase_map" tool first.
@@ -33,7 +45,7 @@ The project index provides **topic labels** and a **structured overview** of eve
 Task received
   → codebase_map(subdir=...)   ← MANDATORY FIRST STEP
   → Then read specific files
-  → Then make changes
+  → ` + finalStep + `
 
 ### When codebase_map is not enough
 
