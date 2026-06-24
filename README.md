@@ -126,8 +126,6 @@ In short: you describe the feature, Ogcode plans it, splits it into parallel-saf
 
 Ogcode is an agentic coding assistant that runs entirely on your machine — a single Go binary with an embedded SolidJS web UI. It doesn't just suggest code. It **understands your whole codebase**, **plans complex features with you**, and **executes them across parallel git branches** — while your code stays local and private.
 
-**The differentiator: context engineering.** As frontier-model pricing climbs with every leap in intelligence, a flat "send the whole conversation every turn" loop becomes unsustainable — both for your budget *and* for accuracy. Ogcode is engineered from the agent loop outward to curate the right context per turn: a persistent knowledge graph recalls only what's relevant, call-graph context is fetched on demand, and stale history is compacted rather than re-sent. In real session testing this saves **over 70% of tokens** on long-running sessions — and because the model sees a focused, on-point context window instead of a wall of stale chat, accuracy *goes up* at the same time. So a fixed monthly budget stretches further, a team stays under its limit, and the work comes back more correct — without sacrificing capability.
-
 Unlike IDE-locked assistants (Cursor, Copilot) or cloud-only services (Claude Code), Ogcode is **browser-native, self-hosted, and model-agnostic**. Use Claude, GPT, OpenRouter, or local Ollama models, and switch anytime from the UI. No subscriptions. No vendor lock-in. Nothing leaves your machine except the prompts you send to your chosen provider.
 
 ```bash
@@ -186,7 +184,6 @@ Ogcode is the only agentic coding assistant that combines a **browser-native UI*
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Remote Deployment](#remote-deployment)
-- [The Plan Mode Workflow](#the-plan-mode-workflow)
 - [Agentic Session Memory](#agentic-session-memory)
 - [Architecture](#architecture)
 - [Roadmap](#roadmap)
@@ -394,7 +391,7 @@ Chat with the agent — ask it to read files, write code, run commands, or searc
 ogcode plan
 ```
 
-Describe what you want to build. The planning agent reads your codebase, discusses the approach, and breaks it into tasks with dependencies and effort estimates. Lock the plan, and the tasks become a Kanban board you can execute in parallel.
+Describe what you want to build. The planning agent reads your codebase, discusses the approach, and breaks it into tasks with dependencies and effort estimates. Lock the plan, and the tasks become a Kanban board you can execute in parallel. Completed plans are archived as markdown in `.ogcode/archives/`.
 
 ### Custom port
 
@@ -492,32 +489,6 @@ HTML blocks render in a **sandboxed iframe** — scripts run in isolation with n
 
 ---
 
-## The Plan Mode Workflow
-
-```
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  1. Describe │ → │  2. Lock      │ → │  3. Review    │ → │  4. Execute   │
-│   your goal   │    │   the plan    │    │  Kanban board │    │   in parallel │
-└──────────────┘    └──────────────┘    └──────────────┘    └──────┬───────┘
-                                                                    │
-                    ┌──────────────┐    ┌──────────────┐    ┌───────▼──────┐
-                    │  6. Retry    │ ← │  5. Complete  │ ← │  Task runs    │
-                    │  if needed    │    │  auto-PR      │    │  in isolated  │
-                    └──────────────┘    └──────────────┘    │  git branch   │
-                                                            └──────────────┘
-```
-
-1. **Describe** — Open a new plan and describe your goal. The planning agent reads your codebase and refines the approach with you.
-2. **Lock** — When ready, lock the plan. The agent generates a structured task breakdown with effort (S/M/L/XL), complexity, and dependencies.
-3. **Review** — View tasks in the Kanban board. Drag, reorder, or start tasks individually.
-4. **Execute** — Start tasks. Each gets its own git branch and isolated agent session. Independent tasks run in **parallel**.
-5. **Complete** — Finished tasks auto-commit and open pull requests.
-6. **Retry** — If a task fails, retry it. The stale branch is removed and the task starts fresh.
-
-Plans are archived as markdown in `.ogcode/archives/` once complete.
-
----
-
 ## Agentic Session Memory
 
 ![Agentic Memory Demo](assets/agentic_memory.gif)
@@ -529,14 +500,6 @@ Traditional assistants send the *entire conversation history* to the LLM every t
 | **~70% token savings** | Drastically reduced API costs on long sessions    |
 | **Infinite context** | No practical limit on session length or codebase size |
 | **Higher accuracy**  | Only relevant memories are retrieved per query      |
-
-### Token savings example
-
-| Session Length | Traditional | With Agentic Memory | Savings |
-| -------------- | ----------- | ------------------- | ------- |
-| 50 messages    | ~25K tokens | ~8K tokens          | **68%** |
-| 200 messages   | ~100K tokens| ~28K tokens         | **72%** |
-| 1000 messages  | ~500K tokens| ~120K tokens        | **76%** |
 
 ### How it works
 
