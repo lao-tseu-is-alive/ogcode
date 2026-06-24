@@ -4,7 +4,7 @@
 
 **The context-engineered agentic coding workbench.**
 
-Built for a future where every token counts. Ogcode curates the *relevant* context for each turn — not the full transcript — so it cuts 70%+ of tokens on long sessions *and* sharpens accuracy, letting even lower-end models outperform frontier ones. All while planning with you, remembering your codebase, and shipping features in parallel from a single binary that never leaves your machine.
+Built for a future where every token counts. Ogcode curates the *relevant* context for each turn — not the full transcript — so it cuts 70%+ of tokens on long sessions, sharpens accuracy, and lets even lower-end models outperform frontier ones. And because it *recalls* instead of *replays*, your conversations run **effectively forever — you never hit a model's context limit**, on any model, frontier or local. All while planning with you, remembering your codebase, and shipping features in parallel from a single binary that never leaves your machine.
 
 <br/>
 
@@ -23,7 +23,7 @@ Built for a future where every token counts. Ogcode curates the *relevant* conte
 
 <br/>
 
-[Context Engineering](#context-engineering--the-real-differentiator) · [Quick Start](#quick-start) · [Why Ogcode](#why-ogcode) · [Documentation](docs/OUTLINE.md) · [Discord](https://discord.gg/JQP9t8y2Zv)
+[Context Engineering](#context-engineering--the-real-differentiator) · [Infinite Context](#infinite-context--never-hit-a-models-limit) · [Plan Mode & Parallel PRs](#plan-mode--parallel-prs--ship-features-not-just-suggestions) · [Quick Start](#quick-start) · [Why Ogcode](#why-ogcode) · [Documentation](docs/OUTLINE.md) · [Discord](https://discord.gg/JQP9t8y2Zv)
 
 </div>
 
@@ -55,6 +55,75 @@ In the end, it's all about context engineering. Ogcode is brilliant at this, whi
 
 ---
 
+## Infinite Context — never hit a model's limit
+
+> **Every model has a context window. Every other agent eventually slams into it. With Ogcode you never do — chat forever, on any model, no matter how small its window.**
+
+This is the part that genuinely changes the game. Every LLM ships with a fixed context limit — 8K, 128K, 200K, a million tokens — and every other coding agent creeps toward that wall as the session grows, until the model starts dropping the start of the conversation or simply refuses to continue. **Ogcode removes the ceiling entirely.**
+
+The reason is **Agentic Session Memory**. Because Ogcode *recalls* the few facts relevant to the current turn from a persistent knowledge graph — instead of *replaying* the entire transcript — the prompt it sends stays flat no matter how long the conversation runs. A session that's 50 messages deep and one that's 5,000 messages deep hand the model the *same* compact, on-point context window. **The conversation is unbounded; the per-turn context is not.** So you can talk to a model forever and never reach its limit — and that holds for *any* model, whatever the size of its native window.
+
+### Three wins from one idea
+
+- **Infinite conversations, on any model.** Drive Ogcode with a frontier model or a tiny local Llama with an 8K window — it makes no difference. The knowledge graph keeps every turn small, so the model's own context limit is never the bottleneck. You get effectively *limitless* session length even on models that could never sustain it alone.
+- **Far lower cost.** A flat per-turn prompt means you stop paying the linearly-growing bill of full-transcript replay — over **70% fewer tokens** on long sessions. See [Context Engineering](#context-engineering--the-real-differentiator) and [Token Efficiency](#token-efficiency).
+- **Higher accuracy.** The model reasons over only the facts that matter for the turn in front of it, not a wall of stale history — so it drifts less and stays on-target. Cleaner context is *more* accurate, not just cheaper.
+
+Never hit a context limit, spend far fewer tokens, and get more accurate results — on whatever model you choose. That is the true beauty of Agentic Session Memory. *(For the knowledge-graph internals, see [Agentic Session Memory](#agentic-session-memory).)*
+
+---
+
+## Plan Mode + Parallel PRs — ship features, not just suggestions
+
+> **Other agents suggest code. Ogcode plans the feature, decomposes it, executes the pieces in parallel, and raises the pull requests for you.**
+
+Most coding agents stop at "here's the code for the file you asked about." Ogcode's **Plan Mode** turns a one-line goal into a shipping feature. You describe what you want to build; the planning agent reads your codebase, discusses the approach with you, and — once you lock the plan — **it becomes Ogcode's responsibility** to break that feature into smaller, implementation-ready tasks, run them, and open the pull requests.
+
+### Plan once, ship the whole feature
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  1. Describe │ → │  2. Lock      │ → │  3. Review    │ → │  4. Execute   │
+│   your goal   │    │   the plan    │    │  Kanban board │    │   in parallel │
+└──────────────┘    └──────────────┘    └──────────────┘    └──────┬───────┘
+                                                                    │
+                    ┌──────────────┐    ┌──────────────┐    ┌───────▼──────┐
+                    │  6. Retry    │ ← │  5. Complete  │ ← │  Task runs    │
+                    │  if needed    │    │  auto-PR      │    │  in isolated  │
+                    └──────────────┘    └──────────────┘    │  git branch   │
+                                                            └──────────────┘
+```
+
+1. **Describe** — Open a plan and describe your goal. The planning agent reads your codebase and refines the approach with you in conversation.
+2. **Lock** — When you're happy, lock the plan. Ogcode runs a **breakdown agent** that turns the agreed plan into a structured task list with effort estimates (S/M/L/XL), complexity scores, and a dependency graph.
+3. **Review** — Tasks land on a **visual Kanban board**. Inspect, reorder, or kick off tasks individually.
+4. **Execute** — Each task gets its **own git branch and isolated agent session**. Tasks with no dependency on each other run **in parallel** — multiple agents coding at the same time.
+5. **Complete** — Finished tasks auto-commit, push, and open **pull requests directly against your GitHub repo**.
+6. **Retry** — A failed task is retried from a clean slate: the stale branch is deleted and the task starts fresh.
+
+### How Ogcode breaks the feature down
+
+The breakdown is deliberate about **parallelism and conflict-free merges** — this is the part most agents get wrong and Ogcode gets right:
+
+- **File-ownership rule.** The breakdown agent is instructed that parallel tasks **must not touch the same files**. If two tasks would edit the same file, the agent adds a dependency between them so they run sequentially instead. This is what keeps the auto-PRs **merge-conflict-free**.
+- **Strictly linear dependency chains.** Each task may depend on at most one other task, producing clean A→B→C chains rather than tangled fan-in graphs. Cycles are detected and rejected before execution ever starts.
+- **Implementation-ready descriptions.** Every task description names exact file paths, function/type names, patterns to follow, and edge cases — so a developer (or the task agent) can implement it from the description alone.
+- **Shared chain branches.** Tasks in a dependency chain share one branch and accumulate each completed step, so a downstream task always sees its predecessors' work. The chain raises a **single consolidated PR** when the last task completes, instead of N conflicting ones.
+
+### Why this matters
+
+The payoff is end-to-end **parallel feature completion**: you plan one feature, and Ogcode ships it as a set of clean, reviewable pull requests that don't fight each other. It does this because **git is baked into the Ogcode core**, not bolted on as an afterthought:
+
+- **Git worktrees at the core.** Every task runs in an isolated `git worktree` — a real, independent working checkout on its own branch. Multiple agents work simultaneously without clobbering each other's files or your main branch.
+- **Auto-commit, push, and PR.** When a task finishes, Ogcode commits any leftover changes, pushes the branch to `origin`, and opens a pull request via the `gh` CLI — idempotently (re-running won't create duplicate PRs), and with a generated PR body.
+- **Stacked PRs, handled gracefully.** Dependent tasks branch from their predecessor's branch, not from HEAD. If a stacked base branch was already merged and deleted, Ogcode **falls back to the repo's default branch** automatically so the PR is still created correctly.
+- **Merge-conflict-safe by construction.** Because parallel tasks own disjoint files (enforced at breakdown time) and chained tasks share a branch they merge into sequentially, the PRs Ogcode raises are designed to merge **without conflicts**.
+- **Beautiful cleanup.** Worktrees, branches, and stale directories are pruned automatically — on success, on failure, on retry, and on plan deletion. Crashed sessions are recovered and cleaned up on the next server start.
+
+In short: you describe the feature, Ogcode plans it, splits it into parallel-safe tasks, executes them across isolated branches, and opens the PRs — **directly to your upstream GitHub repo**, with no merge conflicts and no manual git wrangling. That's parallel task completion *and* parallel feature completion, from a single binary that manages the GitHub repo and its git worktrees natively because git is part of the Ogcode core.
+
+---
+
 Ogcode is an agentic coding assistant that runs entirely on your machine — a single Go binary with an embedded SolidJS web UI. It doesn't just suggest code. It **understands your whole codebase**, **plans complex features with you**, and **executes them across parallel git branches** — while your code stays local and private.
 
 **The differentiator: context engineering.** As frontier-model pricing climbs with every leap in intelligence, a flat "send the whole conversation every turn" loop becomes unsustainable — both for your budget *and* for accuracy. Ogcode is engineered from the agent loop outward to curate the right context per turn: a persistent knowledge graph recalls only what's relevant, call-graph context is fetched on demand, and stale history is compacted rather than re-sent. In real session testing this saves **over 70% of tokens** on long-running sessions — and because the model sees a focused, on-point context window instead of a wall of stale chat, accuracy *goes up* at the same time. So a fixed monthly budget stretches further, a team stays under its limit, and the work comes back more correct — without sacrificing capability.
@@ -73,7 +142,7 @@ curl -fsSL http://ogcode.xyz/install.sh | sh && ogcode
 | --------------------- | ----------------------------- | --------------- | ------------- | ------------- | -------------- |
 | **Interface**         | Web UI (any editor)           | VS Code fork    | Terminal      | IDE extension | Terminal       |
 | **Self-Hosted**       | Single binary, zero deps      | Cloud-required  | Cloud-only    | Cloud-only    | Open source    |
-| **Parallel Tasks**    | Git worktrees, auto-PRs       | Cloud agents    | Subagents     | Single agent  | Sequential     |
+| **Parallel Tasks**    | Git worktrees, conflict-free auto-PRs to upstream | Cloud agents    | Subagents     | Single agent  | Sequential     |
 | **Plan Mode**         | Kanban + effort estimates     | Agents window   | Architect mode| Prompt-based  | `/architect`   |
 | **Persistent Memory** | Knowledge graph + Call graph  | Session-only    | CLAUDE.md     | None          | None          |
 | **Token Efficiency**  | Loop-level optimization, ~70% saved, higher accuracy | No                | No            | No            | No           |
@@ -81,15 +150,15 @@ curl -fsSL http://ogcode.xyz/install.sh | sh && ogcode
 | **Cost**              | BYOK (tokens only)            | $20–$40/mo      | $20–$100/mo   | $19–$39/mo    | Free (BYOK)    |
 | **License**           | **MIT**                       | Proprietary     | Proprietary   | Proprietary   | Apache-2.0     |
 
-Ogcode is the only agentic coding assistant that combines a **browser-native UI** (works with Vim, Emacs, VS Code, JetBrains, or any editor), a **formal Plan Mode** with a visual Kanban board, **git-native parallel execution** that gives every task its own isolated branch with auto-commits and auto-PRs, a **persistent knowledge graph** for long-term memory, **loop-level token optimization** that keeps long-session token use over 70% lower than naive replay *and* sharpens per-turn accuracy, **context engineering** that lets lower-end models match or beat frontier models on clean context, and **single-binary self-hosting** with zero cloud dependencies.
+Ogcode is the only agentic coding assistant that combines a **browser-native UI** (works with Vim, Emacs, VS Code, JetBrains, or any editor), a **formal Plan Mode** with a visual Kanban board and parallel execution that raises conflict-free PRs directly against your upstream GitHub repo, **git-native parallel execution** that gives every task its own isolated worktree branch with auto-commits and auto-PRs, a **persistent knowledge graph** for long-term memory, **loop-level token optimization** that keeps long-session token use over 70% lower than naive replay *and* sharpens per-turn accuracy, **context engineering** that lets lower-end models match or beat frontier models on clean context, and **single-binary self-hosting** with zero cloud dependencies.
 
 ---
 
 ## Features
 
-- **Build Mode + Plan Mode** — Chat with a coding agent in real time, or collaboratively plan complex features with effort estimates and dependency graphs.
+- **Build Mode + Plan Mode** — Chat with a coding agent in real time, or collaboratively plan complex features with effort estimates and dependency graphs, then let Ogcode decompose them into parallel tasks and raise the PRs.
 - **Token-Efficient by Design** — Token optimization is built into the agent loop: the knowledge graph recalls only relevant context per turn, call-graph facts are fetched on demand, and stale history is compacted instead of re-sent — saving 70%+ of tokens on long sessions *and* sharpening accuracy by keeping the context window focused on the task at hand.
-- **Parallel Task Execution** — Independent tasks run simultaneously across isolated git worktree branches. Ship entire features in parallel.
+- **Parallel Task Execution** — Independent tasks run simultaneously across isolated git worktree branches and open pull requests directly against your upstream GitHub repo. Ship entire features in parallel, with conflict-free PRs by construction.
 - **Agentic Session Memory** — Infinite context via a persistent knowledge graph, with ~70% token savings on long sessions.
 - **Knowledge Graph + Call Graph** — Semantic memory of your codebase (Topic → Concept → Fact) plus function-level call relationships for intelligent navigation.
 - **Multi-Provider LLM Support** — Anthropic Claude, OpenAI GPT, OpenRouter, or local Ollama models. Switch anytime from the UI.
@@ -107,6 +176,8 @@ Ogcode is the only agentic coding assistant that combines a **browser-native UI*
 ## Table of Contents
 
 - [Context Engineering — the real differentiator](#context-engineering--the-real-differentiator)
+- [Infinite Context — never hit a model's limit](#infinite-context--never-hit-a-models-limit)
+- [Plan Mode + Parallel PRs](#plan-mode--parallel-prs--ship-features-not-just-suggestions)
 - [Quick Start](#quick-start)
 - [Why Ogcode](#why-ogcode)
 - [Token Efficiency](#token-efficiency)
@@ -157,7 +228,7 @@ Ogcode gives you what none of the above do:
 
 - **Context engineering** — only the relevant context is sent per turn, so tokens fall *and* accuracy rises; smaller models can match or beat frontier models on clean context
 - A **web UI** that works with *any* editor
-- **Formal Plan Mode** with a visual Kanban board and parallel execution
+- **Formal Plan Mode** with a visual Kanban board, parallel task decomposition, and auto-PRs raised directly against your upstream GitHub repo
 - A **persistent knowledge graph** that survives across sessions
 - **Single-binary self-hosting** with zero cloud dependencies
 - **Full model freedom** — Claude today, GPT tomorrow, local Llama next week
