@@ -2,7 +2,7 @@
 
 # Ogcode
 
-**The context-engineered agentic coding workbench.**
+**The token-efficient agentic coding workbench.**
 
 Built for a future where every token counts. Ogcode curates the *relevant* context for each turn — not the full transcript — so it cuts 70%+ of tokens on long sessions, sharpens accuracy, and lets even lower-end models outperform frontier ones. And because it *recalls* instead of *replays*, your conversations run **effectively forever — you never hit a model's context limit**, on any model, frontier or local. All while planning with you, remembering your codebase, and shipping features in parallel from a single binary that never leaves your machine.
 
