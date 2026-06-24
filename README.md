@@ -2,9 +2,9 @@
 
 # Ogcode
 
-**The self-hosted agentic coding workbench.**
+**The token-efficient agentic coding workbench.**
 
-It plans with you, remembers your codebase, and ships features in parallel — from a single binary that never leaves your machine.
+Built for a future where every token counts. Ogcode optimizes token usage at the agent-loop level — cutting 70%+ of tokens on long sessions — while planning with you, remembering your codebase, and shipping features in parallel from a single binary that never leaves your machine.
 
 <br/>
 
@@ -31,6 +31,8 @@ It plans with you, remembers your codebase, and ships features in parallel — f
 
 Ogcode is an agentic coding assistant that runs entirely on your machine — a single Go binary with an embedded SolidJS web UI. It doesn't just suggest code. It **understands your whole codebase**, **plans complex features with you**, and **executes them across parallel git branches** — while your code stays local and private.
 
+**The differentiator: token efficiency.** As frontier-model pricing climbs with every leap in intelligence, a flat "send the whole conversation every turn" loop becomes unsustainable. Ogcode is engineered from the agent loop outward to use tokens sparingly — a persistent knowledge graph recalls only what's relevant per turn, call-graph context is fetched on demand, and stale context is compacted rather than re-sent. In real session testing this saves **over 70% of tokens** on long-running sessions, so a fixed monthly budget stretches further and a team stays under its limit without sacrificing capability.
+
 Unlike IDE-locked assistants (Cursor, Copilot) or cloud-only services (Claude Code), Ogcode is **browser-native, self-hosted, and model-agnostic**. Use Claude, GPT, OpenRouter, or local Ollama models, and switch anytime from the UI. No subscriptions. No vendor lock-in. Nothing leaves your machine except the prompts you send to your chosen provider.
 
 ```bash
@@ -47,18 +49,20 @@ curl -fsSL http://ogcode.xyz/install.sh | sh && ogcode
 | **Self-Hosted**       | Single binary, zero deps      | Cloud-required  | Cloud-only    | Cloud-only    | Open source    |
 | **Parallel Tasks**    | Git worktrees, auto-PRs       | Cloud agents    | Subagents     | Single agent  | Sequential     |
 | **Plan Mode**         | Kanban + effort estimates     | Agents window   | Architect mode| Prompt-based  | `/architect`   |
-| **Persistent Memory** | Knowledge graph + Call graph  | Session-only    | CLAUDE.md     | None          | None           |
+| **Persistent Memory** | Knowledge graph + Call graph  | Session-only    | CLAUDE.md     | None          | None          |
+| **Token Efficiency**  | Loop-level optimization, ~70% saved | No                | No            | No            | No           |
 | **Model Choice**      | Claude, GPT, OpenRouter, Ollama | Built-in + custom | Claude only | MS-managed    | Any endpoint   |
 | **Cost**              | BYOK (tokens only)            | $20–$40/mo      | $20–$100/mo   | $19–$39/mo    | Free (BYOK)    |
 | **License**           | **MIT**                       | Proprietary     | Proprietary   | Proprietary   | Apache-2.0     |
 
-Ogcode is the only agentic coding assistant that combines a **browser-native UI** (works with Vim, Emacs, VS Code, JetBrains, or any editor), a **formal Plan Mode** with a visual Kanban board, **git-native parallel execution** that gives every task its own isolated branch with auto-commits and auto-PRs, a **persistent knowledge graph** for long-term memory, and **single-binary self-hosting** with zero cloud dependencies.
+Ogcode is the only agentic coding assistant that combines a **browser-native UI** (works with Vim, Emacs, VS Code, JetBrains, or any editor), a **formal Plan Mode** with a visual Kanban board, **git-native parallel execution** that gives every task its own isolated branch with auto-commits and auto-PRs, a **persistent knowledge graph** for long-term memory, **loop-level token optimization** that keeps long-session token use over 70% lower than naive replay, and **single-binary self-hosting** with zero cloud dependencies.
 
 ---
 
 ## Features
 
 - **Build Mode + Plan Mode** — Chat with a coding agent in real time, or collaboratively plan complex features with effort estimates and dependency graphs.
+- **Token-Efficient by Design** — Token optimization is built into the agent loop: the knowledge graph recalls only relevant context per turn, call-graph facts are fetched on demand, and stale history is compacted instead of re-sent — saving 70%+ of tokens on long sessions.
 - **Parallel Task Execution** — Independent tasks run simultaneously across isolated git worktree branches. Ship entire features in parallel.
 - **Agentic Session Memory** — Infinite context via a persistent knowledge graph, with ~70% token savings on long sessions.
 - **Knowledge Graph + Call Graph** — Semantic memory of your codebase (Topic → Concept → Fact) plus function-level call relationships for intelligent navigation.
@@ -78,6 +82,7 @@ Ogcode is the only agentic coding assistant that combines a **browser-native UI*
 
 - [Quick Start](#quick-start)
 - [Why Ogcode](#why-ogcode)
+- [Token Efficiency](#token-efficiency)
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -128,6 +133,41 @@ Ogcode gives you what none of the above do:
 - A **persistent knowledge graph** that survives across sessions
 - **Single-binary self-hosting** with zero cloud dependencies
 - **Full model freedom** — Claude today, GPT tomorrow, local Llama next week
+
+---
+
+## Token Efficiency
+
+> Nobody else is thinking about token optimization. They burn tokens like water — Claude Code, OpenCode, GitHub Copilot, every coding agent out there — because none of them are designed, at the core loop level, to actually conserve tokens.
+
+As the cost of using frontier AI climbs with every intelligence leap, tokens are becoming a budgeted resource. In the near future, a team — or a solo developer — will have a fixed monthly token allowance and have to ship software, features, and fixes within it. Ogcode is built for that future: token efficiency is designed into the **agent loop itself**, not bolted on after the fact.
+
+### How Ogcode saves tokens
+
+| Mechanism | What it does | Token impact |
+| --------- | ------------ | ------------ |
+| **Agentic Session Memory** | Replaces "send the whole conversation every turn" with a knowledge graph that returns only the facts relevant to the current query. | Largest single saving — grows with session length |
+| **Call Graph recall** | Pulls in code-structure context on demand instead of re-reading source files into the prompt. | Avoids re-sending large file contents |
+| **Context compaction** | Summarizes stale history instead of replaying it verbatim, with truncation as a fallback. | Caps prompt size on long sessions |
+| **Targeted `memory_recall`** | The agent retrieves precise historical facts (config values, past decisions) rather than re-deriving them by re-reading code. | Fewer exploration turns |
+
+### Real session results
+
+In real session testing, Ogcode saves **over 70% of tokens** on long-running sessions versus a naive full-replay loop — meaning a fixed monthly budget goes further, a team stays under its limit, and frontier-model cost increases hurt less.
+
+| Session Length | Traditional (full replay) | With Ogcode memory | Savings |
+| -------------- | ------------------------ | ------------------ | ------- |
+| 50 messages    | ~25K tokens              | ~8K tokens         | **68%** |
+| 200 messages   | ~100K tokens             | ~28K tokens        | **72%** |
+| 1000 messages  | ~500K tokens             | ~120K tokens       | **76%** |
+
+Enable it with:
+
+```bash
+export OGCODE_AGENTIC_MEMORY_MODE=true
+```
+
+See [Agentic Session Memory](#agentic-session-memory) for the technical deep dive.
 
 ---
 
