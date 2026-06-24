@@ -2,9 +2,9 @@
 
 # Ogcode
 
-**The token-efficient agentic coding workbench.**
+**The context-engineered agentic coding workbench.**
 
-Built for a future where every token counts. Ogcode optimizes token usage at the agent-loop level — cutting 70%+ of tokens on long sessions — while planning with you, remembering your codebase, and shipping features in parallel from a single binary that never leaves your machine.
+Built for a future where every token counts. Ogcode curates the *relevant* context for each turn — not the full transcript — so it cuts 70%+ of tokens on long sessions *and* sharpens accuracy, letting even lower-end models outperform frontier ones. All while planning with you, remembering your codebase, and shipping features in parallel from a single binary that never leaves your machine.
 
 <br/>
 
@@ -23,15 +23,41 @@ Built for a future where every token counts. Ogcode optimizes token usage at the
 
 <br/>
 
-[Quick Start](#quick-start) · [Why Ogcode](#why-ogcode) · [Documentation](docs/OUTLINE.md) · [Discord](https://discord.gg/JQP9t8y2Zv)
+[Context Engineering](#context-engineering--the-real-differentiator) · [Quick Start](#quick-start) · [Why Ogcode](#why-ogcode) · [Documentation](docs/OUTLINE.md) · [Discord](https://discord.gg/JQP9t8y2Zv)
 
 </div>
 
 ---
 
+## Context Engineering — the real differentiator
+
+> **Every other coding agent resends your entire conversation history on every turn. Ogcode doesn't.**
+
+Most coding agents operate on a naive replay loop: each turn, they bundle up the **full transcript so far** — every prior message, every tool result, every tangent — and ship it back to the model. That has two costs, and only one of them is money.
+
+**1. It burns tokens.** The prompt grows linearly with the session, so a 200-message task can cost 5× more than a 20-message one even if the *new* work is trivial. On a fixed monthly budget this caps how much you can actually ship.
+
+**2. It *hurts accuracy* — and this matters more than the money.** An LLM can only act on what's in its context window. When you flood that window with stale, unrelated chatter from earlier in the session, the signal gets buried in noise: the model loses sight of the current task, drifts toward half-remembered earlier decisions, and reasons against context that was relevant *then* but isn't relevant *now*. The older the conversation, the more the historical turns actively *distract* from the turn in front of the model.
+
+Ogcode does the opposite. For each turn it **extracts only the context that is actually relevant to the task at hand** — pulling precise facts from a persistent knowledge graph and call graph via `memory_recall`, fetching code-structure context on demand, and compacting stale history instead of replaying it verbatim. The model receives a short, sharp, on-point context window. Less history, fewer tokens — and *better* outcomes, because the model isn't wading through a hundred old messages to find the three facts it needs right now.
+
+**Saving tokens isn't only about cost — it's about accuracy.** A smaller, more relevant context window lets the model focus, so it produces more correct, more on-target results per turn. The two goals reinforce each other.
+
+### This is unique to Ogcode
+
+No other coding agent on the market does this. Claude Code, Cursor, Copilot, Aider — every one of them replays the full conversation every turn. Token efficiency, in those tools, is an afterthought at best. Ogcode is the only agent engineered, **at the agent-loop level**, to conserve tokens *and* to curate context per turn — because it believes the real lever is **context engineering**: how efficiently and how relevantly you prepare the context for a given task.
+
+### Context engineering lets smaller models punch above their weight
+
+This is the deeper payoff. If the only thing context engineering did was save money, it would still be worth it — but it does more: it **extracts capability even from lower-end models**. Keep the context relevant, limited, and short, and a mid-tier model (Claude Sonnet, a local Llama, a smaller GPT) can reason just as clearly — and sometimes *outperform* — a frontier model that's been handed a bloated, noisy transcript. The frontier model isn't smarter *about your code*; it just has more raw capacity to dig itself out of the irrelevant history you buried it under. Give either model a clean, on-point context window and the gap narrows dramatically — often to zero.
+
+In the end, it's all about context engineering. Ogcode is brilliant at this, which is why it simultaneously **cuts token cost** and **increases the accuracy of the task outcome**. Cheaper *and* better — not a tradeoff.
+
+---
+
 Ogcode is an agentic coding assistant that runs entirely on your machine — a single Go binary with an embedded SolidJS web UI. It doesn't just suggest code. It **understands your whole codebase**, **plans complex features with you**, and **executes them across parallel git branches** — while your code stays local and private.
 
-**The differentiator: token efficiency.** As frontier-model pricing climbs with every leap in intelligence, a flat "send the whole conversation every turn" loop becomes unsustainable. Ogcode is engineered from the agent loop outward to use tokens sparingly — a persistent knowledge graph recalls only what's relevant per turn, call-graph context is fetched on demand, and stale context is compacted rather than re-sent. In real session testing this saves **over 70% of tokens** on long-running sessions, so a fixed monthly budget stretches further and a team stays under its limit without sacrificing capability.
+**The differentiator: context engineering.** As frontier-model pricing climbs with every leap in intelligence, a flat "send the whole conversation every turn" loop becomes unsustainable — both for your budget *and* for accuracy. Ogcode is engineered from the agent loop outward to curate the right context per turn: a persistent knowledge graph recalls only what's relevant, call-graph context is fetched on demand, and stale history is compacted rather than re-sent. In real session testing this saves **over 70% of tokens** on long-running sessions — and because the model sees a focused, on-point context window instead of a wall of stale chat, accuracy *goes up* at the same time. So a fixed monthly budget stretches further, a team stays under its limit, and the work comes back more correct — without sacrificing capability.
 
 Unlike IDE-locked assistants (Cursor, Copilot) or cloud-only services (Claude Code), Ogcode is **browser-native, self-hosted, and model-agnostic**. Use Claude, GPT, OpenRouter, or local Ollama models, and switch anytime from the UI. No subscriptions. No vendor lock-in. Nothing leaves your machine except the prompts you send to your chosen provider.
 
@@ -50,19 +76,19 @@ curl -fsSL http://ogcode.xyz/install.sh | sh && ogcode
 | **Parallel Tasks**    | Git worktrees, auto-PRs       | Cloud agents    | Subagents     | Single agent  | Sequential     |
 | **Plan Mode**         | Kanban + effort estimates     | Agents window   | Architect mode| Prompt-based  | `/architect`   |
 | **Persistent Memory** | Knowledge graph + Call graph  | Session-only    | CLAUDE.md     | None          | None          |
-| **Token Efficiency**  | Loop-level optimization, ~70% saved | No                | No            | No            | No           |
+| **Token Efficiency**  | Loop-level optimization, ~70% saved, higher accuracy | No                | No            | No            | No           |
 | **Model Choice**      | Claude, GPT, OpenRouter, Ollama | Built-in + custom | Claude only | MS-managed    | Any endpoint   |
 | **Cost**              | BYOK (tokens only)            | $20–$40/mo      | $20–$100/mo   | $19–$39/mo    | Free (BYOK)    |
 | **License**           | **MIT**                       | Proprietary     | Proprietary   | Proprietary   | Apache-2.0     |
 
-Ogcode is the only agentic coding assistant that combines a **browser-native UI** (works with Vim, Emacs, VS Code, JetBrains, or any editor), a **formal Plan Mode** with a visual Kanban board, **git-native parallel execution** that gives every task its own isolated branch with auto-commits and auto-PRs, a **persistent knowledge graph** for long-term memory, **loop-level token optimization** that keeps long-session token use over 70% lower than naive replay, and **single-binary self-hosting** with zero cloud dependencies.
+Ogcode is the only agentic coding assistant that combines a **browser-native UI** (works with Vim, Emacs, VS Code, JetBrains, or any editor), a **formal Plan Mode** with a visual Kanban board, **git-native parallel execution** that gives every task its own isolated branch with auto-commits and auto-PRs, a **persistent knowledge graph** for long-term memory, **loop-level token optimization** that keeps long-session token use over 70% lower than naive replay *and* sharpens per-turn accuracy, **context engineering** that lets lower-end models match or beat frontier models on clean context, and **single-binary self-hosting** with zero cloud dependencies.
 
 ---
 
 ## Features
 
 - **Build Mode + Plan Mode** — Chat with a coding agent in real time, or collaboratively plan complex features with effort estimates and dependency graphs.
-- **Token-Efficient by Design** — Token optimization is built into the agent loop: the knowledge graph recalls only relevant context per turn, call-graph facts are fetched on demand, and stale history is compacted instead of re-sent — saving 70%+ of tokens on long sessions.
+- **Token-Efficient by Design** — Token optimization is built into the agent loop: the knowledge graph recalls only relevant context per turn, call-graph facts are fetched on demand, and stale history is compacted instead of re-sent — saving 70%+ of tokens on long sessions *and* sharpening accuracy by keeping the context window focused on the task at hand.
 - **Parallel Task Execution** — Independent tasks run simultaneously across isolated git worktree branches. Ship entire features in parallel.
 - **Agentic Session Memory** — Infinite context via a persistent knowledge graph, with ~70% token savings on long sessions.
 - **Knowledge Graph + Call Graph** — Semantic memory of your codebase (Topic → Concept → Fact) plus function-level call relationships for intelligent navigation.
@@ -80,6 +106,7 @@ Ogcode is the only agentic coding assistant that combines a **browser-native UI*
 
 ## Table of Contents
 
+- [Context Engineering — the real differentiator](#context-engineering--the-real-differentiator)
 - [Quick Start](#quick-start)
 - [Why Ogcode](#why-ogcode)
 - [Token Efficiency](#token-efficiency)
@@ -128,6 +155,7 @@ Opens at `http://localhost:9595`. That's it — no config files, no Docker, no I
 
 Ogcode gives you what none of the above do:
 
+- **Context engineering** — only the relevant context is sent per turn, so tokens fall *and* accuracy rises; smaller models can match or beat frontier models on clean context
 - A **web UI** that works with *any* editor
 - **Formal Plan Mode** with a visual Kanban board and parallel execution
 - A **persistent knowledge graph** that survives across sessions
@@ -138,9 +166,9 @@ Ogcode gives you what none of the above do:
 
 ## Token Efficiency
 
-> Nobody else is thinking about token optimization. They burn tokens like water — Claude Code, OpenCode, GitHub Copilot, every coding agent out there — because none of them are designed, at the core loop level, to actually conserve tokens.
+> Nobody else is thinking about token optimization. They burn tokens like water — Claude Code, OpenCode, GitHub Copilot, every coding agent out there — because none of them are designed, at the core loop level, to actually conserve tokens. And because they resend the whole transcript every turn, they also hand the model a noisier, less accurate context window.
 
-As the cost of using frontier AI climbs with every intelligence leap, tokens are becoming a budgeted resource. In the near future, a team — or a solo developer — will have a fixed monthly token allowance and have to ship software, features, and fixes within it. Ogcode is built for that future: token efficiency is designed into the **agent loop itself**, not bolted on after the fact.
+As the cost of using frontier AI climbs with every intelligence leap, tokens are becoming a budgeted resource. In the near future, a team — or a solo developer — will have a fixed monthly token allowance and have to ship software, features, and fixes within it. Ogcode is built for that future: token efficiency is designed into the **agent loop itself**, not bolted on after the fact — and it doubles as an **accuracy** win, because the model reasons over a curated, on-point context window instead of a wall of stale chat.
 
 ### How Ogcode saves tokens
 
@@ -153,7 +181,7 @@ As the cost of using frontier AI climbs with every intelligence leap, tokens are
 
 ### Real session results
 
-In real session testing, Ogcode saves **over 70% of tokens** on long-running sessions versus a naive full-replay loop — meaning a fixed monthly budget goes further, a team stays under its limit, and frontier-model cost increases hurt less.
+In real session testing, Ogcode saves **over 70% of tokens** on long-running sessions versus a naive full-replay loop — meaning a fixed monthly budget goes further, a team stays under its limit, and frontier-model cost increases hurt less. And because the model sees only the relevant facts for the current turn rather than the entire transcript, **task accuracy improves at the same time**: less drift, fewer half-remembered earlier decisions, more on-target results.
 
 | Session Length | Traditional (full replay) | With Ogcode memory | Savings |
 | -------------- | ------------------------ | ------------------ | ------- |
