@@ -23,7 +23,10 @@ type MemoryConfig struct {
 }
 
 // GetMemoryConfig returns the stored agentic-memory config. If the row does not
-// exist, it returns a zero-value config (disabled).
+// exist, agentic memory defaults to enabled: the inbuilt local embedder
+// (all-MiniLM-L6-v2) needs zero setup — no API key, no external service — so
+// memory is on out of the box. A user who has explicitly turned memory off has
+// a persisted row with enabled = 0, which is still honored.
 func GetMemoryConfig(database *db.DB) (*MemoryConfig, error) {
 	var c MemoryConfig
 	var enabled int
@@ -33,7 +36,7 @@ func GetMemoryConfig(database *db.DB) (*MemoryConfig, error) {
 			FROM memory_config WHERE id = 1
 		`).Scan(&enabled, &updated)
 	if err == sql.ErrNoRows {
-		return &MemoryConfig{}, nil
+		return &MemoryConfig{Enabled: true}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get memory config: %w", err)
