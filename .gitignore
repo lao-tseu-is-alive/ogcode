@@ -29,3 +29,7 @@ MEMORY.md
 
 # Claude Code CLI
 .claude/
+
+# Local scratch documents
+exponential_equations.tex
+polynomial_equations.pdf
