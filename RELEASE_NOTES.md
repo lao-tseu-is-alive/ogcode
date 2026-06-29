@@ -1,52 +1,64 @@
-# Release Notes — v0.11.2
+# Release Notes — v0.12.0
 
-## Installs and runs again on a clean machine
+## Plan mode: PRs target your branch, and task chains build correctly
 
-A reliability release. Prebuilt binaries for **every** install path — the
-`install.sh` one-liner, Homebrew, winget, direct download, and the Docker
-image — were shipping broken and **panicked on startup for new users**. This
-release fixes the build/release pipeline so a fresh install just works.
+This release sharpens Plan mode end to end. Pull requests opened from a plan's
+tasks now target the branch you're actually working on, dependency-chained tasks
+genuinely build on one another, and every chain PR is surfaced in the app. Plus a
+batch of plan-mode reliability fixes and a UI parity fix in the plan sidebar.
 
 ---
 
+### ✨ Highlights
+
+- **Task PRs target your active branch, not just `main`.** When you lock a plan,
+  ogcode now captures the repository's **active branch** and uses it as the base
+  for every PR raised by that plan's tasks (and for the combined chain PR). The
+  work merges back into wherever you're building, not always the default branch.
+  If the active branch isn't on the remote yet, ogcode pushes it first so the PR
+  can target it. (Adds a `base_branch` column to plans — migration runs
+  automatically on first start.)
+
+- **Chain PRs are now visible in the app.** When a dependency chain finishes, its
+  single pull request is recorded on **every task in the chain** — the PR link and
+  number on success, or a clear reason on failure (e.g. no remote, push failed).
+  Previously the chain PR was opened on GitHub but never surfaced in the UI.
+
+- **Plan sidebar parity.** The Plan-mode left nav now includes **Call Graph** and
+  **Doc Index** alongside Notes, matching the Build-mode sidebar. Previously only
+  Notes was shown in Plan mode.
+
 ### 🐛 Fixes
 
-- **Release binaries no longer panic on startup.** ogcode links
-  `github.com/gen2brain/go-fitz` (PDF/MuPDF). The release was built with
-  `CGO_ENABLED=0`, so go-fitz fell back to its pure-Go path and tried to
-  `dlopen` `libmupdf.{dylib,so,dll}` at package-init — which isn't present on a
-  clean machine — making **every** command (even `ogcode version` / `--help`)
-  panic before `main` ran. Releases now build with `CGO_ENABLED=1`, statically
-  linking the bundled libmupdf so no runtime library is needed.
+- **Chained tasks build on their predecessor's work.** Fixed an ordering bug where
+  a dependent task's worktree was created from the shared chain branch *before* the
+  just-completed task was merged into it — so each step was implemented missing the
+  previous step's changes. The merge now happens before the next task starts.
 
-- **Native, per-platform release build matrix.** GoReleaser OSS can't reliably
-  CGO-cross-compile that C codebase from one runner (and has no `prebuilt`
-  builder), so each target is now built on its own native runner — linux
-  (amd64 + arm64), darwin (amd64 + arm64), windows (amd64 + arm64) — and
-  packaged via a small `builds.tool` shim (`tools/gobuild-shim.sh`) so
-  archives, checksums, the Homebrew formula and the winget manifest are
-  produced exactly as before.
+- **A linear chain can no longer be split across two branches.** `assignChainBranches`
+  is now order-independent: every task in a chain resolves to the same chain-root
+  branch regardless of the order the breakdown produced them in.
 
-- **Docker image fixed too** (`Dockerfile`). It was also `CGO_ENABLED=0` on
-  Alpine and panicked the same way; it now builds `CGO_ENABLED=1 -tags musl`
-  (linking `libmupdf_linux_<arch>_musl.a`), and CI runs a smoke test that
-  actually starts the image so a startup panic fails the build before publish.
+- **Failed chains no longer strand completed work silently.** If a task in a chain
+  fails, the chain's already-completed tasks now show why their PR is pending
+  ("chain blocked — retry the failed task") instead of disappearing with no PR and
+  no explanation.
 
-- **Web-search bridge packaging.** The release archive collapsed
-  `search-bridge/{server.js,package.json}` into a single file (dropping
-  `package.json` and breaking the Homebrew `install` block). It's now a proper
-  `search-bridge/` directory, and `install.sh` extracts it to the right place.
+- **Consistent plan completion state.** "All tasks completed" is now computed the
+  same way for the plan list and the single-plan view, and a locked plan whose
+  breakdown produced no tasks is no longer stuck "active" forever.
 
-- **`install.sh` on ogcode.xyz refreshed.** The served `docs/install.sh` was
-  stale (missing the web-search setup) and is now in sync with the repo.
+- **Plan finalization race.** The final-summary agent loop that runs while a plan is
+  being locked is now registered and cancelable, so a message sent mid-lock can't
+  start a second concurrent loop on the same session.
 
 ### 📁 Files Changed
 
-**Modified:** `.github/workflows/release.yml`, `.github/workflows/docker.yml`,
-`.goreleaser.yaml`, `Dockerfile`, `install.sh`, `docs/install.sh`,
-`internal/cli/version.go`, `internal/version/version.go`, `web/package.json`,
-`web/package-lock.json`
-**Added:** `tools/gobuild-shim.sh`
+**Modified:** `internal/server/plan_routes.go`, `internal/server/task_routes.go`,
+`internal/plan/plan.go`, `internal/plan/store.go`, `internal/git/git.go`,
+`web/src/components/plan-sidebar.tsx`, `internal/cli/version.go`,
+`internal/version/version.go`, `web/package.json`, `web/package-lock.json`
+**Added:** `internal/db/029_plan_base_branch.sql`
 
 ---
 
@@ -74,4 +86,4 @@ docker run -p 9595:9595 -v $(pwd):/workspace -w /workspace ghcr.io/prasenjeet-sy
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.11.1...v0.11.2*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.11.2...v0.12.0*
