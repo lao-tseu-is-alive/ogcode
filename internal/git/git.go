@@ -325,6 +325,23 @@ func remoteRefExists(ctx context.Context, repoDir, branchName string) bool {
 	return err == nil && strings.TrimSpace(string(out)) != ""
 }
 
+// EnsureBranchOnRemote pushes branchName to origin if it is not already present
+// there, so it can be used as a PR base. It is a no-op when branchName is empty
+// or already on the remote. Returns an error only when the push itself fails.
+func EnsureBranchOnRemote(ctx context.Context, repoDir, branchName string) error {
+	if branchName == "" {
+		return nil
+	}
+	if remoteRefExists(ctx, repoDir, branchName) {
+		return nil
+	}
+	out, err := exec.CommandContext(ctx, "git", "-C", repoDir, "push", "origin", branchName).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("push base branch %s: %s: %w", branchName, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
 // detectDefaultBranch returns the default branch of the remote repository.
 // It checks the local origin/HEAD symref first (fast, no network), then
 // falls back to probing origin for "main" and "master".

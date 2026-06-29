@@ -25,6 +25,7 @@ type Plan struct {
 	Title             string `json:"title"`
 	Status            string `json:"status"`            // "open" | "locked"
 	Model             string `json:"model,omitempty"`
+	BaseBranch        string `json:"baseBranch,omitempty"` // repo's active branch at lock time; PR base for derived tasks
 	CompactionSummary string `json:"compactionSummary,omitempty"`
 	BreakdownStatus    string `json:"breakdownStatus,omitempty"`    // "" | "in_progress" | "completed" | "failed"
 	BreakdownWarnings  string `json:"breakdownWarnings,omitempty"`  // non-empty when some tasks failed to create

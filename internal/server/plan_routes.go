@@ -36,25 +36,47 @@ func (s *Server) handleListPlans(w http.ResponseWriter, r *http.Request) {
 		plans = []*plan.Plan{}
 	}
 
-	// Compute AllTasksCompleted and Archived for each plan
+	// Compute derived (non-persisted) fields for each plan.
 	for _, p := range plans {
-		if p.Status == plan.StatusLocked {
-			tasks, err := s.taskStore.ListByPlan(p.ID)
-			if err == nil && len(tasks) > 0 {
-				allDone := true
-				for _, t := range tasks {
-					if t.Status != task.StatusCompleted {
-						allDone = false
-						break
-					}
-				}
-				p.AllTasksCompleted = allDone
-			}
-		}
-		p.Archived = p.ArchivedAt > 0
+		s.computePlanDerived(p)
 	}
 
 	writeJSON(w, http.StatusOK, plans)
+}
+
+// computePlanDerived fills in the derived (non-persisted) fields on a plan so
+// that every endpoint returning a plan reports them consistently:
+//   - Archived: whether the plan has been archived.
+//   - AllTasksCompleted: true once the plan is locked and every created task is
+//     completed. A locked plan whose breakdown finished but produced no tasks is
+//     treated as vacuously complete so it is not stuck "active" forever; a plan
+//     whose breakdown failed or is still in progress is never marked complete.
+func (s *Server) computePlanDerived(p *plan.Plan) {
+	p.Archived = p.ArchivedAt > 0
+
+	if p.Status != plan.StatusLocked {
+		return
+	}
+	tasks, err := s.taskStore.ListByPlan(p.ID)
+	if err != nil {
+		return
+	}
+	if len(tasks) > 0 {
+		allDone := true
+		for _, t := range tasks {
+			if t.Status != task.StatusCompleted {
+				allDone = false
+				break
+			}
+		}
+		p.AllTasksCompleted = allDone
+		return
+	}
+	// No tasks: only "complete" if the breakdown finished successfully (so a
+	// failed/in-progress breakdown isn't silently marked done).
+	if p.BreakdownStatus == plan.BreakdownCompleted {
+		p.AllTasksCompleted = true
+	}
 }
 
 func (s *Server) handleCreatePlan(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +143,7 @@ func (s *Server) handleGetPlan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "plan not found", http.StatusNotFound)
 		return
 	}
+	s.computePlanDerived(p)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -200,6 +223,19 @@ func (s *Server) handleLockPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture the repo's active branch now — task PRs derived from this plan will
+	// target it, so the work merges back into wherever the user is working rather
+	// than always the default branch. A detached HEAD yields no usable branch name.
+	base := git.GetCurrentBranch(s.dir)
+	if base == "HEAD" {
+		base = ""
+	}
+	p.BaseBranch = base
+	p.UpdatedAt = plan.Now()
+	if err := s.planStore.Update(p); err != nil {
+		slog.Warn("persist plan base branch at lock", "plan", p.ID, "err", err)
+	}
+
 	// Cancel any in-flight interactive loop before taking over the session.
 	s.cancelPlanLoop(p)
 
@@ -266,6 +302,28 @@ func (s *Server) generateFinalPlanSummary(p *plan.Plan) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+
+	// Register the finalization loop in s.running so it is (a) cancellable via
+	// abort and (b) visible to handlePlanPrompt — otherwise a message sent while
+	// the (still-unlocked) plan is finalizing would start a second concurrent
+	// loop on the same session and interleave writes.
+	s.mu.Lock()
+	if old, ok := s.running[sessionID]; ok {
+		old()
+	}
+	s.nextToken++
+	token := s.nextToken
+	s.running[sessionID] = cancel
+	s.runningToken[sessionID] = token
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.runningToken[sessionID] == token {
+			delete(s.running, sessionID)
+			delete(s.runningToken, sessionID)
+		}
+		s.mu.Unlock()
+	}()
 
 	return s.loopRunner.RunLoop(ctx, sessionID, "plan", 0, 0)
 }
@@ -650,29 +708,54 @@ func breakdownHasCycle(taskDefs []agent.TaskDefinition) bool {
 // a dependency chain. Tasks with no dependencies and no dependents remain
 // standalone and get no ChainBranch — they raise their own PRs as before.
 //
-// Algorithm: for each task that has a dependency, propagate the chain branch
-// downward. If the parent already has a chain branch, reuse it; otherwise
-// create a new one named after the parent (the chain root).
+// All tasks in one linear chain share a single branch named after the chain
+// root (the task with no dependency). The assignment is independent of the order
+// in which tasks appear in the slice: each member resolves its root by walking
+// up the single-parent links, so a dependency that points to a later slice index
+// cannot split one chain across two branches.
 func assignChainBranches(tasks []*task.Task, planID string) {
 	byID := make(map[string]*task.Task, len(tasks))
 	for _, t := range tasks {
 		byID[t.ID] = t
 	}
+
+	// hasDependent[id] is true when some task depends on id.
+	hasDependent := make(map[string]bool, len(tasks))
 	for _, t := range tasks {
-		if len(t.Dependencies) == 0 {
+		for _, dep := range t.Dependencies {
+			hasDependent[dep] = true
+		}
+	}
+
+	// chainRoot walks up Dependencies[0] to the task with no dependency. It is
+	// cycle-guarded defensively, though cycles are rejected before this point.
+	chainRoot := func(t *task.Task) *task.Task {
+		seen := make(map[string]bool)
+		for len(t.Dependencies) > 0 {
+			if seen[t.ID] {
+				break
+			}
+			seen[t.ID] = true
+			parent := byID[t.Dependencies[0]]
+			if parent == nil {
+				break
+			}
+			t = parent
+		}
+		return t
+	}
+
+	for _, t := range tasks {
+		// A task is part of a chain if it has a dependency or a dependent.
+		if len(t.Dependencies) == 0 && !hasDependent[t.ID] {
 			continue
 		}
-		dep := byID[t.Dependencies[0]]
-		if dep == nil {
-			continue
+		root := chainRoot(t)
+		if root.ChainBranch == "" {
+			slug := git.Slugify(root.Title)
+			root.ChainBranch = fmt.Sprintf("chain/%s-%s", planID[:8], slug)
 		}
-		chainBranch := dep.ChainBranch
-		if chainBranch == "" {
-			slug := git.Slugify(dep.Title)
-			chainBranch = fmt.Sprintf("chain/%s-%s", planID[:8], slug)
-			dep.ChainBranch = chainBranch
-		}
-		t.ChainBranch = chainBranch
+		t.ChainBranch = root.ChainBranch
 	}
 }
 

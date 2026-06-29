@@ -424,7 +424,9 @@ func (s *Server) executeTask(t *task.Task, p *plan.Plan) error {
 // and handleCompleteTask: auto-commit any leftover changes, push the branch,
 // open a PR via gh, and clean up the worktree.
 // Any reason a PR was not created is stored in t.PRError so the UI can surface it.
-func (s *Server) completeTaskWithPR(t *task.Task) {
+// The PR targets the plan's captured base branch (the repo's active branch at lock
+// time); that branch is pushed to the remote first if it is not already there.
+func (s *Server) completeTaskWithPR(t *task.Task, p *plan.Plan) {
 	// Auto-commit any changes the agent left uncommitted.
 	if t.WorktreePath != "" {
 		msg := fmt.Sprintf("chore: complete task %q", t.Title)
@@ -458,15 +460,29 @@ func (s *Server) completeTaskWithPR(t *task.Task) {
 	}
 
 	if pushed {
-		prTitle := t.Title
-		prBody := standalonePRBody(t)
-		pr, err := git.CreatePR(prCtx, s.dir, t.BranchName, prTitle, prBody, "")
-		if err != nil {
-			prErr = fmt.Sprintf("PR creation failed: %s", err.Error())
-			slog.Warn("create PR failed", "task", t.ID, "err", err)
-		} else if pr != nil {
-			t.PRURL = pr.URL
-			t.PRNumber = &pr.Number
+		// Target the plan's captured base branch (active branch at lock time),
+		// publishing it to the remote first if needed so gh can use it as the base.
+		base := ""
+		if p != nil {
+			base = p.BaseBranch
+		}
+		if base != "" {
+			if err := git.EnsureBranchOnRemote(prCtx, s.dir, base); err != nil {
+				prErr = fmt.Sprintf("could not publish base branch %q for PR: %s", base, err.Error())
+				slog.Warn("ensure base branch on remote", "task", t.ID, "base", base, "err", err)
+			}
+		}
+		if prErr == "" {
+			prTitle := t.Title
+			prBody := standalonePRBody(t)
+			pr, err := git.CreatePR(prCtx, s.dir, t.BranchName, prTitle, prBody, base)
+			if err != nil {
+				prErr = fmt.Sprintf("PR creation failed: %s", err.Error())
+				slog.Warn("create PR failed", "task", t.ID, "err", err)
+			} else if pr != nil {
+				t.PRURL = pr.URL
+				t.PRNumber = &pr.Number
+			}
 		}
 	}
 
@@ -532,14 +548,17 @@ func (s *Server) autoCompleteTask(t *task.Task) {
 	t.Status = task.StatusCompleted
 	t.UpdatedAt = task.Now()
 
-	// Start dependent tasks BEFORE the worktree is cleaned up. Dependent tasks
-	// that share a chain branch need this task's branch ref to still exist locally
-	// when CreateTaskWorktree runs. The cleanup goroutine inside completeTask will
-	// block on gitMu until after the dependent's worktree is created.
-	s.autoStartDependentTasks(t.PlanID)
-
+	// Merge this task into its chain branch (or raise its standalone PR) BEFORE
+	// starting dependents. A dependent chain task branches from the shared chain
+	// branch, so that branch must already contain this task's work — otherwise the
+	// dependent would be implemented without it. completeTask's merge is
+	// synchronous; only its worktree cleanup is async, so this ordering is safe.
 	p, _ := s.planStore.Get(t.PlanID)
 	s.completeTask(t, p)
+
+	// The chain branch is now up to date — start any tasks waiting on this one so
+	// their worktrees branch from a chain branch that includes this task's work.
+	s.autoStartDependentTasks(t.PlanID)
 
 	fresh, err := s.taskStore.Get(t.ID)
 	if err == nil && fresh != nil {
@@ -567,7 +586,7 @@ func (s *Server) completeTask(t *task.Task, p *plan.Plan) {
 
 	if t.ChainBranch == "" {
 		// Standalone task — raise a PR immediately, same as before.
-		s.completeTaskWithPR(t)
+		s.completeTaskWithPR(t, p)
 		return
 	}
 
@@ -622,16 +641,6 @@ func (s *Server) openChainPR(chainBranch string, p *plan.Plan) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	pushed, err := git.PushBranch(ctx, s.dir, chainBranch)
-	if err != nil {
-		slog.Warn("chain PR: push failed", "branch", chainBranch, "plan", p.ID, "err", err)
-		return
-	}
-	if !pushed {
-		slog.Warn("chain PR: no remote configured", "branch", chainBranch, "plan", p.ID)
-		return
-	}
-
 	// Re-fetch the plan so we get the latest title — autoNamePlan may have
 	// updated it asynchronously after the snapshot passed to this function
 	// was taken in autoCompleteTask.
@@ -639,7 +648,8 @@ func (s *Server) openChainPR(chainBranch string, p *plan.Plan) {
 		p = fresh
 	}
 
-	// Collect tasks in this chain in order so the PR body lists them correctly.
+	// Collect tasks in this chain in order so the PR body lists them correctly
+	// and the PR outcome can be recorded on each of them for the UI.
 	allTasks, _ := s.taskStore.ListByPlan(p.ID)
 	var chainTasks []*task.Task
 	for _, t := range allTasks {
@@ -648,15 +658,63 @@ func (s *Server) openChainPR(chainBranch string, p *plan.Plan) {
 		}
 	}
 
+	pushed, err := git.PushBranch(ctx, s.dir, chainBranch)
+	if err != nil {
+		slog.Warn("chain PR: push failed", "branch", chainBranch, "plan", p.ID, "err", err)
+		s.recordChainPROutcome(chainTasks, nil, fmt.Sprintf("push failed: %s", err.Error()))
+		return
+	}
+	if !pushed {
+		slog.Warn("chain PR: no remote configured", "branch", chainBranch, "plan", p.ID)
+		s.recordChainPROutcome(chainTasks, nil, "no remote configured — add a GitHub remote (git remote add origin <url>) to enable automatic PR creation")
+		return
+	}
+
+	// Target the plan's captured base branch (active branch at lock time),
+	// publishing it to the remote first if needed so gh can use it as the base.
+	base := p.BaseBranch
+	if base != "" {
+		if err := git.EnsureBranchOnRemote(ctx, s.dir, base); err != nil {
+			slog.Warn("chain PR: ensure base branch on remote", "branch", chainBranch, "base", base, "err", err)
+			s.recordChainPROutcome(chainTasks, nil, fmt.Sprintf("could not publish base branch %q for PR: %s", base, err.Error()))
+			return
+		}
+	}
+
 	title := chainPRTitle(p.Title, chainBranch)
 	body := chainPRBody(title, chainTasks)
 
-	pr, err := git.CreatePR(ctx, s.dir, chainBranch, title, body, "")
+	pr, err := git.CreatePR(ctx, s.dir, chainBranch, title, body, base)
 	if err != nil {
 		slog.Warn("chain PR: create failed", "branch", chainBranch, "plan", p.ID, "err", err)
+		s.recordChainPROutcome(chainTasks, nil, fmt.Sprintf("PR creation failed: %s", err.Error()))
 		return
 	}
+	s.recordChainPROutcome(chainTasks, pr, "")
 	slog.Info("chain PR opened", "plan", p.ID, "branch", chainBranch, "pr", pr.URL)
+}
+
+// recordChainPROutcome stamps the chain PR result onto every task in the chain
+// and publishes a task.updated event so the UI surfaces the shared PR — mirroring
+// the standalone path, where each task carries its own PR link/error. On success
+// pr is non-nil and prErr is empty; on failure pr is nil and prErr explains why.
+func (s *Server) recordChainPROutcome(chainTasks []*task.Task, pr *git.PullRequest, prErr string) {
+	for _, t := range chainTasks {
+		if pr != nil {
+			n := pr.Number
+			t.PRURL = pr.URL
+			t.PRNumber = &n
+			t.PRError = ""
+		} else {
+			t.PRError = prErr
+		}
+		t.UpdatedAt = task.Now()
+		if err := s.taskStore.Update(t); err != nil {
+			slog.Error("chain PR: persist outcome", "task", t.ID, "err", err)
+			continue
+		}
+		s.bus.Publish("task.updated", t)
+	}
 }
 
 // standalonePRBody builds a professional PR description for a single standalone task.
@@ -754,6 +812,38 @@ func (s *Server) autoFailTask(t *task.Task) {
 		t = fresh
 	}
 	s.bus.Publish("task.failed", t)
+	s.markChainBlocked(t)
+}
+
+// markChainBlocked records a visible reason on a chain's already-completed tasks
+// when a task in that chain fails. Without it, the completed work merged into the
+// chain branch is stranded with no PR and no explanation — the chain PR only opens
+// once every task in the chain completes. The marker is cleared automatically when
+// the chain later completes and its PR is opened (see recordChainPROutcome).
+func (s *Server) markChainBlocked(failed *task.Task) {
+	if failed.ChainBranch == "" {
+		return
+	}
+	allTasks, err := s.taskStore.ListByPlan(failed.PlanID)
+	if err != nil {
+		return
+	}
+	reason := fmt.Sprintf("chain blocked — task %q failed; retry it to raise this chain's PR", failed.Title)
+	for _, t := range allTasks {
+		if t.ChainBranch != failed.ChainBranch || t.Status != task.StatusCompleted {
+			continue
+		}
+		if t.PRError == reason {
+			continue
+		}
+		t.PRError = reason
+		t.UpdatedAt = task.Now()
+		if err := s.taskStore.Update(t); err != nil {
+			slog.Error("mark chain blocked", "task", t.ID, "err", err)
+			continue
+		}
+		s.bus.Publish("task.updated", t)
+	}
 }
 
 func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
@@ -832,6 +922,7 @@ func (s *Server) handleFailTask(w http.ResponseWriter, r *http.Request) {
 		t = fresh
 	}
 	s.bus.Publish("task.failed", t)
+	s.markChainBlocked(t)
 	writeJSON(w, http.StatusOK, t)
 }
 
