@@ -15,27 +15,169 @@ permissions:
   contents: write
   packages: write
 
+env:
+  # The tag to build/release: the pushed tag, or the workflow_dispatch input.
+  RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+  GO_VERSION: "1.26.1"
+  NODE_VERSION: "20"
+
 jobs:
+  # ── Build each target natively with CGO so go-fitz links libmupdf statically.
+  #    Binaries are staged at prebuilt/ogcode_<goos>_<goarch>/ogcode[.exe] and
+  #    consumed by the release job via the GoReleaser gobinary shim.
+  build-linux:
+    name: Build (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install aarch64 cross toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Build web UI
+        run: cd web && npm install --legacy-peer-deps && npm run build
+      - name: Build binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          LD="-s -w \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.version=${RELEASE_REF} \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.commit=$(git rev-parse HEAD) \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags "$LD" -o prebuilt/ogcode_linux_amd64/ogcode .
+          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
+            go build -trimpath -ldflags "$LD" -o prebuilt/ogcode_linux_arm64/ogcode .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-linux
+          path: prebuilt
+          retention-days: 1
+          if-no-files-found: error
+
+  build-macos:
+    name: Build (darwin)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Build web UI
+        run: cd web && npm install --legacy-peer-deps && npm run build
+      - name: Build binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          LD="-s -w \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.version=${RELEASE_REF} \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.commit=$(git rev-parse HEAD) \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # arm64 native; amd64 via clang's built-in cross arch (Apple universal toolchain).
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+            go build -trimpath -ldflags "$LD" -o prebuilt/ogcode_darwin_arm64/ogcode .
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CC="clang -arch x86_64" CXX="clang++ -arch x86_64" \
+            go build -trimpath -ldflags "$LD" -o prebuilt/ogcode_darwin_amd64/ogcode .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-darwin
+          path: prebuilt
+          retention-days: 1
+          if-no-files-found: error
+
+  build-windows:
+    name: Build (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install llvm-mingw (x86_64 + aarch64 windows C toolchains)
+        shell: bash
+        run: |
+          set -euo pipefail
+          url=$(curl -fsSL https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest \
+            | grep browser_download_url | grep 'ucrt-x86_64.zip' | head -1 | cut -d'"' -f4)
+          echo "Downloading $url"
+          curl -fsSL "$url" -o llvm-mingw.zip
+          7z x llvm-mingw.zip -ollvm-mingw-dir >/dev/null
+          dir=$(ls -d llvm-mingw-dir/*/ | head -1)
+          echo "$(cygpath -w "${dir}bin")" >> "$GITHUB_PATH"
+      - name: Build web UI
+        shell: bash
+        run: cd web && npm install --legacy-peer-deps && npm run build
+      - name: Build binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          LD="-s -w \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.version=${RELEASE_REF} \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.commit=$(git rev-parse HEAD) \
+            -X github.com/prasenjeet-symon/ogcode/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-clang CXX=x86_64-w64-mingw32-clang++ \
+            go build -trimpath -ldflags "$LD" -o prebuilt/ogcode_windows_amd64/ogcode.exe .
+          CGO_ENABLED=1 GOOS=windows GOARCH=arm64 CC=aarch64-w64-mingw32-clang CXX=aarch64-w64-mingw32-clang++ \
+            go build -trimpath -ldflags "$LD" -o prebuilt/ogcode_windows_arm64/ogcode.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-windows
+          path: prebuilt
+          retention-days: 1
+          if-no-files-found: error
+
   release:
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.RELEASE_REF }}
           fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.1"
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Download prebuilt binaries
+        uses: actions/download-artifact@v4
         with:
-          node-version: "20"
+          pattern: prebuilt-*
+          path: prebuilt
+          merge-multiple: true
+
+      - name: Stage prebuilt binaries
+        run: |
+          set -euo pipefail
+          chmod +x tools/gobuild-shim.sh
+          # upload-artifact drops the executable bit; the shim re-applies it on copy,
+          # but restore it here too so the staged tree is self-consistent.
+          find prebuilt -type f -name ogcode -exec chmod +x {} +
+          echo "Staged binaries:"
+          find prebuilt -type f | sort
 
       - name: Run GoReleaser
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -44,9 +186,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WINGET_PKGS_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
+          PREBUILT_DIR: ${{ github.workspace }}/prebuilt
 
       - name: Create Winget PR to microsoft/winget-pkgs
-        if: success()
+        # Skip for prereleases (e.g. -rc/-beta tags): GoReleaser's winget step
+        # skips them too, so there's no fork branch to open a PR from.
+        if: success() && !contains(github.ref_name, '-')
         env:
           GH_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
         run: |

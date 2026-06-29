@@ -5,17 +5,22 @@ version: 2
 
 project_name: ogcode
 
-before:
-  hooks:
-    # Build the web UI assets before compiling Go
-    - bash -c 'cd web && npm install --legacy-peer-deps --cache /tmp/npm-cache && npm run build'
-    - go mod tidy
-    - go mod verify
+# No `before` hooks: binaries (with the embedded web UI) are built natively
+# per-platform in the release workflow before GoReleaser runs. See release.yml.
 
 builds:
   - id: ogcode
     main: .
     binary: ogcode
+    # ogcode links github.com/gen2brain/go-fitz, which only statically links
+    # libmupdf (no runtime libmupdf.* dependency) when built with CGO_ENABLED=1
+    # against the target platform's C toolchain. Reliable CGO cross-compilation
+    # of that C codebase from one runner is impractical and GoReleaser OSS has no
+    # `prebuilt` builder, so the release workflow builds each target natively and
+    # this gobinary shim makes GoReleaser package those prebuilt binaries while
+    # still producing archives, checksums, the Homebrew formula and the winget
+    # manifest. Version/commit/date are injected during the native build.
+    tool: ./tools/gobuild-shim.sh
     goos:
       - darwin
       - linux
@@ -23,15 +28,8 @@ builds:
     goarch:
       - amd64
       - arm64
-    goarm:
-      - "7"
     env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
-      - -X github.com/prasenjeet-symon/ogcode/internal/cli.version={{.Version}}
-      - -X github.com/prasenjeet-symon/ogcode/internal/cli.commit={{.Commit}}
-      - -X github.com/prasenjeet-symon/ogcode/internal/cli.date={{.Date}}
+      - CGO_ENABLED=1
 
 archives:
   - id: ogcode
@@ -52,13 +50,21 @@ archives:
     files:
       - LICENSE*
       - README*
+      # Web-search bridge. `strip_parent` keeps only the basenames so both files
+      # land in a real `search-bridge/` directory inside the archive
+      # (search-bridge/server.js + search-bridge/package.json). Without it, both
+      # entries collapse onto a single file named `search-bridge`.
       - src: tools/search-bridge/server.js
         dst: search-bridge
+        strip_parent: true
       - src: tools/search-bridge/package.json
         dst: search-bridge
+        strip_parent: true
 
 winget:
   - name: ogcode
+    # Don't push a winget manifest for prereleases (e.g. -rc/-beta tags).
+    skip_upload: "auto"
     publisher: prasenjeet-symon
     license: MIT
     license_url: "https://github.com/prasenjeet-symon/ogcode/blob/main/LICENSE"
@@ -86,6 +92,8 @@ winget:
 
 brews:
   - name: ogcode
+    # Don't update the Homebrew tap for prereleases (e.g. -rc/-beta tags).
+    skip_upload: "auto"
     repository:
       owner: prasenjeet-symon
       name: homebrew-tap
