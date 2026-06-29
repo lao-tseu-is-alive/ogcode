@@ -37,6 +37,26 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      # Build a single-arch image locally and actually run it, so a binary that
+      # panics on startup (e.g. CGO misconfigured) fails the workflow before we
+      # publish it.
+      - name: Build amd64 image for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ogcode:smoke-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test (binary must start, not panic)
+        run: |
+          set -euo pipefail
+          out=$(docker run --rm ogcode:smoke-test version)
+          echo "$out"
+          echo "$out" | grep -q "^ogcode " || { echo "unexpected version output"; exit 1; }
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
