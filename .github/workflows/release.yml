@@ -120,9 +120,21 @@ jobs:
             | grep browser_download_url | grep 'ucrt-x86_64.zip' | head -1 | cut -d'"' -f4)
           echo "Downloading $url"
           curl -fsSL "$url" -o llvm-mingw.zip
-          7z x llvm-mingw.zip -ollvm-mingw-dir >/dev/null
-          dir=$(ls -d llvm-mingw-dir/*/ | head -1)
-          echo "$(cygpath -w "${dir}bin")" >> "$GITHUB_PATH"
+          # Extract to an absolute location; a relative dir on $GITHUB_PATH does
+          # not resolve as a PATH entry in later steps.
+          7z x llvm-mingw.zip -oC:/llvm-mingw >/dev/null
+          bin_unix=$(cd C:/llvm-mingw/*/bin && pwd)
+          echo "llvm-mingw bin: $bin_unix"
+          ls "$bin_unix" | grep -E 'w64-mingw32-clang(\+\+)?(\.exe)?$' || true
+          cygpath -w "$bin_unix" >> "$GITHUB_PATH"
+      - name: Verify windows C toolchain on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          for cc in x86_64-w64-mingw32-clang aarch64-w64-mingw32-clang; do
+            command -v "$cc" >/dev/null || { echo "missing compiler: $cc"; exit 1; }
+            echo "found: $(command -v "$cc")"
+          done
       - name: Build web UI
         shell: bash
         run: cd web && npm install --legacy-peer-deps && npm run build
