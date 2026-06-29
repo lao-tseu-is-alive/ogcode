@@ -114,10 +114,16 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install llvm-mingw (x86_64 + aarch64 windows C toolchains)
         shell: bash
+        env:
+          # Authenticate the API lookup: unauthenticated api.github.com requests
+          # from shared runner IPs are rate-limited and intermittently 403.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          url=$(curl -fsSL https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest \
+          url=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+            https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest \
             | grep browser_download_url | grep 'ucrt-x86_64.zip' | head -1 | cut -d'"' -f4)
+          if [ -z "$url" ]; then echo "could not resolve llvm-mingw download URL"; exit 1; fi
           echo "Downloading $url"
           curl -fsSL "$url" -o llvm-mingw.zip
           # Extract to an absolute location; a relative dir on $GITHUB_PATH does
