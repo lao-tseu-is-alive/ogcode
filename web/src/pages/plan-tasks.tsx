@@ -5,6 +5,8 @@ import Breadcrumb from '../components/breadcrumb';
 import MarkdownContent from '../components/markdown-content';
 import StatusIcon from '../components/status-icon';
 import CommandMenu, { type CommandItem } from '../components/command-menu';
+import ModelSelector from '../components/model-selector';
+import { useSession } from '../context/session';
 import type { Task } from '../api/client';
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -59,6 +61,7 @@ function StatusBadge(props: { status: string; class?: string }) {
 
 function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
   const plan = usePlan();
+  const session = useSession();
   const navigate = useNavigate();
   const [starting, setStarting] = createSignal(false);
   const [completing, setCompleting] = createSignal(false);
@@ -66,6 +69,12 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
   const [retrying, setRetrying] = createSignal(false);
 
   const t = () => props.task;
+
+  // Model: a task may override the plan's model; empty = inherit the plan default.
+  const planModelId = () => plan.activePlan()?.model || '';
+  const effectiveModelId = () => t()?.model || planModelId();
+  const modelLabel = (id: string) => session.models().find((m) => m.id === id)?.name || id || 'Default';
+  const modelEditable = () => t()?.status === 'pending' || t()?.status === 'failed';
 
   const depTasks = () => {
     if (!t()) return [];
@@ -164,6 +173,42 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
               <span class={`text-[11px] font-medium capitalize ${COMPLEXITY_CLS[t()!.complexity] || 'text-zinc-400'}`}>
                 {t()!.complexity} complexity
               </span>
+            </div>
+
+            {/* Model */}
+            <div>
+              <p class="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Model</p>
+              <Show
+                when={modelEditable()}
+                fallback={
+                  <span class="text-[12px] text-zinc-300">
+                    {modelLabel(effectiveModelId())}
+                    <Show when={!t()!.model}><span class="text-zinc-600"> · plan default</span></Show>
+                  </span>
+                }
+              >
+                <div class="flex items-center gap-2 flex-wrap">
+                  <div class="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
+                    <ModelSelector
+                      selectedModel={() => effectiveModelId()}
+                      onSelect={(id) => plan.setTaskModel(t()!.id, id)}
+                      placement="top"
+                    />
+                  </div>
+                  <Show
+                    when={t()!.model}
+                    fallback={<span class="text-[11px] text-zinc-600">inherits plan default</span>}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => plan.setTaskModel(t()!.id, '')}
+                      class="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                    >
+                      Reset to plan default
+                    </button>
+                  </Show>
+                </div>
+              </Show>
             </div>
 
             {/* Description */}
@@ -324,6 +369,7 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
 
 function KanbanCard(props: { task: Task; focused: boolean; onSelect: (t: Task) => void }) {
   const plan = usePlan();
+  const sess = useSession();
   const [starting, setStarting] = createSignal(false);
 
   const t = () => props.task;
@@ -331,6 +377,15 @@ function KanbanCard(props: { task: Task; focused: boolean; onSelect: (t: Task) =
   const canStart = () => plan.activePlan()?.status === 'locked' && t().status === 'pending' && t().dependencies.every((d) => completedIds().has(d));
   const isBlocked = () => t().status === 'pending' && !canStart();
   const depCount = () => t().dependencies.length;
+
+  // Effective model for this task: its override, else the plan's model, else default.
+  const modelOverridden = () => !!t().model;
+  const modelId = () => t().model || plan.activePlan()?.model || '';
+  const modelName = () => {
+    const id = modelId();
+    if (!id) return 'Default';
+    return sess.models().find((m) => m.id === id)?.name || id;
+  };
 
   const handleStart = async (e: MouseEvent) => {
     e.stopPropagation();
@@ -406,6 +461,26 @@ function KanbanCard(props: { task: Task; focused: boolean; onSelect: (t: Task) =
 
         <Show when={isBlocked()}>
           <span class="text-[10px] font-medium" style={{ color: 'var(--status-progress)' }}>Blocked</span>
+        </Show>
+      </div>
+
+      {/* Model — effective model for this task (override or plan default) */}
+      <div
+        class="flex items-center gap-1 mt-2 min-w-0 text-[10px]"
+        style={{ color: modelOverridden() ? 'var(--text-secondary)' : 'var(--text-muted)' }}
+        title={`Model: ${modelName()}${modelOverridden() ? ' (per-task override)' : ' (plan default)'}`}
+      >
+        <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+        </svg>
+        <span class="truncate">{modelName()}</span>
+        <Show when={modelOverridden()}>
+          <span
+            class="shrink-0 text-[8.5px] uppercase tracking-wide px-1 py-px rounded font-medium"
+            style={{ color: 'var(--accent)', background: 'var(--accent-soft)' }}
+          >
+            custom
+          </span>
         </Show>
       </div>
     </div>

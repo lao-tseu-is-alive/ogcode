@@ -18,6 +18,7 @@ import {
   completeTask,
   failTask,
   retryTask,
+  updateTask,
   getTask,
   getModels,
   getSession,
@@ -56,6 +57,7 @@ interface PlanContextValue {
   completeTaskById: (id: string) => Promise<void>;
   failTaskById: (id: string) => Promise<void>;
   retryTaskById: (id: string) => Promise<void>;
+  setTaskModel: (id: string, model: string) => Promise<void>;
   startAllTasks: () => Promise<void>;
   deletePlan: (id: string) => Promise<void>;
 }
@@ -442,6 +444,18 @@ export const PlanProvider: ParentComponent = (props) => {
     }
   }
 
+  // setTaskModel sets a per-task model override ('' clears it back to the plan
+  // default). Updates optimistically, then reconciles with the server response.
+  async function setTaskModel(id: string, model: string) {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, model } : t)));
+    try {
+      const updated = await updateTask(id, { model });
+      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (e) {
+      console.error('set task model failed:', e);
+    }
+  }
+
   async function startAllTasks() {
     const completedIds = new Set(
       tasks().filter((t) => t.status === 'completed').map((t) => t.id)
@@ -808,6 +822,7 @@ export const PlanProvider: ParentComponent = (props) => {
     createTasksFromBreakdown,
     startTaskById,
     completeTaskById,
+    setTaskModel,
     failTaskById,
     retryTaskById,
     startAllTasks,

@@ -356,6 +356,7 @@ export interface Task {
   prUrl?: string;
   prNumber?: number;
   prError?: string;
+  model?: string;
   orderIndex: number;
   createdAt: number;
   updatedAt: number;
@@ -456,6 +457,7 @@ export function updateTask(id: string, updates: {
   complexity?: string;
   status?: string;
   branchName?: string;
+  model?: string;
 }): Promise<Task> {
   return fetchAPI(`/tasks/${id}`, {
     method: 'PATCH',

@@ -125,6 +125,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		Complexity  *string `json:"complexity"`
 		Status      *string `json:"status"`
 		BranchName  *string `json:"branchName"`
+		Model       *string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -183,6 +184,9 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if update.BranchName != nil {
 		t.BranchName = *update.BranchName
+	}
+	if update.Model != nil {
+		t.Model = *update.Model
 	}
 	t.UpdatedAt = task.Now()
 
@@ -287,7 +291,10 @@ func (s *Server) executeTask(t *task.Task, p *plan.Plan) error {
 		CreatedAt:   session.Now(),
 		UpdatedAt:   session.Now(),
 	}
-	if p.Model != "" {
+	// Per-task model override wins; otherwise inherit the plan's model.
+	if t.Model != "" {
+		sess.Model = t.Model
+	} else if p.Model != "" {
 		sess.Model = p.Model
 	}
 	if err := s.store.Create(sess); err != nil {

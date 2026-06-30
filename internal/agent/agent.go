@@ -154,6 +154,7 @@ var BreakdownAgent = Agent{
    - Function, type, or interface names to add or change
    - Patterns and conventions to follow, referencing existing code
    - Error handling and edge cases to consider
+   - A verification step at the end: run the project's existing tests if any exist, otherwise build/compile the project, to be extra sure there are no compile-time or syntax issues before the task is considered done
    Vague descriptions like "implement the feature" are not acceptable.
 
    Example of a good task description:
@@ -175,6 +176,7 @@ var BreakdownAgent = Agent{
 - Parallel tasks (no dependency between them) MUST NOT touch the same files — assign file ownership to one workstream to prevent merge conflicts.
 - Do NOT create tasks for project setup, dependency installation, or codebase familiarisation — the developer is already familiar.
 - Only reference file paths and symbols you have actually read. Never invent paths or function names.
+- Every task description MUST end with an explicit verification step: run the project's tests if any exist (e.g. ` + "`go test ./...`, `npm test`, `pytest`" + `), otherwise build/compile the project (e.g. ` + "`go build ./...`, `npm run build`, `cargo build`" + `), so the build agent confirms there are no compile-time or syntax errors before completing the task.
 ` + "\n" + noPackageManagerDirsPrompt(),
 }
 

@@ -278,6 +278,40 @@ func TestPlanStore_BaseBranchRoundTrip(t *testing.T) {
 	}
 }
 
+// TestTaskStore_ModelRoundTrip verifies the per-task model override persists and
+// can be cleared through the task store (the schema/store change for choosing a
+// model per task).
+func TestTaskStore_ModelRoundTrip(t *testing.T) {
+	s := newChainTestServer(t)
+	makeChainPlan(t, s, "pln_m")
+
+	now := task.Now()
+	tk := &task.Task{
+		ID: "tsk_m", PlanID: "pln_m", Title: "T",
+		Effort: task.EffortM, Complexity: task.ComplexityMedium, Status: task.StatusPending,
+		Model: "anthropic/claude-sonnet-4-6", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.taskStore.Create(tk); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, _ := s.taskStore.Get("tsk_m")
+	if got.Model != "anthropic/claude-sonnet-4-6" {
+		t.Fatalf("model not persisted, got %q", got.Model)
+	}
+
+	// Clearing the override should round-trip as empty (inherit plan default).
+	got.Model = ""
+	got.UpdatedAt = task.Now()
+	if err := s.taskStore.Update(got); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got2, _ := s.taskStore.Get("tsk_m")
+	if got2.Model != "" {
+		t.Fatalf("model not cleared, got %q", got2.Model)
+	}
+}
+
 // TestMarkChainBlocked verifies that when a task in a chain fails, the chain's
 // already-completed (stranded) tasks get a visible "chain blocked" reason so the
 // merged work isn't silently lost without a PR (fix #4).

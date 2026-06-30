@@ -42,6 +42,7 @@ type Task struct {
 	PRURL         string   `json:"prUrl,omitempty"`
 	PRNumber      *int     `json:"prNumber,omitempty"`
 	PRError       string   `json:"prError,omitempty"` // non-empty when PR creation was skipped or failed
+	Model         string   `json:"model,omitempty"`   // per-task model override; empty = inherit the plan's model
 	OrderIndex    int      `json:"orderIndex"`
 	CreatedAt     int64    `json:"createdAt"`
 	UpdatedAt     int64    `json:"updatedAt"`

@@ -1,4 +1,5 @@
 import { createSignal, For, Show, createMemo } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { useSession } from '../context/session';
 import type { ModelInfo } from '../api/client';
 
@@ -36,6 +37,28 @@ interface ModelSelectorProps {
 export default function ModelSelector(props: ModelSelectorProps = {}) {
   const session = useSession();
   const [open, setOpen] = createSignal(false);
+  const [pos, setPos] = createSignal<{ left: number; top?: number; bottom?: number; maxH: number } | null>(null);
+  let triggerRef: HTMLButtonElement | undefined;
+
+  // Open the dropdown as a viewport-fixed, clamped popover anchored to the trigger
+  // so it stays fully visible — even inside a right-edge drawer or near a screen edge.
+  const toggleOpen = () => {
+    if (open()) { setOpen(false); return; }
+    const r = triggerRef?.getBoundingClientRect();
+    if (r) {
+      const W = 288, GAP = 6, M = 8; // dropdown width (w-72), gap, viewport margin
+      const vw = window.innerWidth, vh = window.innerHeight;
+      let left = Math.min(r.left, vw - W - M);
+      if (left < M) left = M;
+      const below = vh - r.bottom - GAP - M;
+      const above = r.top - GAP - M;
+      const preferUp = (props.placement ?? 'top') === 'top';
+      const openUp = preferUp ? !(above < 200 && below > above) : (below < 200 && above > below);
+      if (openUp) setPos({ left, bottom: vh - r.top + GAP, maxH: Math.max(160, above) });
+      else setPos({ left, top: r.bottom + GAP, maxH: Math.max(160, below) });
+    }
+    setOpen(true);
+  };
 
   const allModels = () => (props.models ? props.models() : session.models());
   const enabledModels = createMemo(() => allModels().filter((m) => m.enabled));
@@ -69,8 +92,9 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
   return (
     <div class="relative">
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen(!open())}
+        onClick={toggleOpen}
         class="flex items-center gap-1.5 px-2 py-1 h-8 text-[12px] font-medium text-zinc-300
                hover:bg-[color:var(--bg-hover)] rounded-md
                transition-colors whitespace-nowrap max-w-[200px]"
@@ -84,13 +108,16 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
         </svg>
       </button>
       <Show when={open()}>
-        <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-        <div
-          class={`absolute left-0 w-72 bg-[color:var(--bg-overlay)]
-                 border border-[color:var(--border-default)] rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.5)]
-                 z-50 py-1 max-h-96 overflow-y-auto
-                 ${(props.placement ?? 'top') === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5'}`}
-        >
+        <Portal>
+          <div class="fixed inset-0 z-[210]" onClick={() => setOpen(false)} />
+          <div
+            class="fixed w-72 bg-[color:var(--bg-overlay)] border border-[color:var(--border-default)] rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.5)] z-[211] py-1 overflow-y-auto"
+            style={{
+              left: `${pos()?.left ?? 0}px`,
+              ...(pos()?.top !== undefined ? { top: `${pos()!.top}px` } : { bottom: `${pos()?.bottom ?? 0}px` }),
+              'max-height': `${pos()?.maxH ?? 384}px`,
+            }}
+          >
           <For each={[...grouped().entries()]}>
             {([providerId, models]) => (
               <div>
@@ -149,7 +176,8 @@ export default function ModelSelector(props: ModelSelectorProps = {}) {
               No models available
             </div>
           </Show>
-        </div>
+          </div>
+        </Portal>
       </Show>
     </div>
   );
