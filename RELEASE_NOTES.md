@@ -1,43 +1,42 @@
-# Release Notes — v0.13.1
+# Release Notes — v0.13.2
 
-## Per-task model selection
+## Leaner agents, a more Linear-feeling UI
 
-You can now choose the **model per task**, and the breakdown agent now bakes a
-build/test verification step into every task it generates.
+This release removes the Call Graph feature, polishes Plan mode and Settings to a
+consistent Linear-inspired look and feel, and sharpens the task-breakdown agent.
 
 ---
 
-### ✨ What's new
+### 🗑️ Call Graph removed
 
-- **Per-task model override.** Each task can run on its own model instead of always
-  inheriting the plan's. Open a task in the board, and (while it's pending or
-  failed) pick a model from the drawer — or reset it back to the plan default.
-  Resolution at run time is: the task's model → the plan's model → the server
-  default. Each task is independent; there's no global change.
+The Call Graph feature has been fully removed — from the agents (no agent is aware
+of it anymore), the tools, the API, and the UI. This trims agent context and
+simplifies the surface area. Memory (the knowledge graph + `memory_recall`) is
+unaffected and continues to work as before.
 
-- **Model shown on every Kanban card.** Cards now display the effective model
-  (override or plan default), with a small **custom** tag when a task uses its own
-  model, so you can see at a glance what each task will run on.
+### ✨ Plan mode & Settings — Linear polish
 
-- **Breakdown tasks now include a verification step.** Every task the breakdown
-  agent produces now ends with an explicit instruction to run the project's tests
-  (or build/compile the project) so the build agent confirms there are no
-  compile-time or syntax errors before the task is considered done.
+- **Motion.** Messages now animate in subtly as they arrive, and Settings pages
+  fade in on navigation — all gated behind `prefers-reduced-motion` for anyone who
+  opts out.
+- **Consistent status icons.** The conversation-view task panel now uses the same
+  Linear-style status circles as the board, so status reads identically everywhere.
+- **Refined surfaces.** Tighter, more consistent corner radii and lighter,
+  border-driven shadows across inputs, cards, and the Settings module — plus
+  design-token cleanup so theming stays coherent.
+- **Sidebar fix.** The minimized Plan sidebar now shows the **Doc Index** icon
+  alongside Notes (previously it was missing when collapsed).
 
-### 🐛 Fixes
+### 🔧 Task-breakdown agent improvements
 
-- **Model dropdown stays on screen.** The model picker is now a viewport-anchored
-  popover that clamps to the screen and flips up/down based on available space, so
-  it no longer gets clipped when opened inside the task drawer or near a screen edge.
-
-### 📁 Files Changed
-
-**Modified:** `internal/agent/agent.go`, `internal/server/task_routes.go`,
-`internal/task/task.go`, `internal/task/store.go`, `web/src/pages/plan-tasks.tsx`,
-`web/src/components/model-selector.tsx`, `web/src/context/plan.tsx`,
-`web/src/api/client.ts`, `internal/cli/version.go`, `internal/version/version.go`,
-`web/package.json`, `web/package-lock.json`
-**Added:** `internal/db/030_task_model.sql`
+- The breakdown agent now has **`codebase_map`** and **`deep_search`** — it leads
+  exploration with a labeled codebase overview and can verify library/API details,
+  producing more accurate, implementation-ready task descriptions. (Previously the
+  prompt referenced `deep_search` without the tool actually being available.)
+- Each generated task now reliably ends with a **verification step** (run tests, or
+  build the project) in both the system prompt and the breakdown instructions.
+- More stable task ordering and a language-neutral example so descriptions aren't
+  biased toward any one stack.
 
 ---
 
@@ -65,4 +64,4 @@ docker run -p 9595:9595 -v $(pwd):/workspace -w /workspace ghcr.io/prasenjeet-sy
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.13.0...v0.13.1*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.13.1...v0.13.2*
