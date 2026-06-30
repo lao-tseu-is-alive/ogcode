@@ -52,6 +52,7 @@ func BreakdownPrompt(messages []*session.MessageWithParts, archivePaths []string
 		"- Function/type/interface names to add or change\n" +
 		"- Patterns and conventions to follow (reference existing code where relevant)\n" +
 		"- Edge cases and error handling to consider\n" +
+		"- A verification step at the end: run the project's tests if any exist, otherwise build/compile the project, to confirm there are no compile-time or syntax errors\n" +
 		"A developer should be able to implement the task from the description alone without re-reading the plan.\n\n")
 
 	b.WriteString("DEPENDENCY RULE: Each task may depend on AT MOST ONE other task. " +

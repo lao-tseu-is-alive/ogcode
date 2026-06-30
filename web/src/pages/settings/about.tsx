@@ -92,13 +92,13 @@ export default function AboutSettings() {
     }
   };
   return (
-    <div class="max-w-3xl mx-auto px-8 py-12">
+    <div class="max-w-3xl mx-auto px-8 py-12 anim-enter">
       {/* Hero */}
       <header class="relative mb-12">
         <div class="relative flex flex-col items-center text-center">
           <div class="relative mb-5">
-            <div class="absolute inset-0 rounded-2xl bg-[color:var(--accent)] blur-xl opacity-40" />
-            <div class="relative w-16 h-16 rounded-2xl bg-[color:var(--accent)] flex items-center justify-center shadow-lg ring-1 ring-white/10">
+            <div class="absolute inset-0 rounded-xl bg-[color:var(--accent)] blur-xl opacity-30" />
+            <div class="relative w-16 h-16 rounded-xl bg-[color:var(--accent)] flex items-center justify-center shadow-md ring-1 ring-white/10">
               <svg class="w-8 h-8 text-[color:var(--on-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
@@ -192,7 +192,7 @@ export default function AboutSettings() {
 
             {/* Install Command - only show when update available */}
             <Show when={hasUpdate() && versionInfo()?.installCommand}>
-              <div class="px-5 py-3 bg-zinc-800/50">
+              <div class="px-5 py-3 bg-[color:var(--bg-elevated)]">
                 <div class="flex items-center justify-between mb-2">
                   <span class="text-[11px] text-zinc-500 uppercase tracking-wider">Update Command</span>
                   <button
@@ -205,7 +205,7 @@ export default function AboutSettings() {
                     Copy
                   </button>
                 </div>
-                <code class="block text-xs text-green-400 font-mono bg-zinc-900/50 rounded px-2 py-1.5">
+                <code class="block text-xs text-[color:var(--success)] font-mono bg-[color:var(--bg-base)] rounded px-2 py-1.5">
                   {versionInfo()?.installCommand}
                 </code>
                 <a

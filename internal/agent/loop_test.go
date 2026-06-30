@@ -15,7 +15,7 @@ func TestBuildSystemPrompt_MemoryMDSection_AlwaysPresent(t *testing.T) {
 	dir := "/tmp/test"
 
 	// Case 1: No MEMORY.md content — section should still appear
-	prompt := buildSystemPrompt(agent, dir, false, false, "", "", nil, 0, 0)
+	prompt := buildSystemPrompt(agent, dir, false, "", "", nil, 0, 0)
 	if !strings.Contains(prompt, "## MEMORY.md — Project Long-Term Memory") {
 		t.Error("expected MEMORY.md section to appear even when memoryMDContent is empty")
 	}
@@ -25,7 +25,7 @@ func TestBuildSystemPrompt_MemoryMDSection_AlwaysPresent(t *testing.T) {
 
 	// Case 2: With MEMORY.md content — section should appear with file content indicator
 	memContent := "\n\n<memory-md path=\"MEMORY.md\">\n# Project Notes\nSome facts.\n</memory-md>"
-	prompt = buildSystemPrompt(agent, dir, false, false, "", memContent, nil, 0, 0)
+	prompt = buildSystemPrompt(agent, dir, false, "", memContent, nil, 0, 0)
 	if !strings.Contains(prompt, "## MEMORY.md — Project Long-Term Memory") {
 		t.Error("expected MEMORY.md section to appear when memoryMDContent is present")
 	}
@@ -44,7 +44,7 @@ func TestBuildSystemPrompt_MemoryMDSection_ContainsPurposeSection(t *testing.T) 
 	agent := BuildAgent
 	dir := "/tmp/test"
 
-	prompt := buildSystemPrompt(agent, dir, false, false, "", "", nil, 0, 0)
+	prompt := buildSystemPrompt(agent, dir, false, "", "", nil, 0, 0)
 
 	// Verify key sections are always present
 	for _, sub := range []string{
@@ -64,7 +64,7 @@ func TestBuildSystemPrompt_MemoryMDSection_RoleAware(t *testing.T) {
 	dir := "/tmp/test"
 
 	// BuildAgent has write and edit tools — should get read/write instructions
-	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, false, "", "", nil, 0, 0)
+	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, "", "", nil, 0, 0)
 	if !strings.Contains(buildPrompt, "### How to maintain MEMORY.md") {
 		t.Error("expected 'How to maintain' heading for BuildAgent (has write tools)")
 	}
@@ -76,7 +76,7 @@ func TestBuildSystemPrompt_MemoryMDSection_RoleAware(t *testing.T) {
 	}
 
 	// PlanAgent has no write/edit tools — should get read-only instructions
-	planPrompt := buildSystemPrompt(PlanAgent, dir, false, false, "", "", nil, 0, 0)
+	planPrompt := buildSystemPrompt(PlanAgent, dir, false, "", "", nil, 0, 0)
 	if !strings.Contains(planPrompt, "### How to use MEMORY.md") {
 		t.Error("expected 'How to use' heading for PlanAgent (read-only)")
 	}
@@ -88,7 +88,7 @@ func TestBuildSystemPrompt_MemoryMDSection_RoleAware(t *testing.T) {
 	}
 
 	// NoteAgent has no write/edit tools — should get read-only instructions
-	notePrompt := buildSystemPrompt(NoteAgent, dir, false, false, "", "", nil, 0, 0)
+	notePrompt := buildSystemPrompt(NoteAgent, dir, false, "", "", nil, 0, 0)
 	if !strings.Contains(notePrompt, "### How to use MEMORY.md") {
 		t.Error("expected 'How to use' heading for NoteAgent (read-only)")
 	}
@@ -102,7 +102,7 @@ func TestBuildSystemPrompt_MemoryMDSection_WithContent(t *testing.T) {
 	memContent := "\n\n<memory-md path=\"MEMORY.md\">\n# Project Notes\nSome facts.\n</memory-md>"
 
 	// BuildAgent with MEMORY.md content — should show content but NOT creation prompt
-	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, false, "", memContent, nil, 0, 0)
+	buildPrompt := buildSystemPrompt(BuildAgent, dir, false, "", memContent, nil, 0, 0)
 	if !strings.Contains(buildPrompt, "The content above in the <memory-md> tag") {
 		t.Error("expected content indicator when memoryMDContent is present for BuildAgent")
 	}
@@ -114,7 +114,7 @@ func TestBuildSystemPrompt_MemoryMDSection_WithContent(t *testing.T) {
 	}
 
 	// PlanAgent with MEMORY.md content — should show read-only version, no creation prompt
-	planPrompt := buildSystemPrompt(PlanAgent, dir, false, false, "", memContent, nil, 0, 0)
+	planPrompt := buildSystemPrompt(PlanAgent, dir, false, "", memContent, nil, 0, 0)
 	if !strings.Contains(planPrompt, "The content above in the <memory-md> tag") {
 		t.Error("expected content indicator when memoryMDContent is present for PlanAgent")
 	}
@@ -127,13 +127,13 @@ func TestBuildSystemPrompt_ViewportPrompt(t *testing.T) {
 	dir := "/tmp/test"
 
 	// Without viewport dimensions — should NOT contain viewport section
-	prompt := buildSystemPrompt(BuildAgent, dir, false, false, "", "", nil, 0, 0)
+	prompt := buildSystemPrompt(BuildAgent, dir, false, "", "", nil, 0, 0)
 	if strings.Contains(prompt, "Rendering viewport") {
 		t.Error("did not expect viewport section when dimensions are 0x0")
 	}
 
 	// With viewport dimensions — should contain viewport section
-	prompt = buildSystemPrompt(BuildAgent, dir, false, false, "", "", nil, 1920, 1080)
+	prompt = buildSystemPrompt(BuildAgent, dir, false, "", "", nil, 1920, 1080)
 	if !strings.Contains(prompt, "Rendering viewport") {
 		t.Error("expected viewport section when dimensions are provided")
 	}

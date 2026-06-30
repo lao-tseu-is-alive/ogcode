@@ -88,7 +88,7 @@ function PlanListContent() {
           <div class="flex-1 flex flex-col items-center justify-center w-full max-w-2xl mx-auto px-6 pb-24">
             {/* Brand */}
             <div class="mb-8 flex flex-col items-center">
-              <div class="w-11 h-11 rounded-2xl bg-[color:var(--accent)] flex items-center justify-center shadow-lg ring-1 ring-white/10 mb-4">
+              <div class="w-11 h-11 rounded-xl bg-[color:var(--accent)] flex items-center justify-center shadow-md ring-1 ring-white/10 mb-4">
                 <svg class="w-5 h-5 text-[color:var(--on-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -100,8 +100,8 @@ function PlanListContent() {
 
             {/* Prompt input */}
             <form onSubmit={handleSubmit} class="w-full">
-              <div class="rounded-2xl border border-[color:var(--border-default)] bg-[color:var(--bg-surface)]
-                          shadow-lg shadow-black/30 transition focus-within:border-[color:var(--border-strong)]">
+              <div class="rounded-xl border border-[color:var(--border-default)] bg-[color:var(--bg-surface)]
+                          shadow-sm transition-colors duration-150 focus-within:border-[color:var(--border-strong)]">
                 <textarea
                   ref={textareaRef}
                   value={text()}
@@ -125,7 +125,7 @@ function PlanListContent() {
                     type="submit"
                     disabled={!canSend()}
                     title={canSend() ? 'Send (Enter)' : 'Type a message'}
-                    class={`h-9 w-9 rounded-xl flex items-center justify-center transition-all shrink-0
+                    class={`h-9 w-9 rounded-lg flex items-center justify-center transition-all shrink-0
                       ${canSend()
                         ? 'bg-[color:var(--accent)] hover:bg-[color:var(--accent-hover)] text-[color:var(--on-primary)] shadow-sm'
                         : 'bg-[color:var(--bg-elevated)] text-zinc-600 cursor-not-allowed'

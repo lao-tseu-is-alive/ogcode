@@ -5,7 +5,6 @@ import { OnboardingProvider, useOnboarding } from './context/onboarding';
 import { SessionProvider } from './context/session';
 import { PlanProvider } from './context/plan';
 import { NoteProvider } from './context/note';
-import { CallGraphProvider } from './context/callgraph';
 import { DocIndexProvider } from './context/docindex';
 import { NotificationProvider } from './context/notification';
 import { ThemeProvider } from './context/theme';
@@ -19,7 +18,6 @@ import PlanTasksPage from './pages/plan-tasks';
 import TaskExecution from './pages/task-execution';
 import NotesPage from './pages/notes';
 import NoteDetailPage from './pages/note-detail';
-import CallGraphExplorer from './pages/callgraph';
 import DocIndexPage from './pages/docindex';
 import SettingsLayout from './pages/settings/layout';
 import GeneralSettings from './pages/settings/general';
@@ -39,7 +37,6 @@ export default function App() {
       <Route path="/task/:id" component={TaskExecution} />
       <Route path="/notes" component={NotesPage} />
       <Route path="/notes/:id" component={NoteDetailPage} />
-      <Route path="/callgraph" component={CallGraphExplorer} />
       <Route path="/docindex" component={DocIndexPage} />
       <Route path="/settings" component={SettingsLayout}>
         <Route path="/" component={GeneralSettings} />
@@ -58,7 +55,6 @@ function AppWrapper(props: { children?: any }) {
           <SessionProvider>
             <PlanProvider>
               <NoteProvider>
-                <CallGraphProvider>
                   <DocIndexProvider>
                     <NotificationProvider>
                       <OnboardingGate />
@@ -69,7 +65,6 @@ function AppWrapper(props: { children?: any }) {
                       <GitSyncBanner />
                     </NotificationProvider>
                   </DocIndexProvider>
-                </CallGraphProvider>
               </NoteProvider>
             </PlanProvider>
           </SessionProvider>

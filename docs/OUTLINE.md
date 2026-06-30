@@ -1,6 +1,6 @@
 # Ogcode — Documentation Outline
 
-> Auto-generated from codebase analysis and call graph traversal.
+> Auto-generated from codebase analysis.
 
 ---
 
@@ -33,7 +33,6 @@ graph LR
     LR -->|persist| MEM[Knowledge Graph]
     TOOLS -->|bash/read/write/edit/glob/grep| FS[Filesystem]
     TOOLS -->|memory_recall| MEM
-    TOOLS -->|callgraph| CG[Call Graph DB]
     API -->|SSE events| BUS[Event Bus]
     BUS --> UI
 ```
@@ -80,8 +79,8 @@ Each agent is a static configuration with an ID, available tools, and a detailed
 
 | Agent | ID | Tools | System Prompt Focus |
 |-------|----|-------|---------------------|
-| **BuildAgent** | `build` | `bash, read, write, edit, glob, grep, memory_recall, callgraph` | Implement tasks with full read/write. Follow task description precisely. Build call graph, commit changes. |
-| **PlanAgent** | `plan` | `bash, read, glob, grep, memory_recall, callgraph` | Read-only exploration. Produce structured implementation plans. Never write code. |
+| **BuildAgent** | `build` | `bash, read, write, edit, glob, grep, memory_recall` | Implement tasks with full read/write. Follow task description precisely. Commit changes. |
+| **PlanAgent** | `plan` | `bash, read, glob, grep, memory_recall` | Read-only exploration. Produce structured implementation plans. Never write code. |
 | **BreakdownAgent** | `breakdown` | `bash, read, glob, grep, submit_task_breakdown` | Transform locked plan into structured task definitions with dependencies. |
 | **NoteAgent** | `note` | `bash, read, glob, grep` | Research a query and produce a comprehensive markdown note. Read-only. |
 
@@ -395,15 +394,8 @@ type ToolDef interface {
 | `GrepTool` | `grep` | Search file contents by regex |
 | `MemoryRecallTool` | `memory_recall` | Semantic recall from knowledge graph |
 | `BreakdownTool` | `submit_task_breakdown` | Submit structured task breakdown (used by BreakdownAgent) |
-| `CallGraphTool` | `callgraph` | Build and query persistent call graph |
 
-### 7.4 Call Graph Tool (Detailed)
-
-Actions: `stats`, `nodes`, `edges`, `callees`, `callers`, `reachable`, `upsert_node`, `add_nodes_batch`, `add_edge`, `add_edges_batch`, `delete_nodes_by_file`, `clear`.
-
-Stored in workspace DB via `internal/callgraph/store.go`. The doc field on nodes captures *semantic meaning* — what a function does, how it relates to other nodes, and why it exists.
-
-### 7.5 Permission System (`internal/permission/`)
+### 7.4 Permission System (`internal/permission/`)
 
 Default ruleset for BuildAgent:
 - `read` → Allow

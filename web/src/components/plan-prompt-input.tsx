@@ -72,10 +72,10 @@ export default function PlanPromptInput() {
       </Show>
       <form onSubmit={handleSubmit} class="max-w-3xl mx-auto px-4 md:px-6 pb-4">
         <div
-          class={`rounded-2xl border bg-[color:var(--bg-surface)] transition-all duration-150
+          class={`rounded-xl border bg-[color:var(--bg-surface)] transition-colors duration-150
             ${focused()
-              ? 'border-[color:var(--border-strong)] shadow-lg shadow-black/30'
-              : 'border-[color:var(--border-default)] shadow-md shadow-black/20'
+              ? 'border-[color:var(--border-strong)] shadow-md'
+              : 'border-[color:var(--border-default)] shadow-sm'
             }`}
         >
           <textarea

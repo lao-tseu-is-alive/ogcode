@@ -599,58 +599,7 @@ export function checkForUpdate(): Promise<UpdateInfo> {
   return fetchAPI('/version/check', { method: 'POST' });
 }
 
-// Call Graph API
-export interface CallNode {
-  id: number;
-  directory: string;
-  package: string;
-  symbol: string;
-  filePath: string;
-  line: number;
-  kind: string;
-  signature?: string;
-  doc?: string;
-}
-
-export interface CallEdge {
-  id: number;
-  callerId: number;
-  calleeId: number;
-  callType: string;
-}
-
-export interface CallNodeDetail {
-  node: CallNode;
-  callees: CallNodeSummary[];
-  callers: CallNodeSummary[];
-}
-
-export interface CallNodeSummary {
-  id: number;
-  package: string;
-  symbol: string;
-  filePath: string;
-  line: number;
-  kind: string;
-  doc?: string;
-  callType?: string;
-}
-
-export interface CallGraphAgentConfig {
-  enabled: boolean;
-}
-
-export function getCallGraphAgentConfig(): Promise<CallGraphAgentConfig> {
-  return fetchAPI('/callgraph/agent-config');
-}
-
-export function setCallGraphAgentConfig(cfg: CallGraphAgentConfig): Promise<CallGraphAgentConfig> {
-  return fetchAPI('/callgraph/agent-config', {
-    method: 'POST',
-    body: JSON.stringify(cfg),
-  });
-}
-
+// Search Config API
 export interface SearchConfig {
   enabled: boolean;
   useRealProfile: boolean;
@@ -665,68 +614,6 @@ export function setSearchConfig(cfg: Omit<SearchConfig, 'updatedAt'>): Promise<S
   return fetchAPI('/search/config', {
     method: 'POST',
     body: JSON.stringify(cfg),
-  });
-}
-
-export interface CallGraphStats {
-  nodes: number;
-  edges: number;
-}
-
-export function getCallGraphStats(directory?: string): Promise<CallGraphStats> {
-  const dir = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-  return fetchAPI(`/callgraph/stats${dir}`);
-}
-
-export function getCallGraphNodes(directory?: string, pkg?: string, kind?: string): Promise<CallNode[]> {
-  const params = new URLSearchParams();
-  if (directory) params.set('directory', directory);
-  if (pkg) params.set('package', pkg);
-  if (kind) params.set('kind', kind);
-  const qs = params.toString();
-  return fetchAPI(`/callgraph/nodes${qs ? '?' + qs : ''}`);
-}
-
-export function getCallGraphEdges(directory?: string): Promise<CallEdge[]> {
-  const dir = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-  return fetchAPI(`/callgraph/edges${dir}`);
-}
-
-export function getCallGraphNodeDetail(nodeID: number): Promise<CallNodeDetail> {
-  return fetchAPI(`/callgraph/nodes/${nodeID}`);
-}
-
-export function searchCallGraph(query: string, directory?: string): Promise<CallNode[]> {
-  const params = new URLSearchParams({ q: query });
-  if (directory) params.set('directory', directory);
-  return fetchAPI(`/callgraph/search?${params}`);
-}
-
-export interface CallGraphBuildStatus {
-  running: boolean;
-  sessionId: string;
-}
-
-export function getCallGraphBuildStatus(): Promise<CallGraphBuildStatus> {
-  return fetchAPI('/callgraph/build');
-}
-
-export function getCallGraphModel(directory?: string): Promise<{ model: string }> {
-  const params = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-  return fetchAPI(`/callgraph/model${params}`);
-}
-
-export function setCallGraphModel(model: string, directory?: string): Promise<{ model: string }> {
-  return fetchAPI('/callgraph/model', {
-    method: 'POST',
-    body: JSON.stringify({ model, directory }),
-  });
-}
-
-export function buildCallGraph(directory?: string, rebuild = false, model?: string): Promise<{ sessionId: string }> {
-  return fetchAPI('/callgraph/build', {
-    method: 'POST',
-    body: JSON.stringify({ directory, rebuild, model }),
   });
 }
 

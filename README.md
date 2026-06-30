@@ -39,7 +39,7 @@ Most coding agents operate on a naive replay loop: each turn, they bundle up the
 
 **2. It *hurts accuracy* — and this matters more than the money.** An LLM can only act on what's in its context window. When you flood that window with stale, unrelated chatter from earlier in the session, the signal gets buried in noise: the model loses sight of the current task, drifts toward half-remembered earlier decisions, and reasons against context that was relevant *then* but isn't relevant *now*. The older the conversation, the more the historical turns actively *distract* from the turn in front of the model.
 
-Ogcode does the opposite. For each turn it **extracts only the context that is actually relevant to the task at hand** — pulling precise facts from a persistent knowledge graph and call graph via `memory_recall`, fetching code-structure context on demand, and compacting stale history instead of replaying it verbatim. The model receives a short, sharp, on-point context window. Less history, fewer tokens — and *better* outcomes, because the model isn't wading through a hundred old messages to find the three facts it needs right now.
+Ogcode does the opposite. For each turn it **extracts only the context that is actually relevant to the task at hand** — pulling precise facts from a persistent knowledge graph via `memory_recall` and compacting stale history instead of replaying it verbatim. The model receives a short, sharp, on-point context window. Less history, fewer tokens — and *better* outcomes, because the model isn't wading through a hundred old messages to find the three facts it needs right now.
 
 **Saving tokens isn't only about cost — it's about accuracy.** A smaller, more relevant context window lets the model focus, so it produces more correct, more on-target results per turn. The two goals reinforce each other.
 
@@ -142,7 +142,7 @@ curl -fsSL http://ogcode.xyz/install.sh | sh && ogcode
 | **Self-Hosted**       | Single binary, zero deps      | Cloud-required  | Cloud-only    | Cloud-only    | Open source    |
 | **Parallel Tasks**    | Git worktrees, conflict-free auto-PRs to upstream | Cloud agents    | Subagents     | Single agent  | Sequential     |
 | **Plan Mode**         | Kanban + effort estimates     | Agents window   | Architect mode| Prompt-based  | `/architect`   |
-| **Persistent Memory** | Knowledge graph + Call graph  | Session-only    | CLAUDE.md     | None          | None          |
+| **Persistent Memory** | Knowledge graph               | Session-only    | CLAUDE.md     | None          | None          |
 | **Token Efficiency**  | Loop-level optimization, ~70% saved, higher accuracy | No                | No            | No            | No           |
 | **Model Choice**      | Claude, GPT, OpenRouter, Ollama | Built-in + custom | Claude only | MS-managed    | Any endpoint   |
 | **Cost**              | BYOK (tokens only)            | $20–$40/mo      | $20–$100/mo   | $19–$39/mo    | Free (BYOK)    |
@@ -155,10 +155,10 @@ Ogcode is the only agentic coding assistant that combines a **browser-native UI*
 ## Features
 
 - **Build Mode + Plan Mode** — Chat with a coding agent in real time, or collaboratively plan complex features with effort estimates and dependency graphs, then let Ogcode decompose them into parallel tasks and raise the PRs.
-- **Token-Efficient by Design** — Token optimization is built into the agent loop: the knowledge graph recalls only relevant context per turn, call-graph facts are fetched on demand, and stale history is compacted instead of re-sent — saving 70%+ of tokens on long sessions *and* sharpening accuracy by keeping the context window focused on the task at hand.
+- **Token-Efficient by Design** — Token optimization is built into the agent loop: the knowledge graph recalls only relevant context per turn, and stale history is compacted instead of re-sent — saving 70%+ of tokens on long sessions *and* sharpening accuracy by keeping the context window focused on the task at hand.
 - **Parallel Task Execution** — Independent tasks run simultaneously across isolated git worktree branches and open pull requests directly against your upstream GitHub repo. Ship entire features in parallel, with conflict-free PRs by construction.
 - **Agentic Session Memory** — Infinite context via a persistent knowledge graph, with ~70% token savings on long sessions.
-- **Knowledge Graph + Call Graph** — Semantic memory of your codebase (Topic → Concept → Fact) plus function-level call relationships for intelligent navigation.
+- **Knowledge Graph** — Semantic memory of your codebase (Topic → Concept → Fact) that persists across sessions.
 - **Multi-Provider LLM Support** — Anthropic Claude, OpenAI GPT, OpenRouter, or local Ollama models. Switch anytime from the UI.
 - **Deep Research Agent** — A built-in `deep_search` tool searches the web, fetches pages, and synthesizes cited research for your agent.
 - **Kanban Board** — Visual task board with S/M/L/XL effort estimates, complexity scores, and dependency chains.
@@ -243,7 +243,6 @@ As the cost of using frontier AI climbs with every intelligence leap, tokens are
 | Mechanism | What it does | Token impact |
 | --------- | ------------ | ------------ |
 | **Agentic Session Memory** | Replaces "send the whole conversation every turn" with a knowledge graph that returns only the facts relevant to the current query. | Largest single saving — grows with session length |
-| **Call Graph recall** | Pulls in code-structure context on demand instead of re-reading source files into the prompt. | Avoids re-sending large file contents |
 | **Context compaction** | Summarizes stale history instead of replaying it verbatim, with truncation as a fallback. | Caps prompt size on long sessions |
 | **Targeted `memory_recall`** | The agent retrieves precise historical facts (config values, past decisions) rather than re-deriving them by re-reading code. | Fewer exploration turns |
 
@@ -503,7 +502,7 @@ Traditional assistants send the *entire conversation history* to the LLM every t
 
 ### How it works
 
-Ogcode maintains a persistent **Topic → Concept → Fact** hierarchy with vector embeddings, plus a **function-level Call Graph** for codebase navigation. This knowledge graph survives across sessions, so your agent remembers your codebase structure, your conventions, and your past decisions.
+Ogcode maintains a persistent **Topic → Concept → Fact** hierarchy with vector embeddings. This knowledge graph survives across sessions, so your agent remembers your codebase structure, your conventions, and your past decisions.
 
 ```
 Topic: "Ogcode Authentication"
@@ -550,11 +549,10 @@ Ogcode is a single Go binary that embeds a SolidJS web UI and runs its own HTTP 
 
 | Component         | Responsibility                                                                 |
 | ----------------- | ------------------------------------------------------------------------------ |
-| **Agent Loop**    | Streaming LLM chat with tool execution (bash, read, write, edit, glob, grep, memory_recall, callgraph, deep_search) |
+| **Agent Loop**    | Streaming LLM chat with tool execution (bash, read, write, edit, glob, grep, memory_recall, deep_search) |
 | **Session Store** | SQLite database for conversations, plans, tasks, and permissions               |
 | **Git Worktrees** | An isolated branch per task, so multiple agents work in parallel               |
 | **Knowledge Graph** | Persistent semantic memory with vector embeddings                            |
-| **Call Graph**    | Function-level code relationship tracking                                       |
 | **Search Bridge** | Playwright-based headless Chrome for web research                              |
 
 ---

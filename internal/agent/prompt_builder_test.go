@@ -6,52 +6,6 @@ import (
 	"testing"
 )
 
-func TestCallGraphPrompt_BuildRole(t *testing.T) {
-	prompt := callGraphPrompt("build")
-
-	// Build role should include post-mutation sync section
-	if !strings.Contains(prompt, "Post-mutation call graph sync") {
-		t.Error("expected build role to include post-mutation sync section")
-	}
-	if !strings.Contains(prompt, "When to build the call graph") {
-		t.Error("expected build role to include 'When to build' section")
-	}
-	if !strings.Contains(prompt, "Using search instead of grep") {
-		t.Error("expected build role to include search guidance section")
-	}
-	if !strings.Contains(prompt, "Populating the doc field") {
-		t.Error("expected build role to include doc field section")
-	}
-	if !strings.Contains(prompt, "Call graph completeness invariant") {
-		t.Error("expected build role to include completeness invariant")
-	}
-}
-
-func TestCallGraphPrompt_PlanRole(t *testing.T) {
-	prompt := callGraphPrompt("plan")
-
-	// Plan role should NOT include post-mutation sync section
-	if strings.Contains(prompt, "Post-mutation call graph sync") {
-		t.Error("did not expect plan role to include post-mutation sync section")
-	}
-	if !strings.Contains(prompt, "When to build the call graph") {
-		t.Error("expected plan role to include 'When to build' section")
-	}
-	if !strings.Contains(prompt, "Using search instead of grep") {
-		t.Error("expected plan role to include search guidance section")
-	}
-	if !strings.Contains(prompt, "Populating the doc field") {
-		t.Error("expected plan role to include doc field section")
-	}
-	if !strings.Contains(prompt, "Call graph completeness invariant") {
-		t.Error("expected plan role to include completeness invariant")
-	}
-	// Plan role should mention planning, not implementation
-	if !strings.Contains(prompt, "planning modifications") {
-		t.Error("expected plan role to mention 'planning modifications'")
-	}
-}
-
 func TestMemoryMDPrompt_CanWrite(t *testing.T) {
 	prompt := memoryMDPrompt(true)
 
@@ -235,9 +189,6 @@ func TestBuildAgent_HasExpectedTools(t *testing.T) {
 	if !BuildAgent.HasTool("edit") {
 		t.Error("BuildAgent should have edit tool")
 	}
-	if !BuildAgent.HasTool("callgraph") {
-		t.Error("BuildAgent should have callgraph tool")
-	}
 	if !BuildAgent.HasTool("memory_recall") {
 		t.Error("BuildAgent should have memory_recall tool")
 	}
@@ -249,9 +200,6 @@ func TestPlanAgent_HasExpectedTools(t *testing.T) {
 	}
 	if PlanAgent.HasTool("edit") {
 		t.Error("PlanAgent should not have edit tool")
-	}
-	if !PlanAgent.HasTool("callgraph") {
-		t.Error("PlanAgent should have callgraph tool")
 	}
 	if !PlanAgent.HasTool("memory_recall") {
 		t.Error("PlanAgent should have memory_recall tool")
@@ -267,9 +215,6 @@ func TestNoteAgent_HasExpectedTools(t *testing.T) {
 	}
 	if NoteAgent.HasTool("edit") {
 		t.Error("NoteAgent should not have edit tool")
-	}
-	if NoteAgent.HasTool("callgraph") {
-		t.Error("NoteAgent should not have callgraph tool")
 	}
 	if NoteAgent.HasTool("memory_recall") {
 		t.Error("NoteAgent should not have memory_recall tool (single-iteration agent)")
@@ -291,9 +236,6 @@ func TestBreakdownAgent_HasExpectedTools(t *testing.T) {
 	}
 	if BreakdownAgent.HasTool("edit") {
 		t.Error("BreakdownAgent should not have edit tool")
-	}
-	if !BreakdownAgent.HasTool("callgraph") {
-		t.Error("BreakdownAgent should have callgraph tool")
 	}
 	if BreakdownAgent.HasTool("memory_recall") {
 		t.Error("BreakdownAgent should not have memory_recall tool (single-iteration agent)")
@@ -324,32 +266,17 @@ func TestBuildAgent_SystemPrompt_ContainsSharedSections(t *testing.T) {
 	}
 }
 
-func TestBreakdownAgent_SystemPrompt_ContainsCallGraphAndNotes(t *testing.T) {
-	// Verify BreakdownAgent mentions project notes and call graph
+func TestBreakdownAgent_SystemPrompt_ContainsNotes(t *testing.T) {
+	// Verify BreakdownAgent mentions project notes and a per-task verification step,
+	// and no longer references the (removed) call graph.
 	if !strings.Contains(BreakdownAgent.System, "Read project notes") {
 		t.Error("BreakdownAgent should mention reading project notes")
 	}
-	if !strings.Contains(BreakdownAgent.System, "callgraph") {
-		t.Error("BreakdownAgent should mention the callgraph tool")
+	if !strings.Contains(BreakdownAgent.System, "verification step") {
+		t.Error("BreakdownAgent should require a per-task verification step")
 	}
-	if !strings.Contains(BreakdownAgent.System, "Verify with the call graph") {
-		t.Error("BreakdownAgent should have call graph verification step")
-	}
-	// BreakdownAgent should include the shared call graph prompt section (plan variant)
-	// These sections are injected dynamically by buildSystemPrompt when callGraphEnabled=true.
-	builtPrompt := buildSystemPrompt(BreakdownAgent, "/tmp/test", false, true, "", "", nil, 0, 0)
-	if !strings.Contains(builtPrompt, "When to build the call graph") {
-		t.Error("BreakdownAgent should include 'When to build the call graph' section from shared prompt")
-	}
-	if !strings.Contains(builtPrompt, "Using search instead of grep") {
-		t.Error("BreakdownAgent should include search guidance from shared call graph prompt")
-	}
-	if !strings.Contains(builtPrompt, "Populating the doc field") {
-		t.Error("BreakdownAgent should include doc field guidance from shared call graph prompt")
-	}
-	// BreakdownAgent should NOT include post-mutation sync (it's a read-only agent)
-	if strings.Contains(BreakdownAgent.System, "Post-mutation call graph sync") {
-		t.Error("BreakdownAgent should NOT include post-mutation sync section (read-only agent)")
+	if strings.Contains(BreakdownAgent.System, "callgraph") || strings.Contains(BreakdownAgent.System, "call graph") {
+		t.Error("BreakdownAgent should no longer reference the call graph")
 	}
 }
 
@@ -363,7 +290,7 @@ func TestGetAgent(t *testing.T) {
 		{"note", "note"},
 		{"build", "build"},
 		{"unknown", "build"}, // default
-		{"", "build"},         // default
+		{"", "build"},        // default
 	}
 	for _, tc := range tests {
 		agent := GetAgent(tc.name)
@@ -503,14 +430,14 @@ func TestBuildSystemPrompt_InjectsLatexInfo(t *testing.T) {
 
 	// BuildAgent has latex_to_pdf tool — should get LaTeX info injected
 	if _, err := exec.LookPath("pdflatex"); err == nil {
-		prompt := buildSystemPrompt(BuildAgent, "/tmp/test", false, false, "", "", nil, 1920, 1080)
+		prompt := buildSystemPrompt(BuildAgent, "/tmp/test", false, "", "", nil, 1920, 1080)
 		if !strings.Contains(prompt, "LaTeX environment") {
 			t.Error("expected LaTeX environment section in BuildAgent prompt when pdflatex is available")
 		}
 	}
 
 	// PlanAgent does NOT have latex_to_pdf tool — should NOT get LaTeX info
-	prompt := buildSystemPrompt(PlanAgent, "/tmp/test", false, false, "", "", nil, 1920, 1080)
+	prompt := buildSystemPrompt(PlanAgent, "/tmp/test", false, "", "", nil, 1920, 1080)
 	if strings.Contains(prompt, "LaTeX environment") {
 		t.Error("did NOT expect LaTeX environment section in PlanAgent prompt (no latex_to_pdf tool)")
 	}

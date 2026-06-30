@@ -569,6 +569,15 @@ func (s *Server) runBreakdown(p *plan.Plan) {
 
 	slog.Info("parsed breakdown tasks", "plan", p.ID, "count", len(taskDefs))
 
+	// Normalize order indices. The breakdown array is already in intended execution
+	// order, so fill in any left-as-zero index (the tool-call path does not default
+	// these, unlike the free-text fallback) to keep the board ordering stable.
+	for i := range taskDefs {
+		if taskDefs[i].OrderIndex == 0 && i > 0 {
+			taskDefs[i].OrderIndex = i
+		}
+	}
+
 	// Detect circular dependencies before creating any task records.
 	if breakdownHasCycle(taskDefs) {
 		slog.Error("circular dependency detected in breakdown", "plan", p.ID)

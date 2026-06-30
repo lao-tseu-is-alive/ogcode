@@ -3,7 +3,7 @@ import { useNavigate } from '@solidjs/router';
 import { useServer } from '../../context/server';
 import { useSession } from '../../context/session';
 import { useTheme } from '../../context/theme';
-import { getCallGraphAgentConfig, setCallGraphAgentConfig, getSearchConfig, setSearchConfig } from '../../api/client';
+import { getSearchConfig, setSearchConfig } from '../../api/client';
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -39,7 +39,7 @@ export default function GeneralSettings() {
   });
 
   return (
-    <div class="max-w-3xl mx-auto px-8 py-10">
+    <div class="max-w-3xl mx-auto px-8 py-10 anim-enter">
       {/* Page header */}
       <header class="mb-10">
         <h1 class="text-2xl font-semibold tracking-tight text-zinc-50">General</h1>
@@ -69,14 +69,6 @@ export default function GeneralSettings() {
               <span class="font-mono text-[12px] text-zinc-200">{server.branch()}</span>
             </Row>
           </Show>
-        </Card>
-
-        {/* Call graph card */}
-        <Card
-          title="Call Graph Agent Instructions"
-          description="When enabled, build and plan agents proactively map every symbol and relationship they encounter into a persistent code knowledge graph."
-        >
-          <CallGraphConfigForm />
         </Card>
 
         {/* Search card */}
@@ -204,69 +196,6 @@ function Shortcut(props: { keys: string[]; description: string }) {
 }
 
 
-function CallGraphConfigForm() {
-  const [enabled, setEnabled] = createSignal(true);
-  const [loading, setLoading] = createSignal(true);
-  const [saving, setSaving] = createSignal(false);
-
-  onMount(async () => {
-    try {
-      const cfg = await getCallGraphAgentConfig();
-      setEnabled(cfg.enabled);
-    } catch {
-      // default stays true
-    } finally {
-      setLoading(false);
-    }
-  });
-
-  const handleToggle = async () => {
-    const next = !enabled();
-    setEnabled(next);
-    setSaving(true);
-    try {
-      await setCallGraphAgentConfig({ enabled: next });
-    } catch {
-      setEnabled(!next); // revert on error
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Show when={!loading()} fallback={
-      <div class="py-4 flex items-center gap-2 text-[12px] text-zinc-500">
-        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v4m0 8v4m8-8h-4M8 12H4" />
-        </svg>
-        Loading…
-      </div>
-    }>
-      <div class="flex items-center justify-between gap-4">
-        <div class="min-w-0">
-          <div class="text-[13px] text-zinc-100 font-medium">Enable call graph instructions</div>
-          <div class="text-[11.5px] text-zinc-500 mt-0.5 leading-snug">
-            Agents read and update the call graph as they explore and modify code. Takes effect immediately for new sessions.
-          </div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled()}
-          disabled={saving()}
-          onClick={handleToggle}
-          class={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
-            transition-colors duration-200 focus:outline-none disabled:opacity-50
-            ${enabled() ? 'bg-[color:var(--accent)]' : 'bg-zinc-700'}`}
-        >
-          <span class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
-            transition duration-200 ${enabled() ? 'translate-x-4' : 'translate-x-0'}`} />
-        </button>
-      </div>
-    </Show>
-  );
-}
-
 function SearchConfigForm() {
   const server = useServer();
   const [enabled, setEnabled] = createSignal(false);
@@ -331,7 +260,7 @@ function SearchConfigForm() {
           <div class="min-w-0">
             <div class="text-[13px] text-zinc-100 font-medium">Enable web search</div>
             <div class="text-[11.5px] text-zinc-500 mt-0.5 leading-snug">
-              Starts a headless Chrome bridge at server launch. Build and note agents gain <code class="font-mono bg-zinc-800 px-1 rounded">deep_search</code> and <code class="font-mono bg-zinc-800 px-1 rounded">web_search</code> tools.
+              Starts a headless Chrome bridge at server launch. Build and note agents gain <code class="font-mono bg-[color:var(--bg-elevated)] px-1 rounded">deep_search</code> and <code class="font-mono bg-[color:var(--bg-elevated)] px-1 rounded">web_search</code> tools.
             </div>
           </div>
           <button
@@ -342,7 +271,7 @@ function SearchConfigForm() {
             onClick={handleToggle}
             class={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
               transition-colors duration-200 focus:outline-none disabled:opacity-50
-              ${enabled() ? 'bg-[color:var(--accent)]' : 'bg-zinc-700'}`}
+              ${enabled() ? 'bg-[color:var(--accent)]' : 'bg-[color:var(--bg-hover)]'}`}
           >
             <span class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
               transition duration-200 ${enabled() ? 'translate-x-4' : 'translate-x-0'}`} />
@@ -355,7 +284,7 @@ function SearchConfigForm() {
             fallback={
               <div class="flex items-center gap-2 text-[11.5px] text-red-400 bg-red-400/10 rounded-md px-3 py-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-                Bridge failed to start. Check that Node.js is installed and run <code class="font-mono bg-zinc-800 px-1 rounded">npx playwright install chromium</code> in <code class="font-mono bg-zinc-800 px-1 rounded">~/.local/share/ogcode/search-bridge/</code>, then restart.
+                Bridge failed to start. Check that Node.js is installed and run <code class="font-mono bg-[color:var(--bg-elevated)] px-1 rounded">npx playwright install chromium</code> in <code class="font-mono bg-[color:var(--bg-elevated)] px-1 rounded">~/.local/share/ogcode/search-bridge/</code>, then restart.
               </div>
             }
           >
@@ -375,7 +304,7 @@ function SearchConfigForm() {
           </div>
         </Show>
         <Show when={enabled()}>
-          <div class="border-t border-zinc-800 pt-3 mt-1 space-y-3">
+          <div class="border-t border-[color:var(--border-subtle)] pt-3 mt-1 space-y-3">
             {/* Real Chrome profile toggle */}
             <div class="flex items-center justify-between gap-4">
               <div class="min-w-0">
@@ -392,7 +321,7 @@ function SearchConfigForm() {
                 onClick={handleProfileToggle}
                 class={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
                   transition-colors duration-200 focus:outline-none disabled:opacity-50
-                  ${useRealProfile() ? 'bg-[color:var(--accent)]' : 'bg-zinc-700'}`}
+                  ${useRealProfile() ? 'bg-[color:var(--accent)]' : 'bg-[color:var(--bg-hover)]'}`}
               >
                 <span class={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow
                   transition duration-200 ${useRealProfile() ? 'translate-x-4' : 'translate-x-0'}`} />
@@ -507,7 +436,7 @@ function ThemePicker() {
                 onClick={() => handleInput(p.hex)}
                 disabled={saving()}
                 title={p.label}
-                class={`w-7 h-7 rounded-lg border-2 transition hover:scale-110
+                class={`w-7 h-7 rounded-lg border-2 transition-colors
                   ${themeCtx.primaryColor() === p.hex
                     ? 'border-white ring-2 ring-white/20'
                     : 'border-[color:var(--border-default)] hover:border-[color:var(--border-strong)]'

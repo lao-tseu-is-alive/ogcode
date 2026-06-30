@@ -105,7 +105,7 @@ export default function ModelsSettings() {
   };
 
   return (
-    <div class="max-w-4xl mx-auto px-8 py-10">
+    <div class="max-w-4xl mx-auto px-8 py-10 anim-enter">
       {/* Page header */}
       <header class="mb-8 flex items-start justify-between gap-4">
         <div>
@@ -388,7 +388,7 @@ function Toggle(props: { on: boolean; onClick: () => void }) {
               focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-ring)]
         ${props.on
           ? 'bg-[color:var(--accent)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]'
-          : 'bg-zinc-700/60 hover:bg-zinc-600/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]'
+          : 'bg-[color:var(--bg-hover)] hover:bg-[color:var(--bg-elevated)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]'
         }`}
       title={props.on ? 'Enabled' : 'Disabled'}
     >

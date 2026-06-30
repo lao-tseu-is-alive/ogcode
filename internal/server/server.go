@@ -17,7 +17,6 @@ import (
 
 	"github.com/prasenjeet-symon/ogcode/internal/agent"
 	"github.com/prasenjeet-symon/ogcode/internal/bus"
-	"github.com/prasenjeet-symon/ogcode/internal/callgraph"
 	"github.com/prasenjeet-symon/ogcode/internal/db"
 	"github.com/prasenjeet-symon/ogcode/internal/docindex"
 	"github.com/prasenjeet-symon/ogcode/internal/git"
@@ -43,24 +42,23 @@ const (
 )
 
 type Server struct {
-	port       int
-	dir        string
-	mode       ServerMode
-	db         *db.DB
-	globalDB   *db.DB // shared config DB at ~/.ogcode/config.db
-	bus        *bus.Bus
-	store      *session.Store
-	planStore  *plan.Store
-	taskStore      *task.Store
-	noteStore      *note.Store
-	callgraphStore *callgraph.Store
-	docindexStore  *docindex.Store
-	registry   *provider.Registry
+	port            int
+	dir             string
+	mode            ServerMode
+	db              *db.DB
+	globalDB        *db.DB // shared config DB at ~/.ogcode/config.db
+	bus             *bus.Bus
+	store           *session.Store
+	planStore       *plan.Store
+	taskStore       *task.Store
+	noteStore       *note.Store
+	docindexStore   *docindex.Store
+	registry        *provider.Registry
 	defaultProvider provider.Provider
-	loopRunner *agent.LoopRunner
-	mcpClient  *mcp.Client
-	mcpCfg     mcp.ServerConfig
-	mem        *memory.Memory
+	loopRunner      *agent.LoopRunner
+	mcpClient       *mcp.Client
+	mcpCfg          mcp.ServerConfig
+	mem             *memory.Memory
 
 	// Version check manager
 	versionManager *version.Manager
@@ -74,17 +72,14 @@ type Server struct {
 	runningToken map[session.SessionID]uint64 // prevents goroutine from deleting a newer cancel
 	nextToken    uint64
 
-	// Track the active call graph build session (protected by mu)
-	cgBuildSessID session.SessionID
-
 	// gitMu serializes all repo-level git operations (worktree add/remove/prune,
 	// branch creation) to prevent concurrent writes from corrupting .git metadata.
 	gitMu sync.Mutex
 
 	// docindexMu protects docindexRunning.
-	docindexMu       sync.Mutex
-	docindexRunning  bool
-	indexerProgress  *indexer.ProgressTracker // nil when not indexing
+	docindexMu      sync.Mutex
+	docindexRunning bool
+	indexerProgress *indexer.ProgressTracker // nil when not indexing
 }
 
 func New(port int, dir string, mode ServerMode) *Server {
@@ -123,7 +118,6 @@ func (s *Server) Start() error {
 	s.planStore = plan.NewStore(database)
 	s.taskStore = task.NewStore(database)
 	s.noteStore = note.NewStore(database)
-	s.callgraphStore = callgraph.NewStore(database)
 	s.docindexStore = docindex.NewStore(database)
 
 	// Recover notes stuck in "generating" status from a previous server crash.
@@ -168,7 +162,6 @@ func (s *Server) Start() error {
 	toolRegistry.Register(tool.GlobTool{})
 	toolRegistry.Register(tool.GrepTool{})
 	toolRegistry.Register(tool.BreakdownTool{})
-	toolRegistry.Register(tool.NewCallGraphTool(s.callgraphStore))
 	toolRegistry.Register(tool.NewSubmitDocIndexTool(s.docindexStore))
 	toolRegistry.Register(tool.ReadPdfPageTool{})
 	toolRegistry.Register(tool.NewPdfIndexTool(s.docindexStore))
@@ -288,23 +281,16 @@ func (s *Server) Start() error {
 		}
 	}
 
-	cgAgentCfg, err := session.GetCallGraphAgentConfig(globalDatabase)
-	if err != nil {
-		slog.Warn("failed to load callgraph agent config; defaulting to enabled", "err", err)
-		cgAgentCfg = &session.CallGraphAgentConfig{Enabled: true}
-	}
-
 	s.loopRunner = &agent.LoopRunner{
-		Store:            s.store,
-		Bus:              s.bus,
-		Registry:         registry,
-		DefaultProvider:  defaultProvider,
-		Tools:            toolRegistry,
-		Dir:              s.dir,
-		Memory:           mem,
-		MCP:              s.mcpClient,
-		NoteStore:        s.noteStore,
-		CallGraphEnabled: cgAgentCfg.Enabled,
+		Store:           s.store,
+		Bus:             s.bus,
+		Registry:        registry,
+		DefaultProvider: defaultProvider,
+		Tools:           toolRegistry,
+		Dir:             s.dir,
+		Memory:          mem,
+		MCP:             s.mcpClient,
+		NoteStore:       s.noteStore,
 	}
 
 	// Register deep_search after loopRunner is built (needs RunSearchSession).

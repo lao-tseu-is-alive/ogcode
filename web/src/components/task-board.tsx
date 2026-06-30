@@ -3,13 +3,7 @@ import { useNavigate } from '@solidjs/router';
 import { usePlan } from '../context/plan';
 import type { Task } from '../api/client';
 import MarkdownContent from './markdown-content';
-
-const STATUS_DOT: Record<string, string> = {
-  pending: 'bg-zinc-500',
-  in_progress: 'bg-blue-400 animate-pulse',
-  completed: 'bg-emerald-400',
-  failed: 'bg-red-400',
-};
+import StatusIcon from './status-icon';
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pending',
@@ -45,8 +39,8 @@ function TaskRow(props: { task: Task; onSelect: (t: Task) => void }) {
       onClick={() => props.onSelect(t())}
       class="group flex items-start gap-3 px-3 py-2.5 hover:bg-[color:var(--bg-hover)]/50 rounded-lg transition-colors cursor-pointer"
     >
-      <div class="mt-1.5 shrink-0">
-        <span class={`w-2 h-2 rounded-full inline-block ${STATUS_DOT[t().status] || STATUS_DOT.pending}`} />
+      <div class="mt-[3px] shrink-0">
+        <StatusIcon status={t().status} size={14} />
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 mb-0.5">
@@ -226,7 +220,7 @@ export default function TaskBoard() {
       {/* Empty states */}
       <Show when={!hasTasks() && breakdownStatus() !== 'in_progress' && breakdownStatus() !== 'failed'}>
         <div class="flex-1 flex flex-col items-center justify-center py-12 text-center px-4">
-          <div class="w-12 h-12 rounded-2xl bg-[color:var(--accent-soft)] border border-[color:var(--border-subtle)] flex items-center justify-center mb-3">
+          <div class="w-12 h-12 rounded-xl bg-[color:var(--accent-soft)] border border-[color:var(--border-subtle)] flex items-center justify-center mb-3">
             <svg class="w-5 h-5 text-[color:var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
@@ -324,7 +318,7 @@ export default function TaskBoard() {
                   <For each={selectedTask()!.dependencies.map((id) => plan.tasks().find((x) => x.id === id)).filter(Boolean) as Task[]}>
                     {(dep) => (
                       <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
-                        <span class={`w-1.5 h-1.5 rounded-full shrink-0 ${dep.status === 'completed' ? 'bg-emerald-400' : dep.status === 'in_progress' ? 'bg-blue-400' : 'bg-zinc-500'}`} />
+                        <StatusIcon status={dep.status} size={12} />
                         <span class="text-zinc-300 flex-1 truncate text-[11px]">{dep.title}</span>
                         <span class="text-[9px] text-zinc-600 capitalize">{dep.status.replace('_', ' ')}</span>
                       </div>

@@ -158,7 +158,7 @@ input:focus-visible {
   to   { transform: rotate(360deg); }
 }
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes shimmer {
@@ -177,6 +177,19 @@ input:focus-visible {
 .animate-fade-in-up    { animation: fadeInUp 0.25s ease-out forwards; }
 .animate-spin          { animation: spin 0.9s linear infinite; }
 .animate-pulse-ring    { animation: pulse-ring 2s ease-out infinite; }
+
+/* Linear-style subtle message/list entrance: short, soft, ease-out. */
+.anim-enter { animation: fadeIn 0.18s ease-out both; }
+
+/* Respect users who prefer reduced motion — neutralize entrance/transition motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 .shimmer {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);

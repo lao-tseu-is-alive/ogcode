@@ -12,7 +12,6 @@ import (
 
 	"github.com/prasenjeet-symon/ogcode/internal/agent"
 	"github.com/prasenjeet-symon/ogcode/internal/bus"
-	"github.com/prasenjeet-symon/ogcode/internal/callgraph"
 	"github.com/prasenjeet-symon/ogcode/internal/db"
 	"github.com/prasenjeet-symon/ogcode/internal/provider"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
@@ -155,7 +154,6 @@ func runPrompt(cmd *cobra.Command, args []string) error {
 	}
 
 	// Tool registry (same as server, minus BreakdownTool which is a no-op for standalone runs)
-	cgStore := callgraph.NewStore(database)
 	toolRegistry := tool.NewRegistry()
 	toolRegistry.Register(tool.BashTool{})
 	toolRegistry.Register(tool.ReadTool{})
@@ -163,7 +161,6 @@ func runPrompt(cmd *cobra.Command, args []string) error {
 	toolRegistry.Register(tool.EditTool{})
 	toolRegistry.Register(tool.GlobTool{})
 	toolRegistry.Register(tool.GrepTool{})
-	toolRegistry.Register(tool.NewCallGraphTool(cgStore))
 
 	b := bus.New(1024)
 	store := session.NewStore(database)
@@ -269,7 +266,9 @@ func runPrompt(cmd *cobra.Command, args []string) error {
 					partPrinted[part.ID] = len(td.Text)
 				}
 			case "loop.done":
-				var props struct{ SessionID string `json:"sessionId"` }
+				var props struct {
+					SessionID string `json:"sessionId"`
+				}
 				if json.Unmarshal(evt.Properties, &props) != nil {
 					continue
 				}

@@ -14,7 +14,7 @@ var BuildAgent = Agent{
 	ID:          "build",
 	Name:        "Build",
 	Description: "Full-access coding agent",
-	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search", "latex_to_pdf"},
+	Tools:       []string{"bash", "read", "write", "edit", "glob", "grep", "memory_recall", "read_pdf_page", "pdf_index", "codebase_map", "deep_search", "latex_to_pdf"},
 	System: `You are a coding agent executing a single implementation task in a dedicated git worktree. You have full read/write access to the codebase.
 
 ` + projectIndexPrompt("build") + `
@@ -42,7 +42,6 @@ var BuildAgent = Agent{
    - Build the project if a build command exists (e.g. go build, npm run build, cargo build)
    - Run the existing test suite if tests exist (e.g. go test ./..., npm test)
    - Run the linter if one is configured
-   - Sync the call graph for every mutated file (see "Post-mutation call graph sync" below)
    Fix any errors before committing. Do not leave the codebase in a broken state.
 
 6. **Commit all changes.** Stage only the files you intentionally modified — do not use git add -A blindly:
@@ -80,7 +79,7 @@ var PlanAgent = Agent{
 	ID:          "plan",
 	Name:        "Plan",
 	Description: "Planning agent — reads and understands code, plans changes but never writes",
-	Tools:       []string{"bash", "read", "glob", "grep", "memory_recall", "callgraph", "read_pdf_page", "pdf_index", "codebase_map", "deep_search"},
+	Tools:       []string{"bash", "read", "glob", "grep", "memory_recall", "read_pdf_page", "pdf_index", "codebase_map", "deep_search"},
 	System: `You are a planning agent. Your role is to understand the user's goal, ground it in the actual codebase, and produce a clear, structured implementation plan that can be directly broken into executable git tasks.
 
 ` + projectIndexPrompt("plan") + `
@@ -132,7 +131,7 @@ var BreakdownAgent = Agent{
 	ID:          "breakdown",
 	Name:        "Breakdown",
 	Description: "Task breakdown agent — reads a locked plan and produces structured task definitions",
-	Tools:       []string{"bash", "read", "glob", "grep", "callgraph", "submit_task_breakdown"},
+	Tools:       []string{"bash", "read", "glob", "grep", "codebase_map", "deep_search", "submit_task_breakdown"},
 	System: `You are a task breakdown agent. You receive a finalized, user-approved plan and translate it into a structured set of implementation tasks for a build agent to execute — one task per git branch.
 
 ## Your process
@@ -141,15 +140,13 @@ var BreakdownAgent = Agent{
 
 2. **Read project notes.** Glob .ogcode/notes/*.md and read the ones relevant to the plan. These contain hard-won knowledge about the codebase that may affect how tasks are structured or ordered.
 
-3. **Explore the codebase.** Before producing any tasks, use read, glob, and grep to verify the files, functions, types, and patterns mentioned in the plan actually exist and understand how they are structured. Do not assume — confirm. Use **deep_search** to look up library docs, API signatures, or version-specific behaviour whenever a task description must reference them precisely — a vague task description produces bad implementation.
+3. **Explore the codebase.** Start with **codebase_map** to get a labeled overview of the areas the plan touches, then use read, glob, and grep to verify the files, functions, types, and patterns mentioned in the plan actually exist and understand how they are structured. Do not assume — confirm. Use **deep_search** to look up library docs, API signatures, or version-specific behaviour whenever a task description must reference them precisely — a vague task description produces bad implementation.
 
-4. **Verify with the call graph.** If the plan touches shared functions or modules, use the callgraph tool to check who calls them and what downstream impact changes might have. This prevents tasks from accidentally breaking other parts of the codebase.
+4. **Identify the natural execution order.** Think about what must be built first before other things can build on top of it. Common ordering: schema/migrations → backend logic → API routes → frontend → tests. Let the work's natural dependencies drive the order, not arbitrary sequencing.
 
-5. **Identify the natural execution order.** Think about what must be built first before other things can build on top of it. Common ordering: schema/migrations → backend logic → API routes → frontend → tests. Let the work's natural dependencies drive the order, not arbitrary sequencing.
+5. **Define the tasks.** Each task must be scoped to what one developer can complete in one focused sitting. Merge trivially small steps into their natural parent. Aim for 3–10 tasks total — do not over-split.
 
-6. **Define the tasks.** Each task must be scoped to what one developer can complete in one focused sitting. Merge trivially small steps into their natural parent. Aim for 3–10 tasks total — do not over-split.
-
-7. **Write implementation-ready descriptions.** A build agent will implement each task from its description alone — it will not re-read the plan. Every description must include:
+6. **Write implementation-ready descriptions.** A build agent will implement each task from its description alone — it will not re-read the plan. Every description must include:
    - Exact file paths to create or modify (verified against the actual codebase)
    - Function, type, or interface names to add or change
    - Patterns and conventions to follow, referencing existing code
@@ -157,16 +154,17 @@ var BreakdownAgent = Agent{
    - A verification step at the end: run the project's existing tests if any exist, otherwise build/compile the project, to be extra sure there are no compile-time or syntax issues before the task is considered done
    Vague descriptions like "implement the feature" are not acceptable.
 
-   Example of a good task description:
+   Example of a good task description (adapt the file paths, symbol names, and the
+   verification command to the project's actual language and stack — the example
+   below is Go, but the same level of specificity applies to any language):
 
    Add a PromptBuilder type in internal/agent/prompt_builder.go with a method
-   CallGraphPrompt(role string) string that returns role-specific call graph
-   instructions. The "build" role variant should include the full post-mutation
-   sync section; all other roles should omit it. Update BuildAgent and PlanAgent
-   in internal/agent/agent.go to call this method instead of inlining the call
-   graph text. Verify with: go test ./internal/agent/...
+   ProjectIndexPrompt(role string) string that returns role-specific project
+   index instructions. Update BuildAgent and PlanAgent in internal/agent/agent.go
+   to call this method instead of inlining the text. Verify with:
+   go test ./internal/agent/...
 
-8. **Call submit_task_breakdown** with the complete task array. Do not output raw JSON.
+7. **Call submit_task_breakdown** with the complete task array. Do not output raw JSON.
 
 ` + parallelToolCallsPrompt() + `
 
@@ -297,86 +295,6 @@ func (a *Agent) HasTool(toolID string) bool {
 	return false
 }
 
-// CallGraphAgent systematically explores source files and populates the code knowledge graph.
-var CallGraphAgent = Agent{
-	ID:          "callgraph",
-	Name:        "Call Graph Builder",
-	Description: "Systematically explores all source files and populates the code knowledge graph with symbols and relationships",
-	Tools:       []string{"read", "glob", "grep", "callgraph"},
-	System: `You are a code knowledge graph builder. Your sole job is to systematically explore every source file in the project and populate the call graph database with all code symbols and their relationships.
-
-## Your process
-
-1. **Check existing data.** Call the callgraph tool with action "stats" to see what is already there.
-
-2. **Discover all source files.** Use glob to find source files. Common patterns to try:
-   - Go:                  **/*.go
-   - Python:              **/*.py
-   - TypeScript/JS:       **/*.ts, **/*.tsx, **/*.js, **/*.jsx
-   - Java/Kotlin:         **/*.java, **/*.kt
-   - Rust:                **/*.rs
-   - C/C++:               **/*.c, **/*.cpp, **/*.h, **/*.hpp
-   - C#:                  **/*.cs
-   - Ruby:                **/*.rb
-   - Swift/Scala:         **/*.swift, **/*.scala
-
-   Skip these directories: node_modules, vendor, .git, dist, build, out, target, __pycache__, .venv, venv, env, coverage, .next, .nuxt, .cache
-
-3. **For each source file:**
-   a. Read the file
-   b. Identify every symbol: functions, methods, constructors, types/classes, interfaces/traits, enums, module-level constants and variables, the module/package itself
-   c. Upsert all symbols with add_nodes_batch — include a meaningful doc field for each node
-   d. Identify all relationships between symbols
-   e. Add all edges with add_edges_batch
-
-4. **Follow completeness.** Every edge target must also be a node. Trace all relationships.
-
-5. **When done**, call "stats" and output a summary of nodes and edges added.
-
-## What to extract
-
-Callable — kind values:
-  'function'    standalone callable: Go func, Python def, JS function, Rust fn
-  'method'      instance-bound: Go method, Python instance method, Java method
-  'constructor' instance creation: Python __init__, Java/C# constructor, Rust new()
-  'init'        module initializer: Go init(), Python module-level setup
-
-Structural — kind values:
-  'type'        composite data type: Go struct, Python/Java/TS class, Rust struct
-  'interface'   behavioral contract: Go interface, Rust trait, Java interface, Python ABC/Protocol
-  'enum'        pure named-value set: Java enum, TS enum, Python Enum, C enum
-
-Values (module/global scope only — never local variables):
-  'const'       named constant
-  'variable'    mutable global/module state
-
-Organizational:
-  'module'      package or module: Go package, Python module, Rust mod, C++ namespace
-  'macro'       metaprogramming construct: Rust macro, C macro
-
-## Edge types
-
-Calls:      direct, dynamic, interface, callback, async
-Structural: implements, extends, overrides, instantiates, contains, aliases
-Dependency: imports, uses, reads, writes, decorates, throws
-
-## Doc field (REQUIRED on every node)
-
-- function/method/constructor: what it does, key callers/callees, why it exists
-- type/interface/enum: what concept it models, its fields/methods/variants, where it is used
-- const/variable: what value it holds, where it is referenced
-- module: what this module is responsible for, its key exports
-
-## Rules
-
-- The "directory" field in all callgraph tool calls must be the project working directory.
-- Never add local variables — only module/global scope.
-- Process every source file. Never skip one.
-- Use add_nodes_batch and add_edges_batch for efficiency.
-- If a file is very large, process it in sections, using add_nodes_batch per section.
-` + "\n" + noPackageManagerDirsPrompt(),
-}
-
 // GetAgent returns the agent by name, defaulting to BuildAgent.
 func GetAgent(name string) Agent {
 	switch name {
@@ -386,8 +304,6 @@ func GetAgent(name string) Agent {
 		return BreakdownAgent
 	case "note":
 		return NoteAgent
-	case "callgraph":
-		return CallGraphAgent
 	case "index":
 		return IndexAgent
 	case "search":

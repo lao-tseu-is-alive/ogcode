@@ -124,7 +124,7 @@ export default function PlanMessageList() {
         <div class="max-w-3xl mx-auto px-4 md:px-6 py-6 space-y-6">
           <Show when={visibleMessages().length === 0 && !plan.loading()}>
             <div class="flex flex-col items-center justify-center py-24 text-center">
-              <div class="w-14 h-14 rounded-2xl bg-[color:var(--accent-soft)] border border-[color:var(--border-subtle)] flex items-center justify-center mb-4">
+              <div class="w-14 h-14 rounded-xl bg-[color:var(--accent-soft)] border border-[color:var(--border-subtle)] flex items-center justify-center mb-4">
                 <svg class="w-6 h-6 text-[color:var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -136,7 +136,7 @@ export default function PlanMessageList() {
 
           <Index each={visibleMessages()}>
             {(msg) => (
-              <>
+              <div class="anim-enter">
                 <MessageItem msg={msg()} />
                 <Show when={msg().info.role === 'assistant' && msg().info.error}>
                   <div class="flex gap-3">
@@ -151,7 +151,7 @@ export default function PlanMessageList() {
                     </div>
                   </div>
                 </Show>
-              </>
+              </div>
             )}
           </Index>
 
@@ -178,7 +178,7 @@ export default function PlanMessageList() {
         <Show when={isScrolledUp()}>
           <button
             onClick={scrollToBottom}
-            class="fixed bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-lg bg-[color:var(--accent)] hover:bg-[color:var(--accent-hover)] text-[color:var(--on-primary)] text-sm font-medium shadow-lg transition-all animate-fade-in"
+            class="fixed bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[color:var(--accent)] hover:bg-[color:var(--accent-hover)] text-[color:var(--on-primary)] text-[13px] font-medium shadow-md transition-all anim-enter"
             title="Jump to latest message"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
