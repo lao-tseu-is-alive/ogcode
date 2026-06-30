@@ -24,9 +24,6 @@ manifests/
 .DS_Store
 *.swp
 
-# Memory (personal per-user notes)
-MEMORY.md
-
 # Claude Code CLI
 .claude/
 
