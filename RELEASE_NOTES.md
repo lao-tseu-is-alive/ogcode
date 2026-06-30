@@ -1,42 +1,28 @@
-# Release Notes — v0.13.2
+# Release Notes — v0.13.3
 
-## Leaner agents, a more Linear-feeling UI
+## GitHub-style file diffs in the UI
 
-This release removes the Call Graph feature, polishes Plan mode and Settings to a
-consistent Linear-inspired look and feel, and sharpens the task-breakdown agent.
+File edits made by the agent now render as a clean, GitHub-style unified diff
+instead of raw JSON input/output.
 
 ---
 
-### 🗑️ Call Graph removed
+### ✨ Inline diffs for `write` and `edit` tools
 
-The Call Graph feature has been fully removed — from the agents (no agent is aware
-of it anymore), the tools, the API, and the UI. This trims agent context and
-simplifies the surface area. Memory (the knowledge graph + `memory_recall`) is
-unaffected and continues to work as before.
-
-### ✨ Plan mode & Settings — Linear polish
-
-- **Motion.** Messages now animate in subtly as they arrive, and Settings pages
-  fade in on navigation — all gated behind `prefers-reduced-motion` for anyone who
-  opts out.
-- **Consistent status icons.** The conversation-view task panel now uses the same
-  Linear-style status circles as the board, so status reads identically everywhere.
-- **Refined surfaces.** Tighter, more consistent corner radii and lighter,
-  border-driven shadows across inputs, cards, and the Settings module — plus
-  design-token cleanup so theming stays coherent.
-- **Sidebar fix.** The minimized Plan sidebar now shows the **Doc Index** icon
-  alongside Notes (previously it was missing when collapsed).
-
-### 🔧 Task-breakdown agent improvements
-
-- The breakdown agent now has **`codebase_map`** and **`deep_search`** — it leads
-  exploration with a labeled codebase overview and can verify library/API details,
-  producing more accurate, implementation-ready task descriptions. (Previously the
-  prompt referenced `deep_search` without the tool actually being available.)
-- Each generated task now reliably ends with a **verification step** (run tests, or
-  build the project) in both the system prompt and the breakdown instructions.
-- More stable task ordering and a language-neutral example so descriptions aren't
-  biased toward any one stack.
+- **New `FileDiff` component.** When the agent uses the `write` or `edit` tool,
+  the tool card now shows a unified line-by-line diff with green/red gutter
+  colors — the same visual language you'd see in a pull request.
+- **Diff stat in the collapsed header.** The tool card header now displays a
+  compact `+N −M` add/remove line count, so you can gauge the size of a change
+  at a glance without expanding it.
+- **"Created" vs "Wrote".** The `write` tool now distinguishes between creating a
+  new file and overwriting an existing one — the output verb and diff header
+  reflect which happened.
+- **Large-file guard.** Files larger than 256 KB are not diffed (the UI shows a
+  "File too large to show a diff" message and the tool metadata flags
+  `diffOmitted`), keeping message sizes and rendering snappy.
+- **Truncation cap.** Diffs are capped at 600 rendered rows with a trailing
+  "… N more lines" indicator, so very long changesets don't overwhelm the view.
 
 ---
 
@@ -64,4 +50,4 @@ docker run -p 9595:9595 -v $(pwd):/workspace -w /workspace ghcr.io/prasenjeet-sy
 
 ---
 
-*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.13.1...v0.13.2*
+*Full changelog: https://github.com/prasenjeet-symon/ogcode/compare/v0.13.2...v0.13.3*
