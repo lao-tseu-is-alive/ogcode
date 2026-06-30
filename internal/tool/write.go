@@ -37,6 +37,23 @@ func (WriteTool) Execute(ctx context.Context, args json.RawMessage, tctx Context
 		path = filepath.Join(tctx.SessionDir, path)
 	}
 
+	// Capture the prior content (if any) so the UI can render a before/after diff.
+	// Cap the captured size so huge files don't bloat the persisted message.
+	const maxDiffBytes = 256 * 1024
+	var oldContent string
+	created := true
+	diffOmitted := false
+	if existing, err := os.ReadFile(path); err == nil {
+		created = false
+		if len(existing) <= maxDiffBytes && len(input.Content) <= maxDiffBytes {
+			oldContent = string(existing)
+		} else {
+			diffOmitted = true
+		}
+	} else if len(input.Content) > maxDiffBytes {
+		diffOmitted = true
+	}
+
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Result{}, fmt.Errorf("create dirs: %w", err)
@@ -46,8 +63,20 @@ func (WriteTool) Execute(ctx context.Context, args json.RawMessage, tctx Context
 		return Result{}, fmt.Errorf("write file: %w", err)
 	}
 
+	metadata := map[string]any{"created": created}
+	if diffOmitted {
+		metadata["diffOmitted"] = true
+	} else if !created {
+		metadata["oldContent"] = oldContent
+	}
+
+	verb := "Wrote"
+	if created {
+		verb = "Created"
+	}
 	return Result{
-		Title:  filepath.Base(path),
-		Output: fmt.Sprintf("Wrote %d bytes to %s", len(input.Content), path),
+		Title:    filepath.Base(path),
+		Output:   fmt.Sprintf("%s %d bytes to %s", verb, len(input.Content), path),
+		Metadata: metadata,
 	}, nil
 }

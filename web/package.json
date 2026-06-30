@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@solidjs/router": "^0.16.1",
+    "@types/diff": "^7.0.2",
     "d3": "^7.9.0",
+    "diff": "^7.0.0",
     "dompurify": "^3.4.1",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.47",

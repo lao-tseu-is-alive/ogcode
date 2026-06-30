@@ -1,6 +1,7 @@
-import { Index, Show, createEffect, createSignal, onMount } from 'solid-js';
+import { Index, Show, createEffect, createMemo, createSignal, onMount } from 'solid-js';
 import type { MessageWithParts, Part, TextPartData, ToolPartData, ReasoningPartData } from '../api/client';
 import MarkdownContent from './markdown-content';
+import FileDiff, { diffStat } from './file-diff';
 import { useNote } from '../context/note';
 import { useSession } from '../context/session';
 
@@ -50,6 +51,29 @@ function ToolPartDisplay(props: { data: ToolPartData }) {
   // Sources section). Render them as markdown instead of a code block, and
   // auto-expand on completion so the user sees the answer immediately.
   const isDeepSearch = () => props.data.tool === 'deep_search';
+
+  // File-editing tools render a GitHub-style before/after diff instead of raw input.
+  const isFileEdit = () => props.data.tool === 'edit' || props.data.tool === 'write';
+  const fileDiff = createMemo((): { oldText: string; newText: string; mode: 'create' | 'edit' | 'overwrite'; omitted: boolean } | null => {
+    if (!isFileEdit()) return null;
+    const input = props.data.state.input || {};
+    const meta = props.data.state.metadata || {};
+    if (props.data.tool === 'edit') {
+      return { oldText: String(input.old_string ?? ''), newText: String(input.new_string ?? ''), mode: 'edit', omitted: false };
+    }
+    const created = !!meta.created;
+    return {
+      oldText: created ? '' : String(meta.oldContent ?? ''),
+      newText: String(input.content ?? ''),
+      mode: created ? 'create' : 'overwrite',
+      omitted: !!meta.diffOmitted,
+    };
+  });
+  const diffStats = createMemo(() => {
+    const d = fileDiff();
+    if (!d || d.omitted) return null;
+    return diffStat(d.oldText, d.newText);
+  });
 
   // Auto-collapse when tool finishes (running/completed -> completed/error)
   // Exception: deep_search auto-expands so the user sees the answer.
@@ -125,7 +149,13 @@ function ToolPartDisplay(props: { data: ToolPartData }) {
         <Show when={!summary()}>
           <span class="flex-1" />
         </Show>
-        <Show when={hasOutput() && !expanded()}>
+        <Show when={diffStats()}>
+          <span class="flex items-center gap-1.5 shrink-0 text-[10px] font-mono tabular-nums">
+            <span style={{ color: 'var(--success)' }}>+{diffStats()!.adds}</span>
+            <span style={{ color: 'var(--danger)' }}>−{diffStats()!.dels}</span>
+          </span>
+        </Show>
+        <Show when={hasOutput() && !expanded() && !isFileEdit()}>
           <span class="text-[10px] text-zinc-600 font-mono shrink-0">
             {outputLineCount()} {outputLineCount() === 1 ? 'line' : 'lines'}
           </span>
@@ -140,10 +170,13 @@ function ToolPartDisplay(props: { data: ToolPartData }) {
 
       <Show when={expanded()}>
         <div class="mt-1.5 ml-2 space-y-1.5 min-w-0 overflow-hidden">
-          <Show when={props.data.state.input && Object.keys(props.data.state.input).length > 0 && !(isDeepSearch() && status() === 'completed')}>
+          <Show when={isFileEdit() && fileDiff()}>
+            <FileDiff oldText={fileDiff()!.oldText} newText={fileDiff()!.newText} mode={fileDiff()!.mode} omitted={fileDiff()!.omitted} />
+          </Show>
+          <Show when={!isFileEdit() && props.data.state.input && Object.keys(props.data.state.input).length > 0 && !(isDeepSearch() && status() === 'completed')}>
             <CodeBlock label="input" maxHeight={160} text={safeStringify(props.data.state.input)} />
           </Show>
-          <Show when={props.data.state.output}>
+          <Show when={props.data.state.output && !isFileEdit()}>
             <Show when={isDeepSearch()} fallback={<CodeBlock label="output" maxHeight={280} text={props.data.state.output || ''} />}>
               <div class="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-3 max-h-[600px] overflow-y-auto">
                 <MarkdownContent text={props.data.state.output || ''} />
