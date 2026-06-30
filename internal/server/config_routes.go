@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/prasenjeet-symon/ogcode/internal/git"
 	"github.com/prasenjeet-symon/ogcode/internal/session"
 )
 
@@ -30,6 +31,18 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"mode": string(s.mode),
 	})
+}
+
+// handleGitSync reports whether the working directory's current branch is in
+// sync with its upstream (best-effort fetch first). Used by plan mode to warn
+// when the active branch is behind the remote before tasks branch from it.
+func (s *Server) handleGitSync(w http.ResponseWriter, r *http.Request) {
+	st, err := git.BranchSyncStatus(r.Context(), s.dir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {

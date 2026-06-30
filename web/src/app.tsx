@@ -10,6 +10,7 @@ import { DocIndexProvider } from './context/docindex';
 import { NotificationProvider } from './context/notification';
 import { ThemeProvider } from './context/theme';
 import UpdateNotification from './components/update-notification';
+import GitSyncBanner from './components/git-sync-banner';
 import Home from './pages/home';
 import Chat from './pages/session';
 import PlanList from './pages/plan-list';
@@ -65,6 +66,7 @@ function AppWrapper(props: { children?: any }) {
                         {props.children}
                       </div>
                       <UpdateNotification />
+                      <GitSyncBanner />
                     </NotificationProvider>
                   </DocIndexProvider>
                 </CallGraphProvider>

@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // TaskWorktree holds the result of creating a worktree for a task.
@@ -369,6 +371,74 @@ func GetCurrentBranch(dir string) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+// SyncStatus describes how the current branch relates to its upstream.
+type SyncStatus struct {
+	IsRepo      bool   `json:"isRepo"`      // false when dir is not a git repo
+	Branch      string `json:"branch"`      // current branch ("" / "HEAD" when detached)
+	HasUpstream bool   `json:"hasUpstream"` // whether the branch tracks a remote branch
+	Upstream    string `json:"upstream"`    // e.g. "origin/main"
+	Ahead       int    `json:"ahead"`       // local commits not on upstream
+	Behind      int    `json:"behind"`      // upstream commits not in local
+	Fetched     bool   `json:"fetched"`     // whether the best-effort fetch succeeded
+	FetchError  string `json:"fetchError,omitempty"`
+}
+
+// BranchSyncStatus reports whether the current branch is in sync with its
+// upstream. It first does a best-effort, time-bounded `git fetch` of the
+// branch's remote so the ahead/behind counts reflect the real remote state; if
+// the fetch fails or times out (offline, auth, no remote) it falls back to the
+// last-known remote-tracking ref and records the reason in FetchError.
+func BranchSyncStatus(ctx context.Context, repoDir string) (*SyncStatus, error) {
+	st := &SyncStatus{}
+
+	// Not a git repo → nothing to report.
+	if err := runGit(repoDir, "rev-parse", "--is-inside-work-tree"); err != nil {
+		return st, nil
+	}
+	st.IsRepo = true
+	st.Branch = GetCurrentBranch(repoDir)
+
+	// Resolve the upstream tracking branch (errors when none is configured or HEAD is detached).
+	up, err := runGitOutput(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil || strings.TrimSpace(up) == "" {
+		st.HasUpstream = false
+		return st, nil
+	}
+	st.HasUpstream = true
+	st.Upstream = strings.TrimSpace(up)
+
+	// Best-effort fetch of the current branch's remote so the counts are fresh.
+	remote := "origin"
+	if i := strings.Index(st.Upstream, "/"); i > 0 {
+		remote = st.Upstream[:i]
+	}
+	fetchCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	args := []string{"-C", repoDir, "fetch", "--quiet", remote}
+	if st.Branch != "" && st.Branch != "HEAD" {
+		args = append(args, st.Branch)
+	}
+	if out, ferr := exec.CommandContext(fetchCtx, "git", args...).CombinedOutput(); ferr != nil {
+		st.Fetched = false
+		st.FetchError = strings.TrimSpace(string(out))
+		if st.FetchError == "" {
+			st.FetchError = ferr.Error()
+		}
+	} else {
+		st.Fetched = true
+	}
+
+	// behind = commits on upstream not in HEAD; ahead = commits in HEAD not on upstream.
+	if counts, err := runGitOutput(repoDir, "rev-list", "--left-right", "--count", st.Upstream+"...HEAD"); err == nil {
+		fields := strings.Fields(strings.TrimSpace(counts))
+		if len(fields) == 2 {
+			st.Behind, _ = strconv.Atoi(fields[0])
+			st.Ahead, _ = strconv.Atoi(fields[1])
+		}
+	}
+	return st, nil
 }
 
 // Slugify converts a task title into a URL-safe slug.

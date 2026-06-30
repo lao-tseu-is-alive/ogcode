@@ -1,17 +1,20 @@
 import { useParams, useNavigate } from '@solidjs/router';
-import { createEffect, on, For, Show, createMemo, createSignal } from 'solid-js';
+import { createEffect, on, onMount, onCleanup, For, Show, createMemo, createSignal } from 'solid-js';
 import { usePlan } from '../context/plan';
 import Breadcrumb from '../components/breadcrumb';
 import MarkdownContent from '../components/markdown-content';
+import StatusIcon from '../components/status-icon';
+import CommandMenu, { type CommandItem } from '../components/command-menu';
 import type { Task } from '../api/client';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const STATUS_META: Record<string, { dot: string; badge: string; col: string; label: string }> = {
-  pending:     { dot: 'bg-zinc-500',              badge: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20',          col: 'border-zinc-700/40',    label: 'Pending' },
-  in_progress: { dot: 'bg-blue-400 animate-pulse', badge: 'text-blue-400 bg-blue-500/10 border-blue-500/20',          col: 'border-blue-500/40',    label: 'In Progress' },
-  completed:   { dot: 'bg-emerald-400',            badge: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', col: 'border-emerald-500/40', label: 'Completed' },
-  failed:      { dot: 'bg-red-400',                badge: 'text-red-400 bg-red-500/10 border-red-500/20',             col: 'border-red-500/40',     label: 'Failed' },
+// Linear-aligned status palette — colors live in the --status-* design tokens.
+const STATUS_META: Record<string, { label: string; color: string; soft: string }> = {
+  pending:     { label: 'Pending',     color: 'var(--status-pending)',    soft: 'var(--status-pending-soft)' },
+  in_progress: { label: 'In Progress', color: 'var(--status-progress)',   soft: 'var(--status-progress-soft)' },
+  completed:   { label: 'Completed',   color: 'var(--status-completed)',  soft: 'var(--status-completed-soft)' },
+  failed:      { label: 'Failed',      color: 'var(--status-failed)',     soft: 'var(--status-failed-soft)' },
 };
 
 const EFFORT_META: Record<string, { cls: string; label: string }> = {
@@ -33,6 +36,24 @@ const COLUMNS: Array<{ status: Task['status']; label: string }> = [
   { status: 'completed',   label: 'Completed' },
   { status: 'failed',      label: 'Failed' },
 ];
+
+// StatusBadge — a small Linear-style status pill (soft bg, colored text, faint border).
+function StatusBadge(props: { status: string; class?: string }) {
+  const m = () => STATUS_META[props.status] || STATUS_META.pending;
+  return (
+    <span
+      class={`inline-flex items-center gap-1.5 rounded-md border font-medium text-[11px] px-2 py-0.5 leading-none ${props.class || ''}`}
+      style={{
+        color: m().color,
+        background: m().soft,
+        'border-color': `color-mix(in srgb, ${m().color} 22%, transparent)`,
+      }}
+    >
+      <StatusIcon status={props.status} size={11} />
+      {m().label}
+    </span>
+  );
+}
 
 // ─── task detail drawer ───────────────────────────────────────────────────────
 
@@ -107,7 +128,7 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
 
       {/* Drawer */}
       <div
-        class={`fixed top-0 right-0 h-full z-50 w-[420px] max-w-[95vw] flex flex-col
+        class={`fixed top-0 right-0 h-full z-50 w-[40vw] min-w-[420px] max-w-[95vw] flex flex-col
                 border-l border-[color:var(--border-subtle)] shadow-2xl
                 transition-transform duration-250 ease-out
                 ${t() ? 'translate-x-0' : 'translate-x-full'}`}
@@ -117,7 +138,7 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
           {/* Drawer header */}
           <div class="h-12 shrink-0 border-b border-[color:var(--border-subtle)] flex items-center px-4 gap-3">
             <div class="flex items-center gap-2 flex-1 min-w-0">
-              <span class={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_META[t()!.status]?.dot || 'bg-zinc-500'}`} />
+              <StatusIcon status={t()!.status} size={15} />
               <span class="text-[13px] font-semibold text-zinc-100 truncate">{t()!.title}</span>
             </div>
             <button
@@ -136,9 +157,7 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
 
             {/* Status + badges */}
             <div class="flex items-center gap-2 flex-wrap">
-              <span class={`text-[11px] font-semibold px-2 py-1 rounded-lg border ${STATUS_META[t()!.status]?.badge}`}>
-                {STATUS_META[t()!.status]?.label}
-              </span>
+              <StatusBadge status={t()!.status} />
               <span class={`text-[11px] font-bold px-2 py-1 rounded-lg border ${EFFORT_META[t()!.effort]?.cls || EFFORT_META.M.cls}`}>
                 {EFFORT_META[t()!.effort]?.label || t()!.effort} effort
               </span>
@@ -173,7 +192,7 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
                   href={t()!.prUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="inline-flex items-center gap-1.5 text-[12px] text-blue-400 hover:text-blue-300 transition-colors"
+                  class="inline-flex items-center gap-1.5 text-[12px] text-[color:var(--accent)] hover:opacity-80 transition-opacity"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -193,14 +212,11 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
                   <For each={depTasks()}>
                     {(dep) => (
                       <div
-                        onClick={() => { /* select dep task */ }}
                         class="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] cursor-pointer hover:border-[color:var(--border-default)] transition-colors"
                       >
-                        <span class={`w-2 h-2 rounded-full shrink-0 ${STATUS_META[dep.status]?.dot || 'bg-zinc-500'}`} />
+                        <StatusIcon status={dep.status} size={13} />
                         <span class="text-[12px] text-zinc-300 flex-1 truncate">{dep.title}</span>
-                        <span class={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${STATUS_META[dep.status]?.badge}`}>
-                          {STATUS_META[dep.status]?.label}
-                        </span>
+                        <StatusBadge status={dep.status} />
                       </div>
                     )}
                   </For>
@@ -306,7 +322,7 @@ function TaskDrawer(props: { task: Task | null; onClose: () => void }) {
 
 // ─── kanban card ──────────────────────────────────────────────────────────────
 
-function KanbanCard(props: { task: Task; onSelect: (t: Task) => void }) {
+function KanbanCard(props: { task: Task; focused: boolean; onSelect: (t: Task) => void }) {
   const plan = usePlan();
   const [starting, setStarting] = createSignal(false);
 
@@ -314,9 +330,7 @@ function KanbanCard(props: { task: Task; onSelect: (t: Task) => void }) {
   const completedIds = () => new Set(plan.tasks().filter((x) => x.status === 'completed').map((x) => x.id));
   const canStart = () => plan.activePlan()?.status === 'locked' && t().status === 'pending' && t().dependencies.every((d) => completedIds().has(d));
   const isBlocked = () => t().status === 'pending' && !canStart();
-
-  const depTasks = () =>
-    t().dependencies.map((id) => plan.tasks().find((x) => x.id === id)).filter(Boolean) as Task[];
+  const depCount = () => t().dependencies.length;
 
   const handleStart = async (e: MouseEvent) => {
     e.stopPropagation();
@@ -324,46 +338,23 @@ function KanbanCard(props: { task: Task; onSelect: (t: Task) => void }) {
     try { await plan.startTaskById(t().id); } finally { setStarting(false); }
   };
 
-  const sm = STATUS_META[t().status] || STATUS_META.pending;
-
   return (
     <div
+      id={`task-card-${t().id}`}
       onClick={() => props.onSelect(t())}
-      class={`group rounded-xl border bg-[color:var(--bg-surface)] p-3.5 cursor-pointer
-              transition-all duration-150 hover:shadow-lg hover:shadow-black/25
-              hover:border-[color:var(--border-strong)] hover:-translate-y-px
-              ${isBlocked() ? 'opacity-60' : ''}
-              ${sm.col}`}
+      class={`group rounded-[10px] border p-2.5 cursor-pointer transition-colors duration-100
+              ${props.focused
+                ? 'border-[color:var(--accent)] bg-[color:var(--bg-elevated)]'
+                : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] hover:border-[color:var(--border-default)] hover:bg-[color:var(--bg-elevated)]'}
+              ${isBlocked() ? 'opacity-70' : ''}`}
+      style={{ 'box-shadow': props.focused ? '0 0 0 1px var(--accent)' : undefined }}
     >
-      {/* Status dot + title */}
-      <div class="flex items-start gap-2.5 mb-2.5">
-        <span class={`mt-[5px] w-2 h-2 rounded-full shrink-0 ${sm.dot}`} />
-        <p class="text-[13px] font-semibold text-zinc-100 leading-snug flex-1">{t().title}</p>
-      </div>
+      {/* Title */}
+      <p class="text-[13px] font-medium leading-snug line-clamp-2 mb-2" style={{ color: 'var(--text-primary)' }}>
+        {t().title}
+      </p>
 
-      {/* Description */}
-      <Show when={t().description}>
-        <MarkdownContent text={t().description} class="prose-chat-preview line-clamp-2 mb-2.5 text-zinc-500" />
-      </Show>
-
-      {/* Dependency pills */}
-      <Show when={depTasks().length > 0}>
-        <div class="flex flex-wrap gap-1 mb-2.5">
-          <For each={depTasks().slice(0, 3)}>
-            {(dep) => (
-              <span class={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full border ${STATUS_META[dep.status]?.badge}`}>
-                <span class={`w-1.5 h-1.5 rounded-full ${STATUS_META[dep.status]?.dot}`} />
-                {dep.title.length > 20 ? dep.title.slice(0, 20) + '…' : dep.title}
-              </span>
-            )}
-          </For>
-          <Show when={depTasks().length > 3}>
-            <span class="text-[9px] text-zinc-600 px-1 py-0.5">+{depTasks().length - 3} more</span>
-          </Show>
-        </div>
-      </Show>
-
-      {/* Footer */}
+      {/* Meta row */}
       <div class="flex items-center gap-1.5">
         <span class={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${EFFORT_META[t().effort]?.cls || EFFORT_META.M.cls}`}>
           {t().effort}
@@ -371,6 +362,19 @@ function KanbanCard(props: { task: Task; onSelect: (t: Task) => void }) {
         <span class={`text-[10px] capitalize ${COMPLEXITY_CLS[t().complexity] || 'text-zinc-500'}`}>
           {t().complexity}
         </span>
+
+        <Show when={depCount() > 0}>
+          <span
+            class="inline-flex items-center gap-0.5 text-[10px] tabular-nums"
+            style={{ color: isBlocked() ? 'var(--status-progress)' : 'var(--text-muted)' }}
+            title={`${depCount()} ${depCount() === 1 ? 'dependency' : 'dependencies'}`}
+          >
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 010 5.657l-3 3a4 4 0 01-5.657-5.657l1.5-1.5M10.172 13.828a4 4 0 010-5.657l3-3a4 4 0 015.657 5.657l-1.5 1.5" />
+            </svg>
+            {depCount()}
+          </span>
+        </Show>
 
         <div class="flex-1" />
 
@@ -380,7 +384,7 @@ function KanbanCard(props: { task: Task; onSelect: (t: Task) => void }) {
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            class="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+            class="text-[10px] text-[color:var(--accent)] hover:opacity-80 transition-opacity"
           >
             PR #{t().prNumber}
           </a>
@@ -391,25 +395,18 @@ function KanbanCard(props: { task: Task; onSelect: (t: Task) => void }) {
             type="button"
             onClick={handleStart}
             disabled={starting()}
-            class="text-[10px] px-2 py-0.5 rounded-md border border-[color:var(--accent)]/50
-                   bg-[color:var(--accent-soft)] text-[color:var(--accent)] hover:bg-[color:var(--accent)]/25
-                   transition-colors disabled:opacity-50 font-medium"
+            class={`text-[10px] px-2 py-0.5 rounded-md border border-[color:var(--accent)]/50
+                    bg-[color:var(--accent-soft)] text-[color:var(--accent)] hover:bg-[color:var(--accent)]/25
+                    transition disabled:opacity-50 font-medium
+                    ${props.focused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
           >
             {starting() ? '…' : 'Start'}
           </button>
         </Show>
 
         <Show when={isBlocked()}>
-          <span class="text-[10px] text-amber-500/70 font-medium">Blocked</span>
+          <span class="text-[10px] font-medium" style={{ color: 'var(--status-progress)' }}>Blocked</span>
         </Show>
-
-        {/* Expand hint */}
-        <svg
-          class="w-3 h-3 text-zinc-700 group-hover:text-zinc-500 transition-colors shrink-0"
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
       </div>
     </div>
   );
@@ -424,6 +421,8 @@ export default function PlanTasksPage() {
   const [startingAll, setStartingAll] = createSignal(false);
   const [startError, setStartError] = createSignal('');
   const [selectedTask, setSelectedTask] = createSignal<Task | null>(null);
+  const [focusedId, setFocusedId] = createSignal<string | null>(null);
+  const [menuOpen, setMenuOpen] = createSignal(false);
 
   createEffect(on(() => params.id, (id) => {
     if (id) plan.selectPlan(id);
@@ -435,6 +434,13 @@ export default function PlanTasksPage() {
     if (!sel) return;
     const fresh = plan.tasks().find((t) => t.id === sel.id);
     if (fresh) setSelectedTask(fresh);
+  });
+
+  // Scroll the keyboard-focused card into view when it changes.
+  createEffect(() => {
+    const id = focusedId();
+    if (!id) return;
+    queueMicrotask(() => document.getElementById(`task-card-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   });
 
   const breadcrumbs = () => {
@@ -453,6 +459,8 @@ export default function PlanTasksPage() {
   const eligibleCount = () =>
     plan.tasks().filter((t) => t.status === 'pending' && t.dependencies.every((d) => completedIds().has(d))).length;
   const planLocked = () => plan.activePlan()?.status === 'locked';
+  const canStartTask = (t: Task) =>
+    planLocked() && t.status === 'pending' && t.dependencies.every((d) => completedIds().has(d));
 
   const counts = createMemo(() => ({
     total:       plan.tasks().length,
@@ -476,8 +484,118 @@ export default function PlanTasksPage() {
     }
   };
 
+  // ── keyboard navigation across the board ──
+  // 2D model: columns in COLUMNS order, tasks within each column by orderIndex.
+  const grid = () => COLUMNS.map((c) => byStatus(c.status));
+
+  const locate = (id: string | null): [number, number] | null => {
+    if (!id) return null;
+    const g = grid();
+    for (let c = 0; c < g.length; c++) {
+      const r = g[c].findIndex((t) => t.id === id);
+      if (r >= 0) return [c, r];
+    }
+    return null;
+  };
+
+  const firstFocusable = (): string | null => {
+    const g = grid();
+    for (let c = 0; c < g.length; c++) if (g[c].length) return g[c][0].id;
+    return null;
+  };
+
+  const moveFocus = (dCol: number, dRow: number) => {
+    const g = grid();
+    const pos = locate(focusedId());
+    if (!pos) { setFocusedId(firstFocusable()); return; }
+    let [c, r] = pos;
+    if (dRow !== 0) {
+      r = Math.max(0, Math.min(g[c].length - 1, r + dRow));
+    }
+    if (dCol !== 0) {
+      let nc = c;
+      for (let step = 0; step < g.length; step++) {
+        nc = nc + dCol;
+        if (nc < 0 || nc >= g.length) return; // off the edge
+        if (g[nc].length) break;
+      }
+      if (nc < 0 || nc >= g.length || !g[nc].length) return;
+      c = nc;
+      r = Math.min(r, g[c].length - 1);
+    }
+    const target = g[c]?.[r];
+    if (target) setFocusedId(target.id);
+  };
+
+  const focusedTask = () => plan.tasks().find((t) => t.id === focusedId()) || null;
+  // Command palette acts on the open drawer task, else the keyboard-focused task.
+  const menuTask = () => selectedTask() || focusedTask();
+
+  const commands = (): CommandItem[] => {
+    const items: CommandItem[] = [];
+    const t = menuTask();
+    if (t) {
+      items.push({ id: 'open', label: `Open “${t.title}”`, hint: '↵', keywords: 'detail view', onSelect: () => setSelectedTask(t) });
+      if (canStartTask(t)) items.push({ id: 'start', label: 'Start task', hint: 'S', keywords: 'run begin execute', onSelect: () => void plan.startTaskById(t.id) });
+      if (t.status === 'in_progress') {
+        items.push({ id: 'session', label: 'Open agent session', keywords: 'logs terminal', onSelect: () => navigate(`/task/${t.id}`) });
+        items.push({ id: 'complete', label: 'Mark complete', keywords: 'done finish', onSelect: () => void plan.completeTaskById(t.id) });
+        items.push({ id: 'fail', label: 'Mark failed', danger: true, keywords: 'cancel stop', onSelect: () => void plan.failTaskById(t.id) });
+      }
+      if (t.status === 'failed') items.push({ id: 'retry', label: 'Retry task', hint: 'R', keywords: 'rerun again', onSelect: () => void plan.retryTaskById(t.id) });
+      if (t.prUrl) items.push({ id: 'pr', label: `Open pull request #${t.prNumber}`, keywords: 'github review', onSelect: () => window.open(t.prUrl!, '_blank', 'noopener') });
+    }
+    if (planLocked() && eligibleCount() > 0) {
+      items.push({ id: 'start-all', label: `Start all eligible tasks (${eligibleCount()})`, keywords: 'run everything batch', onSelect: () => void handleStartAll() });
+    }
+    return items;
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    // Command palette: Cmd/Ctrl+K
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      setMenuOpen(true);
+      return;
+    }
+    // Ignore while typing or when the palette/drawer owns the keys.
+    if (menuOpen()) return;
+    const el = e.target as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    switch (e.key) {
+      case 'ArrowDown': case 'j': e.preventDefault(); moveFocus(0, 1); break;
+      case 'ArrowUp':   case 'k': e.preventDefault(); moveFocus(0, -1); break;
+      case 'ArrowRight':case 'l': e.preventDefault(); moveFocus(1, 0); break;
+      case 'ArrowLeft': case 'h': e.preventDefault(); moveFocus(-1, 0); break;
+      case 'Enter': {
+        const t = focusedTask();
+        if (t) { e.preventDefault(); setSelectedTask(t); }
+        break;
+      }
+      case 'Escape':
+        if (selectedTask()) { e.preventDefault(); setSelectedTask(null); }
+        else if (focusedId()) { e.preventDefault(); setFocusedId(null); }
+        break;
+      case 's': case 'S': {
+        const t = focusedTask();
+        if (t && canStartTask(t)) { e.preventDefault(); void plan.startTaskById(t.id); }
+        break;
+      }
+      case 'r': case 'R': {
+        const t = focusedTask();
+        if (t && t.status === 'failed') { e.preventDefault(); void plan.retryTaskById(t.id); }
+        break;
+      }
+    }
+  };
+
+  onMount(() => window.addEventListener('keydown', onKeyDown));
+  onCleanup(() => window.removeEventListener('keydown', onKeyDown));
+
   return (
-    <div class="flex flex-col h-screen bg-[color:var(--bg-base)]">
+    <div class="flex flex-col h-screen w-full min-w-0 bg-[color:var(--bg-base)]">
 
       {/* ── header ── */}
       <header
@@ -487,21 +605,35 @@ export default function PlanTasksPage() {
         <Breadcrumb items={breadcrumbs()} />
         <div class="flex-1" />
 
+        {/* Command palette trigger */}
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          class="hidden sm:flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-lg border text-[12px] transition-colors"
+          style={{ 'border-color': 'var(--border-subtle)', color: 'var(--text-tertiary)', background: 'var(--bg-elevated)' }}
+          title="Command menu"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+          </svg>
+          <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded border" style={{ 'border-color': 'var(--border-default)' }}>⌘K</kbd>
+        </button>
+
         {/* Progress pill */}
         <Show when={counts().total > 0}>
           <div class="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)]">
             <div class="w-20 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
               <div
-                class="h-full rounded-full bg-emerald-400 transition-all duration-500"
-                style={{ width: `${progress()}%` }}
+                class="h-full rounded-full transition-all duration-500"
+                style={{ width: `${progress()}%`, background: 'var(--status-completed)' }}
               />
             </div>
             <span class="text-[11px] text-zinc-300 font-medium tabular-nums">
               {counts().done}/{counts().total}
             </span>
             <Show when={counts().running > 0}>
-              <span class="text-[10px] text-blue-400 font-medium flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse inline-block" />
+              <span class="text-[10px] font-medium flex items-center gap-1" style={{ color: 'var(--status-progress)' }}>
+                <StatusIcon status="in_progress" size={11} />
                 {counts().running}
               </span>
             </Show>
@@ -560,41 +692,32 @@ export default function PlanTasksPage() {
 
       {/* ── kanban ── */}
       <div class="flex-1 overflow-x-auto overflow-y-hidden">
-        <div class="flex h-full gap-4 p-5 w-full">
+        <div class="flex h-full gap-5 px-5 py-4 w-full">
           <For each={COLUMNS}>
             {(col) => {
               const colTasks = () => byStatus(col.status);
-              const sm = STATUS_META[col.status];
               return (
-                <div class="flex-1 min-w-[260px] flex flex-col gap-3">
-                  {/* Column header */}
-                  <div class="flex items-center gap-2 px-1">
-                    <span class={`w-2 h-2 rounded-full ${sm.dot}`} />
-                    <span class="text-[12px] font-semibold text-zinc-300">{col.label}</span>
-                    <span class={`ml-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${sm.badge}`}>
-                      {colTasks().length}
-                    </span>
+                <div class="flex flex-col gap-2 flex-1 min-w-[280px]">
+                  {/* Column header — icon, name, plain muted count (Linear style) */}
+                  <div class="flex items-center gap-2 h-7 px-0.5 shrink-0">
+                    <StatusIcon status={col.status} size={14} />
+                    <span class="text-[13px] font-medium" style={{ color: 'var(--text-secondary)' }}>{col.label}</span>
+                    <span class="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>{colTasks().length}</span>
                   </div>
 
-                  {/* Drop zone / cards */}
-                  <div
-                    class={`flex-1 overflow-y-auto rounded-xl border p-2 space-y-2
-                            ${colTasks().length === 0
-                              ? 'border-dashed border-[color:var(--border-subtle)] bg-transparent'
-                              : 'border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]/30'}`}
-                  >
+                  {/* Open card list — no surrounding box (Linear style) */}
+                  <div class="flex-1 overflow-y-auto flex flex-col gap-2 pb-4 pr-1 -mr-1">
                     <For each={colTasks()}>
                       {(task) => (
                         <KanbanCard
                           task={task}
-                          onSelect={(t) => setSelectedTask(t)}
+                          focused={focusedId() === task.id}
+                          onSelect={(t) => { setFocusedId(t.id); setSelectedTask(t); }}
                         />
                       )}
                     </For>
                     <Show when={colTasks().length === 0}>
-                      <div class="h-28 flex items-center justify-center">
-                        <span class="text-[11px] text-zinc-700">No tasks</span>
-                      </div>
+                      <div class="px-2 py-8 text-center text-[11px]" style={{ color: 'var(--text-muted)' }}>No tasks</div>
                     </Show>
                   </div>
                 </div>
@@ -608,6 +731,14 @@ export default function PlanTasksPage() {
       <TaskDrawer
         task={selectedTask()}
         onClose={() => setSelectedTask(null)}
+      />
+
+      {/* ── command palette ── */}
+      <CommandMenu
+        open={menuOpen()}
+        onClose={() => setMenuOpen(false)}
+        items={commands()}
+        placeholder={menuTask() ? `Actions for “${menuTask()!.title}”…` : 'Type a command…'}
       />
     </div>
   );

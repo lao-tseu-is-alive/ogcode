@@ -307,6 +307,22 @@ export function getMode(): Promise<ModeInfo> {
   return fetchAPI('/mode');
 }
 
+// Git sync API — whether the working-dir branch is in sync with its upstream.
+export interface GitSyncStatus {
+  isRepo: boolean;
+  branch: string;
+  hasUpstream: boolean;
+  upstream: string;
+  ahead: number;
+  behind: number;
+  fetched: boolean;
+  fetchError?: string;
+}
+
+export function getGitSync(): Promise<GitSyncStatus> {
+  return fetchAPI('/git/sync');
+}
+
 // Plan API
 export interface Plan {
   id: string;

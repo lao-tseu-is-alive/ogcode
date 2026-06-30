@@ -24,6 +24,7 @@ func (s *Server) routes() http.Handler {
 		r.Post("/models/refresh", s.handleModelsRefresh)
 		r.Get("/config", s.handleConfig)
 		r.Get("/mode", s.handleMode)
+		r.Get("/git/sync", s.handleGitSync)
 
 		r.Post("/models/preference", s.handleSetModelPreference)
 		r.Delete("/models/preference/{id}", s.handleDeleteModelPreference)

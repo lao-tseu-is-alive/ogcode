@@ -33,6 +33,17 @@
   --danger:         #ef4444;
   --reasoning:      #a78bfa;
 
+  /* Linear-aligned task status palette (todo gray, in-progress yellow,
+     done indigo, failed red) — used by the status-circle iconography. */
+  --status-pending:    #8a8f98;
+  --status-progress:   #f2c94c;
+  --status-completed:  #5e6ad2;
+  --status-failed:     #eb5757;
+  --status-pending-soft:    rgba(138, 143, 152, 0.12);
+  --status-progress-soft:   rgba(242, 201, 76, 0.14);
+  --status-completed-soft:  rgba(94, 106, 210, 0.16);
+  --status-failed-soft:     rgba(235, 87, 87, 0.14);
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
