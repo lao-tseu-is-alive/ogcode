@@ -126,6 +126,15 @@ func (p *AnthropicProvider) StreamChat(ctx context.Context, req StreamRequest) (
 					if err := json.Unmarshal([]byte(call.Function.Arguments), &input); err != nil {
 						input = map[string]any{}
 					}
+					// Anthropic requires tool_use.input to be a JSON object. A no-arg
+					// tool call round-trips through storage as "null" (a nil
+					// json.RawMessage marshals to null), which unmarshals here to a
+					// nil interface rather than a map; scalars/arrays are likewise not
+					// objects. Coerce any non-object to {} or the request fails with
+					// 400 "tool_use.input: Input should be an object".
+					if _, ok := input.(map[string]any); !ok {
+						input = map[string]any{}
+					}
 					blocks = append(blocks, map[string]any{
 						"type":  "tool_use",
 						"id":    call.ID,
